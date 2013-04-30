@@ -1,0 +1,66 @@
+@CHARSET "ISO-8859-1";
+html,body {
+	height: 99%;
+	width: 99%;
+	margin: 0px;
+	padding: 0px;
+}
+
+table {
+	width: 100%;
+}
+
+#snapshots {
+	overflow: hidden;
+}
+
+#archives {
+	overflow: hidden;
+}
+
+#center table, #center tr, #center td, #center th {
+	margin: 0px;
+	padding: 0px;
+	border: 1px solid black;
+}
+.cryo-icon {
+	height: 16px;
+	width: 16px;
+	background-repeat: no-repeat;
+	overflow: hidden;
+	background-image: url("../images/icons.png");
+	padding: 0;
+	display: inline-block;
+}
+
+.cryo-icon-new {
+	background-position: -16px -128px;
+}
+
+.cryo-icon-delete {
+	background-position: -176px -96px;
+}
+
+.cryo-icon-duplicate {
+	background-position: -48px -80px;
+}
+
+.cryo-icon-download {
+	background-position:  -224px -48px;
+}
+
+.cryo-icon-upload {
+	background-position: -192px -48px;
+}
+
+.cryo-icon-folder {
+	background-position: -16px -96px;
+}
+
+.cryo-icon-file {
+	background-position: -32px -96px;	
+}
+
+.cryo-icon-loading {
+	background-position: -144px -64px;
+}
