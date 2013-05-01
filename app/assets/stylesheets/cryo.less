@@ -1,0 +1,71 @@
+
+
+html,body {
+	height: 99%;
+	width: 99%;
+	margin: 0px;
+	padding: 0px;
+}
+
+table {
+	width: 100%;
+}
+
+#snapshots {
+	overflow: hidden;
+}
+
+#archives {
+	overflow: hidden;
+}
+
+.cryo-icon(@x, @y) {
+	height: 16px;
+	width: 16px;
+	background-repeat: no-repeat;
+	overflow: hidden;
+	background-image: url("../images/icons.png");
+	padding: 0;
+	display: inline-block;
+	background-position: @x @y;
+}
+
+.cryo-icon-new {
+	.cryo-icon(-16px, -128px);
+}
+
+.cryo-icon-delete {
+	.cryo-icon(-176px, -96px);
+}
+
+.cryo-icon-duplicate {
+	.cryo-icon(-48px, -80px);
+}
+
+.cryo-icon-download {
+	.cryo-icon(-224px, -48px);
+}
+
+.cryo-icon-upload {
+	.cryo-icon(-192px, -48px);
+}
+
+.cryo-icon-folder {
+	.cryo-icon(-16px, -96px);
+}
+
+.cryo-icon-file {
+	.cryo-icon(-32px, -96px);	
+}
+
+.cryo-icon-loading {
+	.cryo-icon(-144px, -64px);
+}
+
+.cryo-icon-refresh {
+	.cryo-icon(-64px, -80px);
+}
+
+.cryo-icon-gear {
+	.cryo-icon(-192px, -112px);
+}
