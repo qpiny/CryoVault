@@ -1,26 +1,17 @@
-package models
+package org.rejna.cryo.models
 
 import scala.collection.mutable.HashMap
 import scala.collection.JavaConversions._
 import scala.io.Source
-
+import scala.concurrent.duration._
 import scalax.io.Resource
-
 import java.io.{ File, FileOutputStream }
 import java.util.UUID
-
-import play.api.Play.current
-import play.api.libs.concurrent.Akka
-import play.api.libs.json._
-
 import akka.actor._
 import akka.event._
 import akka.pattern.{ ask, pipe }
-import akka.util.{ Timeout, Subclassification, Duration }
-import akka.util.duration._
-
+import akka.util.Subclassification
 import java.io.InputStream
-
 import com.amazonaws.auth.policy.{ Policy, Principal, Statement }
 import com.amazonaws.auth.policy.Statement.Effect
 import com.amazonaws.auth.policy.actions.SQSActions
@@ -33,16 +24,16 @@ import com.amazonaws.services.sns.AmazonSNSClient
 import com.amazonaws.services.sns.model.{ CreateTopicRequest, SubscribeRequest }
 import com.amazonaws.{ AmazonWebServiceRequest, ResponseMetadata, ClientConfiguration }
 import com.amazonaws.auth.AWSCredentials
-
 import org.joda.time.{ DateTime, Interval }
-
 import ArchiveType._
 import CryoStatus._
 import CryoJson._
+import org.rejna.cryo.web.ResponseEvent
 
-class Cryo {
-  val actor = Akka.system.actorOf(Props(new CryoActor(this)), name = "cryo")
-  val inventory = new Inventory()(this)
+object Cryo {
+  val system = ActorSystem("cryo") // FIXME (use cryoweb system)
+  //val actor = system.actorOf(Props(new CryoActor(this)), name = "cryo")
+  val inventory = new Inventory()
 
   val glacier = new AmazonGlacierClient(Config.awsCredentials);
   glacier.setEndpoint("https://glacier." + Config.region + ".amazonaws.com/")
@@ -176,66 +167,8 @@ class Cryo {
 
 }
 
-class CryoActor(cryo: Cryo) extends Actor {
-
-  def receive = {
-    case Subscribe(subscription) =>
-      cryo.eventBus.subscribe(sender, subscription)
-    case Unsubscribe(subscription) =>
-      cryo.eventBus.unsubscribe(sender, subscription)
-    case CreateSnapshot =>
-      val snapshot = cryo.newArchive(Index)
-      sender ! SnapshotCreated(snapshot.id)
-    case GetArchiveList =>
-      sender ! ArchiveList(cryo.inventory.archives.values.toList)
-    case GetSnapshotList =>
-      sender ! SnapshotList(cryo.inventory.snapshots.values.toList)
-    case UpdateInventory(maxAge) =>
-      cryo.inventory.update(maxAge)
-    case GetSnapshotFiles(snapshotId, directory) => {
-      val snapshot = cryo.inventory.snapshots(snapshotId)
-      val files = snapshot match {
-        case ls: LocalSnapshot => ls.files()
-        case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
-      }
-      val dir = new File(Config.baseDirectory, directory)
-      sender ! new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters)) //fe.toList)
-    }
-    case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
-      val snapshot = cryo.inventory.snapshots(snapshotId)
-      snapshot match {
-        case ls: LocalSnapshot => ls.fileFilters(directory) = filter
-        case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
-      }
-    case UploadSnapshot(snapshotId) =>
-      val snapshot = cryo.inventory.snapshots(snapshotId)
-      snapshot match {
-        case ls: LocalSnapshot => ls.create
-        case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
-      }
-    case msg => println("CryoActor has received an unknown message : " + msg)
-  }
-
-  def getDirectoryContent(directory: File, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, String]) = {
-    //println("getDirectoryContent(%s, %s)".format(directory, fileSelection.mkString("(", ",", ")")))
-    val dirContent = Option(directory.listFiles).getOrElse(Array[File]())
-    dirContent.map(f => {
-      val filePath = Config.baseURI.relativize(f.toURI).getPath match {
-        case x if x.endsWith("/") => x.substring(0, x.length - 1)
-        case x => x
-      }
-      //println("f=%s; af=%s".format(f, af))
-      val (count, size) = ((0, 0L) /: fileSelection)((a, e) =>
-        if (e.startsWith(filePath)) (a._1 + 1, a._2 + new File(Config.baseDirectory, e).length) else a)
-      //val filePath = Config.baseURI.relativize(f.toURI).getPath
-      //println("getDirectoryContent: filePath=%s fileFilters=%s".format(filePath, fileFilters.mkString("(", ",", ")")))
-      new FileElement(f, count, size, fileFilters.get('/' + filePath))
-    }).toList
-  }
-}
-
 class CryoEventBus extends EventBus with SubchannelClassification {
-  type Event = models.ResponseEvent
+  type Event = org.rejna.cryo.web.ResponseEvent
   type Classifier = String
   type Subscriber = ActorRef
 

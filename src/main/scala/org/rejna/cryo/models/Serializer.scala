@@ -1,9 +1,7 @@
-package models
+package org.rejna.cryo.models
 
 import java.io.File
 import org.apache.commons.io.filefilter._
-
-import play.api.libs.json.{ JsString, JsObject, JsNumber, JsNull, JsValue, JsArray }
 
 import sbinary._
 

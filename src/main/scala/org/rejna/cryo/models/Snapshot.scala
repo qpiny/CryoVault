@@ -1,4 +1,4 @@
-package models
+package org.rejna.cryo.models
 
 import ArchiveType._;
 import CryoBinary._;
@@ -10,8 +10,6 @@ import scala.io.Source
 import scalax.io.Resource
 
 import akka.actor._
-
-import play.api.libs.json.JsValue
 
 import java.io.{ File, FileFilter, FileOutputStream, FileInputStream }
 import java.util.UUID
@@ -37,10 +35,10 @@ trait Snapshot { //self: Archive =>
   val fileFilters: scala.collection.mutable.Map[String, String]
 }
 
-protected class LocalSnapshot(id: String)(implicit cryo: Cryo) extends LocalArchive(Index, id) with Snapshot {
+protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with Snapshot {
   import CryoJson._
 
-  protected val remoteSnapshotAttribute = attributeBuilder[Option[RemoteSnapshot]]("remoteSnapshot", None)(OptionFormat[Snapshot])
+  protected val remoteSnapshotAttribute = attributeBuilder[Option[RemoteSnapshot]]("remoteSnapshot", None)
   def remoteSnapshot: Option[RemoteSnapshot] = remoteSnapshotAttribute()
   protected def remoteSnapshot_= = remoteSnapshotAttribute() = _
 
@@ -58,8 +56,8 @@ protected class LocalSnapshot(id: String)(implicit cryo: Cryo) extends LocalArch
 
   files <* fileFilters
 
-  files <+> new AttributeListCallback[JsValue] {
-    override def onListChange[A, B](attribute: ReadAttribute[List[A], JsValue], addedValues: List[B], removedValues: List[B])(implicit serializer: List[B] => JsValue) = {
+  files <+> new AttributeListCallback {
+    override def onListChange[A, B](attribute: ReadAttribute[List[A]], addedValues: List[B], removedValues: List[B]) = {
       size += addedValues.map(f => new File(Config.baseDirectory, f.toString).length()).sum -
         removedValues.map(f => new File(Config.baseDirectory, f.toString).length()).sum
     }
@@ -80,7 +78,7 @@ protected class LocalSnapshot(id: String)(implicit cryo: Cryo) extends LocalArch
     println("Creating archive in %s".format(file.getAbsolutePath))
     val output = new FileOutputStream(file)
     try {
-      var currentArchive = cryo.newArchive(Data)
+      var currentArchive = Cryo.newArchive(Data)
       output.write(files().length)
       for (f <- files()) {
         println("add file %s in archive".format(f))
@@ -88,9 +86,9 @@ protected class LocalSnapshot(id: String)(implicit cryo: Cryo) extends LocalArch
         for (block <- splitFile(f)) {
           if (currentArchive.size > Config.archiveSize) {
             currentArchive.upload
-            currentArchive = cryo.newArchive(Data)
+            currentArchive = Cryo.newArchive(Data)
           }
-          val bl = cryo.getOrUpdateBlockLocation(block.hash, currentArchive.writeBlock(block))
+          val bl = Cryo.getOrUpdateBlockLocation(block.hash, currentArchive.writeBlock(block))
           output.write(0)
           format[Hash].writes(output, block.hash)
         }
@@ -103,14 +101,14 @@ protected class LocalSnapshot(id: String)(implicit cryo: Cryo) extends LocalArch
       output.close
     }
     // upload
-    remoteSnapshot = Some(cryo.migrate(this, upload))
+    remoteSnapshot = Some(Cryo.migrate(this, upload))
   }
 }
 
-class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash)(implicit cryo: Cryo) extends RemoteArchive(Index, date, id, size, hash) with Snapshot {
+class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends RemoteArchive(Index, date, id, size, hash) with Snapshot {
   import CryoJson._
 
-  def this(ra: RemoteArchive)(implicit cryo: Cryo) = this(ra.date, ra.id, ra.size, ra.hash)
+  def this(ra: RemoteArchive) = this(ra.date, ra.id, ra.size, ra.hash)
 
   val remoteFiles = attributeBuilder.list("files", List[RemoteFile]())
 
@@ -121,7 +119,7 @@ class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash)(implici
     if (state == Cached) {
       import CryoBinary._
       val input = new FileInputStream(file)
-      cryo.updateCatalog(format[Map[Hash, BlockLocation]].reads(input))
+      Cryo.updateCatalog(format[Map[Hash, BlockLocation]].reads(input))
       remoteFiles ++= format[Map[String, Iterator[Hash]]].reads(input).map(fh => new RemoteFile(id, new File(Config.baseDirectory, fh._1), fh._2.toSeq: _*))
       fileFilters ++= format[Map[String, String]].reads(input)
       //index ++= sbinary.Operations.fromFile[List[RemoteFile]](file)
@@ -137,16 +135,16 @@ class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash)(implici
   }
 }
 
-class RemoteFile(val snapshotId: String, val file: File, val blockHash: Hash*)(implicit cryo: Cryo) {
+class RemoteFile(val snapshotId: String, val file: File, val blockHash: Hash*) {
   import CryoJson._
 
-  val statusAttribute = cryo.attributeBuilder("status", Remote)
+  val statusAttribute = Cryo.attributeBuilder("status", Remote)
   def status = statusAttribute()
   def status_= = statusAttribute() = _
-  val blockLocations = blockHash.map(h => cryo.catalog(h))
+  val blockLocations = blockHash.map(h => Cryo.catalog(h))
   val archives = blockLocations.map(_.archive.asInstanceOf[RemoteArchive]) //List(blockLocations.map(_.archive.asInstanceOf[RemoteArchive]): _*)
 
-  val remoteArchives = cryo.attributeBuilder.list("remoteArchive", List[RemoteArchive]())(ListFormat[RemoteArchive])
+  val remoteArchives = Cryo.attributeBuilder.list("remoteArchive", List[RemoteArchive]())
   remoteArchives ++ archives.map(archive =>
     if (archive.state == Cached) {
       None

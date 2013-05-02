@@ -1,0 +1,81 @@
+version = '0.0.1'
+
+apply plugin: 'scala'
+apply plugin: 'eclipse'
+apply plugin: 'application'
+apply plugin: 'coffeescript-base'
+
+mainClassName = "org.rejna.cryo.Main"
+
+ext {
+	majorScalaVersion = '2.10'
+	scalaVersion = '2.10.1'
+	akkaVersion = '2.1.2'
+}
+
+configurations {
+	fmpp
+}
+
+//targetCompatibility = 1.6
+//sourceCompatibility = 1.6
+
+	
+repositories {
+	mavenCentral()
+	maven { url 'http://akka.io/releases' }
+	//maven { url 'https://oss.sonatype.org/content/repositories/releases/' }
+	//maven { url 'http://repo.typesafe.com/typesafe/' }
+	maven { url 'http://repo.spray.io/' }
+	//mavenRepo name: "Gradle", url: "http://repo.gradle.org/gradle/repo"
+}
+
+dependencies {
+	compile group: 'org.scala-lang', name: 'scala-library', version: scalaVersion
+	compile group: 'org.mashupbots.socko', name: 'socko-webserver_' + majorScalaVersion, version: '0.2.4'
+	// Force akka version
+	compile group: 'com.typesafe.akka', name: 'akka-actor_' + majorScalaVersion, version: akkaVersion
+	//compile group: 'com.typesafe.akka', name: 'akka-slf4j_' + majorScalaVersion, version: akkaVersion
+	//compile group: 'io.spray', name: 'spray-json_' + majorScalaVersion, version: '1.2.3'
+	//test group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
+	compile group: 'commons-io', name: 'commons-io', version: '2.4'
+      //"org.scala-tools.sbinary"	% "sbinary_2.9.0"	% "0.4.0",
+     compile group: 'joda-time', name: 'joda-time', version: '2.1'
+     compile group: 'com.amazonaws', name: 'aws-java-sdk', version: '1.4.3'
+     compile group: 'net.liftweb', name: 'lift-json_' + majorScalaVersion, version: '2.5-RC5'
+     compile group: 'net.liftweb', name: 'lift-json-ext_' + majorScalaVersion, version: '2.5-RC5'
+     compile group: 'com.github.scala-incubator.io', name: 'scala-io-core_2.10', version: '0.4.2'
+     fmpp group: 'net.sourceforge.fmpp', name: 'fmpp', version: '0.9.14'
+}
+
+	
+tasks.withType(ScalaCompile) {
+	scalaCompileOptions.fork = true
+    scalaCompileOptions.unchecked = true
+    scalaCompileOptions.deprecation = true
+
+    configure(scalaCompileOptions.forkOptions) {
+        memoryMaximumSize = '1g'
+        jvmArgs = ['-XX:MaxPermSize=512m']
+    }
+}
+
+//task compileCoffee(type: CoffeeScriptCompile) {
+//  source fileTree('src/main/coffee')
+//  destinationDir file('build/js')
+//}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.5'
+}
+
+task generateFmppSources << {
+	println 'Generating sources....'
+	ant.taskdef(name: 'fmpp', classname: 'fmpp.tools.AntTask', classpath: configurations.fmpp.asPath)
+	ant.fmpp skipUnchanged: 'all', srcDir: 'src/main/fmpp', outputRoot: 'build/generated-sources/main/scala'
+}
+
+compileScala.dependsOn generateFmppSources
+sourceSets {
+	main { scala { srcDir 'build/generated-sources/main/scala' } }
+}

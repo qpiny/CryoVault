@@ -1,4 +1,4 @@
-package models
+package org.rejna.cryo.models
 
 import java.io.{ File, FileInputStream }
 

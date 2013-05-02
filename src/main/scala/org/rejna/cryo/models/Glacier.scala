@@ -1,20 +1,20 @@
-package models
+package org.rejna.cryo.models
 
 import scala.concurrent.{ Lock, SyncVar }
 import scala.collection.mutable.{ ArrayBuffer, HashMap }
 import scala.collection.JavaConversions._
 
-import scalax.io._
-import scalax.io.Resource._
+//import scalax.io._
+//import scalax.io.Resource._
 
 import java.io.{ File, BufferedInputStream, OutputStream, BufferedOutputStream, FileOutputStream, ByteArrayOutputStream, InputStream }
 import java.util.Date
 
 import akka.actor._
-import play.Logger
-import play.api.Play.current
-import play.api.libs.concurrent._
-import play.api.libs.iteratee._
+//import play.Logger
+//import play.api.Play.current
+//import play.api.libs.concurrent._
+//import play.api.libs.iteratee._
 
 import com.amazonaws.auth.policy.{ Policy, Principal, Statement, Resource }
 import com.amazonaws.auth.policy.Statement.Effect

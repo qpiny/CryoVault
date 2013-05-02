@@ -1,22 +1,17 @@
-package models
+package org.rejna.cryo.models
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.JavaConversions._
+import scala.concurrent.Future
+import scala.concurrent.duration._
 import scala.io.Source
 import scalax.io._
 
 import java.io.{ File, FileOutputStream }
 import java.util.Date
 
-//import play.api.libs.concurrent.Promise
-import play.api.libs.concurrent._
-import play.api.Play.current
-import play.api.libs.json._
-
-import akka.util.Duration
-import akka.util.duration._
 import akka.actor.Cancellable
-import akka.dispatch.Future
+
 import akka.actor._
 
 import java.util.UUID
@@ -59,9 +54,9 @@ import CryoStatus._
 //  }
 //}
 
-abstract class Archive(val archiveType: ArchiveType, val id: String, val date: DateTime, initState: CryoStatus)(implicit cryo: Cryo) {
+abstract class Archive(val archiveType: ArchiveType, val id: String, val date: DateTime, initState: CryoStatus) {
   import CryoJson._
-  val attributeBuilder = cryo.attributeBuilder.subBuilder(archiveType.toString).subBuilder(id)
+  val attributeBuilder = Cryo.attributeBuilder / archiveType.toString / id
 
   protected val stateAttribute = attributeBuilder("state", initState)
   def state: CryoStatus = stateAttribute()
@@ -80,12 +75,12 @@ abstract class Archive(val archiveType: ArchiveType, val id: String, val date: D
   def size: Long
 }
 
-class LocalArchive(archiveType: ArchiveType, id: String)(implicit cryo: Cryo) extends Archive(archiveType, id, new DateTime, Creating) {
+class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archiveType, id, new DateTime, Creating) {
   import CryoJson._
   
   if (!file.exists) file.createNewFile
 
-  protected val remoteArchiveAttribute = attributeBuilder[Option[RemoteArchive]]("remoteArchive", None)(OptionFormat[RemoteArchive])
+  protected val remoteArchiveAttribute = attributeBuilder[Option[RemoteArchive]]("remoteArchive", None)
   def remoteArchive: Option[RemoteArchive] = remoteArchiveAttribute()
   protected def remoteArchive_= = remoteArchiveAttribute() = _
 
@@ -123,16 +118,16 @@ class LocalArchive(archiveType: ArchiveType, id: String)(implicit cryo: Cryo) ex
     val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), "Uploading %s ...".format(description), file)
     transfer = Some(input)
     val checksum = TreeHashGenerator.calculateTreeHash(file)
-    val newId = cryo.uploadArchive(input, description, checksum)
+    val newId = Cryo.uploadArchive(input, description, checksum)
     transfer = None
     input.close
-    cryo.migrate(this, newId, size, Hash(checksum))
+    Cryo.migrate(this, newId, size, Hash(checksum))
   }
 
   protected def uploadInMultiplePart = {
     val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), "Uploading %s (multipart) ...".format(description), file)
     transfer = Some(input)
-    val uploadId = cryo.initiateMultipartUpload(description)
+    val uploadId = Cryo.initiateMultipartUpload(description)
     val binaryChecksums = ArrayBuffer[Array[Byte]]()
     (0L to size by Config.partSize).foreach { partStart =>
       val length = (size - partStart).min(Config.partSize)
@@ -145,18 +140,18 @@ class LocalArchive(archiveType: ArchiveType, id: String)(implicit cryo: Cryo) ex
       }
       subInput.reset
 
-      cryo.uploadMultipartPart(uploadId, subInput, "bytes " + partStart + "-" + (partStart + length - 1) + "/*", checksum)
+      Cryo.uploadMultipartPart(uploadId, subInput, "bytes " + partStart + "-" + (partStart + length - 1) + "/*", checksum)
     }
     transfer = None
     input.close
 
     val checksum = TreeHashGenerator.calculateTreeHash(binaryChecksums)
-    val newId = cryo.completeMultipartUpload(uploadId, size, checksum)
-    cryo.migrate(this, newId, size, Hash(checksum))
+    val newId = Cryo.completeMultipartUpload(uploadId, size, checksum)
+    Cryo.migrate(this, newId, size, Hash(checksum))
   }
 }
 
-class RemoteArchive(archiveType: ArchiveType, date: DateTime, id: String, val size: Long, val hash: Hash)(implicit cryo: Cryo) extends Archive(archiveType, id, date, Remote) {
+class RemoteArchive(archiveType: ArchiveType, date: DateTime, id: String, val size: Long, val hash: Hash) extends Archive(archiveType, id, date, Remote) {
 
   if (!file.exists || file.length == 0 || Hash(TreeHashGenerator.calculateTreeHash(file)) != hash)
     file.delete
@@ -190,9 +185,9 @@ class RemoteArchive(archiveType: ArchiveType, date: DateTime, id: String, val si
       })
       job
       * DEBUG */
-      val jobId = cryo.initiateDownload(id, jobId => {
+      val jobId = Cryo.initiateDownload(id, jobId => {
         state = Downloading
-        val input = cryo.getJobOutput(jobId)
+        val input = Cryo.getJobOutput(jobId)
         val output = new MonitoredOutputStream(attributeBuilder, "Downloading archive %s".format(id),
           new FileOutputStream(file),
           input.available)

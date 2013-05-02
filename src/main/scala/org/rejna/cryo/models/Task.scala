@@ -1,14 +1,10 @@
-package models
+package org.rejna.cryo.models
 
 import scala.collection.mutable.ArrayBuffer
 
 import java.io.{ File, InputStream, OutputStream }
 import java.util.concurrent.TimeUnit
 
-import play.Logger
-import play.api.Play.current
-import play.api.libs.json._
-import play.api.libs.concurrent._
 import com.amazonaws.services.glacier.model.{ DescribeJobRequest, DescribeJobResult }
 import com.amazonaws.services.glacier.TreeHashGenerator
 import org.rejna.util.IsoUnit

@@ -1,4 +1,4 @@
-package models
+package org.rejna.cryo.models
 
 import java.security.MessageDigest
 import java.io.{ File, FileInputStream }

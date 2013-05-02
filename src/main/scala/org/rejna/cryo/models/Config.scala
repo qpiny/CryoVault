@@ -1,4 +1,4 @@
-package models
+package org.rejna.cryo.models
 
 import scala.util.Random
 import java.io.File
@@ -6,10 +6,11 @@ import javax.crypto.{ Cipher, KeyGenerator, CipherOutputStream }
 import javax.crypto.spec.IvParameterSpec
 import com.amazonaws.auth.BasicAWSCredentials
 import org.apache.commons.io.filefilter._
-import org.rejna.util.IsoUnit._
 
 import ArchiveType._
+
 object Config {
+  import org.rejna.util.IsoUnit._
   val hashAlgorithm = "SHA"
   val bufferSize: Int = 1 mebi
 

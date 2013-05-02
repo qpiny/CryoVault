@@ -1,4 +1,4 @@
-package org.rejna.fiesch
+package org.rejna.util
 /*
 import scala.collection.mutable.{ HashMap, HashSet, ArrayBuffer }
 import scala.collection.JavaConversions._

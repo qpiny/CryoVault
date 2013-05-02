@@ -1,37 +1,28 @@
-package models
+package org.rejna.cryo.models
 
 import scala.io.Source
 
 import scalax.io.Resource
 
-import akka.util.Duration
-import akka.util.duration._
-
-import play.api.libs.json.JsValue
+import scala.concurrent.duration._
 
 import java.io.{ File, FileOutputStream }
 import java.util.UUID
 
 import org.joda.time.{ DateTime, Interval }
 
-import sbinary._
-import sbinary.DefaultProtocol._
-import sbinary.Operations._
-
-import CryoJson._
 import ArchiveType._
 import CryoStatus._
 
-class Inventory(implicit cryo: Cryo) {
-  val dateAttribute = cryo.attributeBuilder("inventoryDate", new DateTime)
+class Inventory {
+  val dateAttribute = Cryo.attributeBuilder("inventoryDate", DateTime.now)
   def date = dateAttribute()
   private def date_= = dateAttribute() = _
 
-  def d(x: List[Tuple2[String, Archive]]): JsValue = ListFormat[Tuple2[String, Archive]](x)
-  val snapshots = cryo.attributeBuilder.map("snapshots", Map[String, Snapshot]())(ListFormat[(String, Snapshot)])
-  val archives = cryo.attributeBuilder.map("archives", Map[String, Archive]())(d)//(ListFormat[Tuple2[String, Archive]])//(ListFormat[(String, Archive)])
+  val snapshots = Cryo.attributeBuilder.map("snapshots", Map[String, Snapshot]())
+  val archives = Cryo.attributeBuilder.map("archives", Map[String, Archive]())
 
-  protected val stateAttribute = cryo.attributeBuilder("state", Remote)
+  protected val stateAttribute = Cryo.attributeBuilder("state", Remote)
   def state = stateAttribute()
   protected def state_= = stateAttribute() = _
 
@@ -53,9 +44,9 @@ class Inventory(implicit cryo: Cryo) {
   def update(maxAge: Duration): Unit = {
     if (state != Downloading && maxAge < (new Interval(date, new DateTime).toDurationMillis millis)) {
       state = Downloading
-      cryo.initiateInventory(jobId => {
-        val input = cryo.getJobOutput(jobId)
-        val output = new MonitoredOutputStream(cryo.attributeBuilder, "Downloading inventory",
+      Cryo.initiateInventory(jobId => {
+        val input = Cryo.getJobOutput(jobId)
+        val output = new MonitoredOutputStream(Cryo.attributeBuilder, "Downloading inventory",
           new FileOutputStream(file),
           input.available)
         Resource.fromInputStream(input) copyDataTo Resource.fromOutputStream(output)
