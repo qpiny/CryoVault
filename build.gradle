@@ -1,9 +1,21 @@
 version = '0.0.1'
 
+import org.gradle.plugins.javascript.coffeescript.CoffeeScriptCompile
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath group: 'de.obqo.gradle', name: 'gradle-lesscss-plugin', version: '1.0-1.3.3'
+    }
+}
+
 apply plugin: 'scala'
 apply plugin: 'eclipse'
 apply plugin: 'application'
 apply plugin: 'coffeescript-base'
+apply plugin: 'lesscss'
 
 mainClassName = "org.rejna.cryo.Main"
 
@@ -27,7 +39,7 @@ repositories {
 	//maven { url 'https://oss.sonatype.org/content/repositories/releases/' }
 	//maven { url 'http://repo.typesafe.com/typesafe/' }
 	maven { url 'http://repo.spray.io/' }
-	//mavenRepo name: "Gradle", url: "http://repo.gradle.org/gradle/repo"
+	mavenRepo name: "Gradle", url: "http://repo.gradle.org/gradle/repo"
 }
 
 dependencies {
@@ -60,10 +72,10 @@ tasks.withType(ScalaCompile) {
     }
 }
 
-//task compileCoffee(type: CoffeeScriptCompile) {
-//  source fileTree('src/main/coffee')
-//  destinationDir file('build/js')
-//}
+task compileCoffee(type: CoffeeScriptCompile) {
+  source fileTree('src/main/coffee')
+  destinationDir file('build/js')
+}
 
 task wrapper(type: Wrapper) {
     gradleVersion = '1.5'
@@ -75,7 +87,25 @@ task generateFmppSources << {
 	ant.fmpp skipUnchanged: 'all', srcDir: 'src/main/fmpp', outputRoot: 'build/generated-sources/main/scala'
 }
 
+lesscss {
+    source = fileTree('src/main/less') {
+    	include '*.less'
+    }
+    dest = 'build/css'
+    compress = true
+}
+
 compileScala.dependsOn generateFmppSources
 sourceSets {
 	main { scala { srcDir 'build/generated-sources/main/scala' } }
+}
+
+build.dependsOn lesscss
+sourceSets {
+	main { resources { srcDir 'build/css' } }
+}
+
+build.dependsOn compileCoffee
+sourceSets {
+	main { resources { srcDir 'build/js' } }
 }

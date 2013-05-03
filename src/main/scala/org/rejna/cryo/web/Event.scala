@@ -35,8 +35,6 @@ case class ArchiveCreation(file: File, archiveType: ArchiveType.ArchiveType, id:
 case class RefreshInventory(maxAge: Duration = 24 hours)
 
 case class Error(message: String) extends ResponseEvent("<null>")
-class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends ResponseEvent(path)
-class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends ResponseEvent(path)
 case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent
 class FileElement(file: File, count: Int, size: Long, filter: Option[String])
 class SnapshotFiles(snapshotId: String, directory: String, fileElements: List[FileElement]) extends ResponseEvent("<null>")
@@ -92,8 +90,8 @@ object EventJsonProtocol {
     classOf[ArchiveCreation],
     classOf[RefreshInventory],
     classOf[Error],
-    classOf[AttributeChange[_]],
-    classOf[AttributeListChange[_]],
+    //classOf[AttributeChange[_]],
+    //classOf[AttributeListChange[_]],
     classOf[GetSnapshotFiles],
     classOf[FileElement],
     classOf[UpdateSnapshotFileFilter])))
