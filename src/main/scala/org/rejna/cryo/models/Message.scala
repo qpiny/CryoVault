@@ -2,6 +2,7 @@ package org.rejna.cryo.models
 
 import com.amazonaws.services.glacier.model.DescribeJobResult
 
+import java.util.Date
 import org.joda.time.DateTime
 import org.joda.time.format.ISODateTimeFormat
 
@@ -9,41 +10,6 @@ import net.liftweb.json._
 
 /* Communication between Glacier and Cryo */
 
-object Message {
-  def isoToDate(date: String): DateTime = ISODateTimeFormat.dateTimeNoMillis.parseDateTime(date)
-  def dateToIso(date: DateTime): String = ISODateTimeFormat.dateTimeNoMillis().print(date)
-
-  implicit object DateSerializer extends Serializer[DateTime] {
-    val dateClass = classOf[DateTime]
-    def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), DateTime] = {
-      case (TypeInfo(dateClass, _), json) => json match {
-        case JString(date) => ISODateTimeFormat.dateTimeNoMillis.parseDateTime(date)
-        case x => throw new MappingException("Can't convert " + x + " to DateTime")
-      }
-    }
-
-    def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
-      case date: DateTime => JString(ISODateTimeFormat.dateTimeNoMillis().print(date))
-    }
-  }
-
-  implicit object InventorySerializer extends Serializer[InventoryMessage] {
-    def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), InventoryMessage] = {
-      case (TypeInfo(dateClass, _), json) => json match {
-        case JObject(
-          JField("InventoryDate", JString(date)) ::
-            JField("ArchiveList", JArray(archives)) ::
-            Nil) =>
-          new InventoryMessage(ISODateTimeFormat.dateTimeNoMillis.parseDateTime(date), archives.map(archive => archive.extract[RemoteArchive]))
-        case x => throw new MappingException("Can't convert " + x + " to DateTime")
-      }
-    }
-
-    def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
-      case _: InventoryMessage => throw new MappingException("InventoryMessage serialization is not supported")
-    }
-  }
-}
 
 //JField("ArchiveDescription", JString(description)) ::
 
@@ -120,6 +86,17 @@ object JobStatusMessage extends Message {
 */
 case class InventoryMessage(val date: DateTime, val archives: List[RemoteArchive])
 object InventoryMessage {
+  implicit val format = new DefaultFormats {
+    override val dateFormat = new DateFormat {
+      def parse(s: String): Option[Date] =
+        try {
+          Some(ISODateTimeFormat.dateTimeNoMillis.parseDateTime(s).toDate)
+        } catch {
+          case _: IllegalArgumentException => None
+        }
+      def format(d: Date): String = ISODateTimeFormat.dateTimeNoMillis().print(new DateTime(d))
+    }
+  }
   def apply(msg: String): InventoryMessage = apply(parse(msg))
   def apply(json: JValue) = json.extract[InventoryMessage]
 }

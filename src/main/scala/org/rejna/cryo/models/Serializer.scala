@@ -38,7 +38,7 @@ object CryoBinary extends DefaultProtocol {
   implicit val ArchiveTypeFormat = wrap[ArchiveType, Int](_.id, ArchiveType.apply(_))
   implicit val HashFormat = wrap[Hash, Array[Byte]](_.value, new Hash(_))
 
-  implicit def RemoteArchiveFormat(implicit cryo: Cryo) = asProduct5[RemoteArchive, ArchiveType, DateTime, String, Long, Hash](
+  implicit def RemoteArchiveFormat = asProduct5[RemoteArchive, ArchiveType, DateTime, String, Long, Hash](
     (t, d, i, s, h) => new RemoteArchive(t, d, i, s, h))(
       ra => (ra.archiveType, ra.date, ra.id, ra.size, ra.hash))
   //  
@@ -48,11 +48,11 @@ object CryoBinary extends DefaultProtocol {
   //    case _ =>  sys.error("Invalid archive class")
   //  }, _.asInstanceOf[Archive])
 
-  implicit def BlockLocationFormat(implicit cryo: Cryo) = asProduct4(
-    (hash: Hash, archiveId: String, offset: Long, size: Int) => BlockLocation(hash, cryo.inventory.archives(archiveId), offset, size))(
+  implicit def BlockLocationFormat = asProduct4(
+    (hash: Hash, archiveId: String, offset: Long, size: Int) => BlockLocation(hash, Cryo.inventory.archives(archiveId), offset, size))(
       (bl: BlockLocation) => (bl.hash, bl.archive.id, bl.offset, bl.size))
 
-  implicit def SnapshotFormat(implicit cryo: Cryo) = wrap[Snapshot, RemoteArchive](s => s match {
+  implicit def SnapshotFormat = wrap[Snapshot, RemoteArchive](s => s match {
     case ls: LocalSnapshot => ls.remoteSnapshot.getOrElse { sys.error("Local snapshot is not serializable") }
     case rs: RemoteSnapshot => rs
     case _ => sys.error("Invalid snapshot class")
@@ -68,49 +68,4 @@ object CryoBinary extends DefaultProtocol {
 
   //wrap[Tuple2[File, List[BlockLocation]], RemoteFile](rf => new RemoteFile(Cryo.attributeBuilder.subBuilder("dummy"), id, rf._1, rf._2: _*), sys.error("Deserialization of Index is not permitted"))
 
-}
-
-object CryoJson {
-  implicit def DateTimeFormat(date: DateTime) = JsString(org.joda.time.format.DateTimeFormat.shortDateTime.print(date))
-  implicit def StringFormat(str: String) = JsString(str)
-  implicit def StatusFormat(status: CryoStatus.CryoStatus) = JsString(status.toString)
-  implicit def ArchiveTypeFormat(archiveType: ArchiveType) = JsString(archiveType.toString)
-  implicit def RemoteArchiveFormat(archive: RemoteArchive) = ArchiveFormat(archive)
-  implicit def SnapshotFormat(snapshot: Snapshot): JsValue = {
-    JsObject(Seq(
-      "status" -> JsString(snapshot.state.toString),
-      "date" -> DateTimeFormat(snapshot.date),
-      "size" -> JsNumber(snapshot.size),
-      "id" -> JsString(snapshot.id),
-      "fileSelection" -> JsObject(snapshot.fileFilters.map(kv => kv._1 -> JsString(kv._2)).toSeq)))
-  }
-  implicit def ArchiveFormat(archive: Archive): JsValue = {
-    JsObject(Seq(
-      "archiveType" -> JsString(archive.archiveType.toString),
-      "status" -> JsString(archive.state.toString),
-      "date" -> DateTimeFormat(archive.date),
-      "size" -> JsNumber(archive.size),
-      "id" -> JsString(archive.id)))
-  }
-
-  implicit def OptionFormat[A](option: Option[A])(implicit subserializer: A => JsValue) = option match {
-    case Some(a) => subserializer(a)
-    case None => JsNull
-  }
-  implicit def NumberFormat(number: Long) = JsNumber(number)
-  implicit def FileFormat(file: File) = JsString(file.getAbsolutePath)
-  implicit def BlockLocationFormat(bl: BlockLocation) = JsObject(Seq(
-    "archive" -> ArchiveFormat(bl.archive),
-    "offset" -> JsNumber(bl.offset),
-    "size" -> JsNumber(bl.size)))
-  implicit def RemoteFileFormat(remoteFile: RemoteFile) = JsObject(Seq(
-    "snapshotId" -> JsString(remoteFile.snapshotId),
-    "file" -> FileFormat(remoteFile.file),
-    "blockLocation" -> JsArray(remoteFile.blockLocations.map(bl => BlockLocationFormat(bl)))))
-  implicit def ListFormat[A](list: List[A])(implicit subserializer: A => JsValue) =
-    JsArray(list.map(subserializer).toSeq)
-  implicit def MapFormat[A](map: scala.collection.Map[String, A])(implicit subserializer: A => JsValue) =
-    JsObject(map.mapValues(subserializer).toSeq)
-  implicit def TupleFormat[A, B](kv: Tuple2[A, B])(implicit keySerializer: A => String, valueSerializer: B => JsValue): JsValue =
-    JsObject(Seq(keySerializer(kv._1) -> valueSerializer(kv._2)))
 }

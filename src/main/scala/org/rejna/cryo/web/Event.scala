@@ -32,17 +32,14 @@ case class UploadSnapshot(snapshotId: String) extends RequestEvent
 case class AddFile(snapshotId: String, file: String) extends RequestEvent
 case class SnapshotCreated(id: String) extends ResponseEvent("<null>")
 case class ArchiveCreation(file: File, archiveType: ArchiveType.ArchiveType, id: String, state: CryoStatus.CryoStatus) extends ResponseEvent(id)
-case class UpdateInventory(maxAge: Duration = 24 hours)
+case class RefreshInventory(maxAge: Duration = 24 hours)
 
 case class Error(message: String) extends ResponseEvent("<null>")
 class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends ResponseEvent(path)
 class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends ResponseEvent(path)
 case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent
 class FileElement(file: File, count: Int, size: Long, filter: Option[String])
-//class SnapshotFiles(snapshotId: String, directory: String, fileElements: List[FileElement]) extends ResponseEvent("<null>", JsObject(Seq(
-//  "type" -> JsString("SnapshotFiles"),
-//  "directory" -> JsString(directory),
-//  "files" -> JsArray(fileElements.map(_.toJson)))))
+class SnapshotFiles(snapshotId: String, directory: String, fileElements: List[FileElement]) extends ResponseEvent("<null>")
 case class UpdateSnapshotFileFilter(snapshotId: String, directory: String, filter: String) extends RequestEvent
 /*
 case class InventoryRequest() extends RequestEvent {
@@ -93,7 +90,7 @@ object EventJsonProtocol {
     classOf[AddFile],
     classOf[SnapshotCreated],
     classOf[ArchiveCreation],
-    classOf[UpdateInventory],
+    classOf[RefreshInventory],
     classOf[Error],
     classOf[AttributeChange[_]],
     classOf[AttributeListChange[_]],

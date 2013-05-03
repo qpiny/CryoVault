@@ -27,7 +27,6 @@ import com.amazonaws.auth.AWSCredentials
 import org.joda.time.{ DateTime, Interval }
 import ArchiveType._
 import CryoStatus._
-import CryoJson._
 import org.rejna.cryo.web.ResponseEvent
 
 object Cryo {

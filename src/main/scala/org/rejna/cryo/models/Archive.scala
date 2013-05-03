@@ -35,27 +35,7 @@ object ArchiveType extends Enumeration {
 import ArchiveType._
 import CryoStatus._
 
-//object Archive {
-//  def apply(baseAttributeBuilder: AttributeBuilder, archiveType: ArchiveType, id: String) = {
-//    val a = new LocalArchive(baseAttributeBuilder, archiveType, id)
-//    Cryo.archives += id -> a
-//    a
-//  }
-//  
-//  def apply(baseAttributeBuilder: AttributeBuilder, archiveType: ArchiveType): LocalArchive = apply(baseAttributeBuilder, archiveType, UUID.randomUUID.toString)
-//  
-//  def apply(baseAttributeBuilder: AttributeBuilder): LocalArchive = apply(baseAttributeBuilder, Data)
-//  
-//  def apply(archive: LocalArchive, newId: String, size: Long, hash: Hash) = {
-//    val a = new RemoteArchive(archive.baseAttributeBuilder, archive.archiveType, archive.date, newId, size, hash)
-//    Cryo.archives -= archive.id
-//    Cryo.archives += newId -> a
-//    a
-//  }
-//}
-
 abstract class Archive(val archiveType: ArchiveType, val id: String, val date: DateTime, initState: CryoStatus) {
-  import CryoJson._
   val attributeBuilder = Cryo.attributeBuilder / archiveType.toString / id
 
   protected val stateAttribute = attributeBuilder("state", initState)
@@ -76,7 +56,6 @@ abstract class Archive(val archiveType: ArchiveType, val id: String, val date: D
 }
 
 class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archiveType, id, new DateTime, Creating) {
-  import CryoJson._
   
   if (!file.exists) file.createNewFile
 

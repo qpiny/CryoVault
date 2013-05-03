@@ -16,7 +16,6 @@ trait ProgressStatus {
 }
 
 trait Transfer extends ProgressStatus {
-  import CryoJson._
   val attributeBuilder: AttributeBuilder
 
   val transferredBytesAttribute = attributeBuilder("transferredBytes", 0L)

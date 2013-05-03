@@ -36,7 +36,6 @@ trait Snapshot { //self: Archive =>
 }
 
 protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with Snapshot {
-  import CryoJson._
 
   protected val remoteSnapshotAttribute = attributeBuilder[Option[RemoteSnapshot]]("remoteSnapshot", None)
   def remoteSnapshot: Option[RemoteSnapshot] = remoteSnapshotAttribute()
@@ -106,8 +105,6 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
 }
 
 class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends RemoteArchive(Index, date, id, size, hash) with Snapshot {
-  import CryoJson._
-
   def this(ra: RemoteArchive) = this(ra.date, ra.id, ra.size, ra.hash)
 
   val remoteFiles = attributeBuilder.list("files", List[RemoteFile]())
@@ -136,7 +133,6 @@ class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends
 }
 
 class RemoteFile(val snapshotId: String, val file: File, val blockHash: Hash*) {
-  import CryoJson._
 
   val statusAttribute = Cryo.attributeBuilder("status", Remote)
   def status = statusAttribute()

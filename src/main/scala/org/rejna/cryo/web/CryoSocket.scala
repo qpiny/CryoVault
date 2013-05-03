@@ -1,25 +1,27 @@
 package org.rejna.cryo.web
 
 import akka.actor.Actor
+import java.io.File
+import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Config }
 
 class CryoSocket extends Actor {
 
   def receive = {
     case Subscribe(subscription) =>
-      cryo.eventBus.subscribe(sender, subscription)
+      Cryo.eventBus.subscribe(sender, subscription)
     case Unsubscribe(subscription) =>
-      cryo.eventBus.unsubscribe(sender, subscription)
+      Cryo.eventBus.unsubscribe(sender, subscription)
     case CreateSnapshot =>
-      val snapshot = cryo.newArchive(Index)
+      val snapshot = Cryo.newArchive(ArchiveType.Index)
       sender ! SnapshotCreated(snapshot.id)
     case GetArchiveList =>
-      sender ! ArchiveList(cryo.inventory.archives.values.toList)
+      sender ! ArchiveList(Cryo.inventory.archives.values.toList)
     case GetSnapshotList =>
-      sender ! SnapshotList(cryo.inventory.snapshots.values.toList)
-    case UpdateInventory(maxAge) =>
-      cryo.inventory.update(maxAge)
+      sender ! SnapshotList(Cryo.inventory.snapshots.values.toList)
+    case RefreshInventory(maxAge) =>
+      Cryo.inventory.update(maxAge)
     case GetSnapshotFiles(snapshotId, directory) => {
-      val snapshot = cryo.inventory.snapshots(snapshotId)
+      val snapshot = Cryo.inventory.snapshots(snapshotId)
       val files = snapshot match {
         case ls: LocalSnapshot => ls.files()
         case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
@@ -28,13 +30,13 @@ class CryoSocket extends Actor {
       sender ! new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters)) //fe.toList)
     }
     case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
-      val snapshot = cryo.inventory.snapshots(snapshotId)
+      val snapshot = Cryo.inventory.snapshots(snapshotId)
       snapshot match {
         case ls: LocalSnapshot => ls.fileFilters(directory) = filter
         case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
       }
     case UploadSnapshot(snapshotId) =>
-      val snapshot = cryo.inventory.snapshots(snapshotId)
+      val snapshot = Cryo.inventory.snapshots(snapshotId)
       snapshot match {
         case ls: LocalSnapshot => ls.create
         case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
