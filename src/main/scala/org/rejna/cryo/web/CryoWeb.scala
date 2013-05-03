@@ -15,18 +15,12 @@ object CryoWeb extends App {
     val system = ActorSystem("cryo")
     
     val staticHandler = system.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig)))
-    //val wsHandler = system.actorOf(Props[WebSocketHandler])
+    val wsHandler = system.actorOf(Props[CryoSocket])
     
     val routes = Routes({
       case HttpRequest(request) => request match {
-        case GET(Path("/")) =>
-          staticHandler ! new StaticResourceRequest(request, "www/index.html")
-        case GET(PathSegments("flot" :: file :: Nil)) =>
-          staticHandler ! new StaticResourceRequest(request, "www/flot/" + file)
-        case GET(PathSegments("ui" :: file :: Nil)) =>
-          staticHandler ! new StaticResourceRequest(request, "www/ui/" + file)
-        case GET(Path(file)) =>
-          staticHandler ! new StaticResourceRequest(request, "www/" + file)
+        case GET(Path(path)) =>
+          staticHandler ! new StaticResourceRequest(request, path)
         case _ => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
       }
 
@@ -38,7 +32,7 @@ object CryoWeb extends App {
 
       case WebSocketFrame(wsFrame) => {
         println("Register websocket connection")
-        //wsHandler ! WSMessage(wsFrame)
+        wsHandler ! wsFrame
       }
 
     })

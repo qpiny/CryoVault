@@ -30,7 +30,33 @@ import CryoStatus._
 import CryoJson._
 import org.rejna.cryo.web.ResponseEvent
 
-object Cryo {
+class Event(path: String)
+case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event(path)
+case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event(path)
+case class Log(path: String, message: String) extends Event(path)
+
+sealed abstract class LogLevel(val path: String) {
+  lazy val name = getClass.getSimpleName
+}
+object Fatal extends LogLevel("Fatal")
+object Error extends LogLevel("Fatal/Error")
+object Warn  extends LogLevel("Fatal/Error/Warn")
+object Info  extends LogLevel("Fatal/Error/Warn/Info")
+object Debug extends LogLevel("Fatal/Error/Warn/Info/Debug")
+object Trace extends LogLevel("Fatal/Error/Warn/Info/Debug/Trace")
+object Log {
+  def apply(level: LogLevel, message: String): Log = Log(level.path, message)
+}
+
+trait EventPublisher {
+  def publish(event: Event)
+}
+
+trait LoggingClass {
+  lazy val log = org.slf4j.LoggerFactory.getLogger(this.getClass)
+}
+
+object Cryo extends EventPublisher {
   val system = ActorSystem("cryo") // FIXME (use cryoweb system)
   //val actor = system.actorOf(Props(new CryoActor(this)), name = "cryo")
   val inventory = new Inventory()
@@ -86,8 +112,8 @@ object Cryo {
       bl
     }
 
-  lazy val eventBus = new CryoEventBus
-  lazy val attributeBuilder = new AttributeBuilder(eventBus, "/cryo")
+  //lazy val eventBus = new CryoEventBus
+  lazy val attributeBuilder = new AttributeBuilder(this, "/cryo")
 
   def newArchive(archiveType: ArchiveType, id: String) = inventory.newArchive(archiveType, id)
 
@@ -167,16 +193,16 @@ object Cryo {
 
 }
 
-class CryoEventBus extends EventBus with SubchannelClassification {
-  type Event = org.rejna.cryo.web.ResponseEvent
-  type Classifier = String
-  type Subscriber = ActorRef
-
-  protected def classify(event: ResponseEvent) = event.path
-  protected def subclassification = new Subclassification[Classifier] {
-    def isEqual(x: Classifier, y: Classifier) = x == y
-    def isSubclass(x: Classifier, y: Classifier) = x.startsWith(y)
-  }
-
-  protected def publish(event: ResponseEvent, subscriber: Subscriber): Unit = subscriber ! event
-}
+//class CryoEventBus extends EventBus with SubchannelClassification {
+//  type Event = org.rejna.cryo.web.ResponseEvent
+//  type Classifier = String
+//  type Subscriber = ActorRef
+//
+//  protected def classify(event: ResponseEvent) = event.path
+//  protected def subclassification = new Subclassification[Classifier] {
+//    def isEqual(x: Classifier, y: Classifier) = x == y
+//    def isSubclass(x: Classifier, y: Classifier) = x.startsWith(y)
+//  }
+//
+//  protected def publish(event: Event, subscriber: Subscriber): Unit = subscriber ! event
+//}

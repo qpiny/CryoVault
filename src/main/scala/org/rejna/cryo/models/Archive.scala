@@ -24,7 +24,7 @@ import org.joda.time.format.ISODateTimeFormat
 
 object CryoStatus extends Enumeration {
   type CryoStatus = Value
-  val Creating, Cached, WaitingForDownload, Downloading, Remote = Value
+  val Creating, Uploading, Cached, WaitingForDownload, Downloading, Remote = Value
 }
 
 object ArchiveType extends Enumeration {
@@ -77,6 +77,7 @@ abstract class Archive(val archiveType: ArchiveType, val id: String, val date: D
 
 class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archiveType, id, new DateTime, Creating) {
   import CryoJson._
+  import DateUtil._
   
   if (!file.exists) file.createNewFile
 
@@ -90,7 +91,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
 
   val dataStream: Output = Resource.fromFile(file)
 
-  lazy val description = "%s-%s".format(archiveType.toString, ISODateTimeFormat.dateTimeNoMillis().print(date))
+  lazy val description = s"${archiveType}-${date.toISOString}"
 
   def writeBlock(block: Block) = {
     if (state != Creating) throw InvalidStateException
@@ -102,20 +103,22 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
 
   def upload: RemoteArchive = synchronized {
     if (state != Creating) throw InvalidStateException
-
+    state = Uploading
+    
     val rarchive = if (size > Config.multipart_threshold)
       uploadInMultiplePart
     else
       uploadInSimplePart
 
-    state = Cached
-    remoteArchive = Some(rarchive)
+    
     file.renameTo(rarchive.file)
+    remoteArchive = Some(rarchive)
+    state = Cached
     rarchive
   }
 
   protected def uploadInSimplePart = {
-    val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), "Uploading %s ...".format(description), file)
+    val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), s"Uploading ${description} ...", file)
     transfer = Some(input)
     val checksum = TreeHashGenerator.calculateTreeHash(file)
     val newId = Cryo.uploadArchive(input, description, checksum)
@@ -125,11 +128,11 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
   }
 
   protected def uploadInMultiplePart = {
-    val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), "Uploading %s (multipart) ...".format(description), file)
+    val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), s"Uploading ${description} (multipart) ...", file)
     transfer = Some(input)
     val uploadId = Cryo.initiateMultipartUpload(description)
     val binaryChecksums = ArrayBuffer[Array[Byte]]()
-    (0L to size by Config.partSize).foreach { partStart =>
+    for (partStart <- (0L to size by Config.partSize)) {
       val length = (size - partStart).min(Config.partSize)
       val subInput = new InputSubstream(input, partStart, length, false)
 
@@ -188,7 +191,7 @@ class RemoteArchive(archiveType: ArchiveType, date: DateTime, id: String, val si
       val jobId = Cryo.initiateDownload(id, jobId => {
         state = Downloading
         val input = Cryo.getJobOutput(jobId)
-        val output = new MonitoredOutputStream(attributeBuilder, "Downloading archive %s".format(id),
+        val output = new MonitoredOutputStream(attributeBuilder, s"Downloading archive ${id}",
           new FileOutputStream(file),
           input.available)
         transfer = Some(output)

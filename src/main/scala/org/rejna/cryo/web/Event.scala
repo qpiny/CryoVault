@@ -32,11 +32,9 @@ case class UploadSnapshot(snapshotId: String) extends RequestEvent
 case class AddFile(snapshotId: String, file: String) extends RequestEvent
 case class SnapshotCreated(id: String) extends ResponseEvent("<null>")
 case class ArchiveCreation(file: File, archiveType: ArchiveType.ArchiveType, id: String, state: CryoStatus.CryoStatus) extends ResponseEvent(id)
-case class UpdateInventory(maxAge: Duration = 24 hours)
+case class UpdateInventory(maxAge: Duration = 24 hours) extends RequestEvent
 
 case class Error(message: String) extends ResponseEvent("<null>")
-class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends ResponseEvent(path)
-class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends ResponseEvent(path)
 case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent
 class FileElement(file: File, count: Int, size: Long, filter: Option[String])
 //class SnapshotFiles(snapshotId: String, directory: String, fileElements: List[FileElement]) extends ResponseEvent("<null>", JsObject(Seq(

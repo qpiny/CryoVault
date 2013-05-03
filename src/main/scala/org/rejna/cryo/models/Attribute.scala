@@ -1,25 +1,22 @@
 package org.rejna.cryo.models
 
-//import akka.actor._
 import scala.collection.mutable.{ Buffer, ListBuffer, Map, HashMap }
 import scala.collection.immutable.{ Map => IMap }
 import net.liftweb.json._
-import org.rejna.cryo.web.AttributeListChange
-import org.rejna.cryo.web.AttributeChange
 
-class AttributeBuilder(val eventStream: CryoEventBus, path: String*) {
+class AttributeBuilder(val publisher: EventPublisher, path: String*) {
   var paths = List(path: _*)
 
   object callback extends AttributeChangeCallback {
     override def onChange[A](attribute: ReadAttribute[A]) = {
       println("attribute[%s#%s] change: %s -> %s".format(paths.mkString("(", ",", ")"), attribute.name, attribute.previous, attribute.now))
-      for (p <- paths) eventStream.publish(new AttributeChange(p + '#' + attribute.name, attribute))
+      for (p <- paths) publisher.publish(AttributeChange(p + '#' + attribute.name, attribute))
     }
   }
   object listCallback extends AttributeListCallback {
     override def onListChange[B, C](attribute: ReadAttribute[List[B]], addedValues: List[C], removedValues: List[C]): Unit = {
       println("attribute[%s#%s] add: %s remove: %s".format(paths.mkString("(", ",", ")"), attribute.name, addedValues, removedValues))
-      for (p <- paths) eventStream.publish(new AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
+      for (p <- paths) publisher.publish(AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
     }
   }
 
@@ -36,10 +33,10 @@ class AttributeBuilder(val eventStream: CryoEventBus, path: String*) {
   def map[A, B](name: String, body: () => IMap[A, B]) = new MetaMapAttribute(name, body) <+> listCallback
 
   @Deprecated
-  def subBuilder(subpath: String) = new AttributeBuilder(eventStream, path.map { p => "%s/%s".format(p, subpath) }: _*)
+  def subBuilder(subpath: String) = new AttributeBuilder(publisher, path.map { p => "%s/%s".format(p, subpath) }: _*)
   def / = subBuilder _
 
-  def withAlias(path: String) = new AttributeBuilder(eventStream, path :: paths: _*)
+  def withAlias(path: String) = new AttributeBuilder(publisher, path :: paths: _*)
 }
 
 trait AttributeChangeCallback {
