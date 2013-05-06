@@ -17,7 +17,7 @@ apply plugin: 'application'
 apply plugin: 'coffeescript-base'
 apply plugin: 'lesscss'
 
-mainClassName = "org.rejna.cryo.Main"
+mainClassName = "org.rejna.cryo.web.CryoWeb"
 
 ext {
 	majorScalaVersion = '2.10'
@@ -48,7 +48,7 @@ dependencies {
 	// Force akka version
 	compile group: 'com.typesafe.akka', name: 'akka-actor_' + majorScalaVersion, version: akkaVersion
 	//compile group: 'com.typesafe.akka', name: 'akka-slf4j_' + majorScalaVersion, version: akkaVersion
-	//compile group: 'io.spray', name: 'spray-json_' + majorScalaVersion, version: '1.2.3'
+	compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.12'
 	//test group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
 	compile group: 'commons-io', name: 'commons-io', version: '2.4'
       //"org.scala-tools.sbinary"	% "sbinary_2.9.0"	% "0.4.0",
@@ -57,6 +57,7 @@ dependencies {
      compile group: 'net.liftweb', name: 'lift-json_' + majorScalaVersion, version: '2.5-RC5'
      compile group: 'net.liftweb', name: 'lift-json-ext_' + majorScalaVersion, version: '2.5-RC5'
      compile group: 'com.github.scala-incubator.io', name: 'scala-io-core_2.10', version: '0.4.2'
+     //compile group: 'org.clapper', name: 'classutil_' + majorScalaVersion, version: '1.0.1'
      fmpp group: 'net.sourceforge.fmpp', name: 'fmpp', version: '0.9.14'
 }
 
@@ -72,11 +73,6 @@ tasks.withType(ScalaCompile) {
     }
 }
 
-task compileCoffee(type: CoffeeScriptCompile) {
-  source fileTree('src/main/coffee')
-  destinationDir file('build/js')
-}
-
 task wrapper(type: Wrapper) {
     gradleVersion = '1.5'
 }
@@ -86,26 +82,27 @@ task generateFmppSources << {
 	ant.taskdef(name: 'fmpp', classname: 'fmpp.tools.AntTask', classpath: configurations.fmpp.asPath)
 	ant.fmpp skipUnchanged: 'all', srcDir: 'src/main/fmpp', outputRoot: 'build/generated-sources/main/scala'
 }
-
-lesscss {
-    source = fileTree('src/main/less') {
-    	include '*.less'
-    }
-    dest = 'build/css'
-    compress = true
-}
-
 compileScala.dependsOn generateFmppSources
 sourceSets {
 	main { scala { srcDir 'build/generated-sources/main/scala' } }
 }
 
-build.dependsOn lesscss
+lesscss {
+    source = fileTree('src/main/less')
+    dest = 'build/less/webapp/stylesheets'
+    compress = true
+}
+processResources.dependsOn 'lesscss'
 sourceSets {
-	main { resources { srcDir 'build/css' } }
+	main { resources { srcDir 'build/less' } }
 }
 
-build.dependsOn compileCoffee
+task compileCoffee(type: CoffeeScriptCompile) {
+  source fileTree('src/main/coffee')
+  destinationDir file('build/coffee/webapp/javascripts')
+  //destinationDir file('src/main/resources/webapp/coffee')
+}
+processResources.dependsOn compileCoffee
 sourceSets {
-	main { resources { srcDir 'build/js' } }
+	main { resources { srcDir 'build/coffee' } }
 }

@@ -2,62 +2,44 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.HashMap
 import scala.collection.JavaConversions._
-import scala.io.Source
 import scala.concurrent.duration._
-import scalax.io.Resource
-import java.io.{ File, FileOutputStream }
 import java.util.UUID
 import akka.actor._
 import akka.event._
-import akka.pattern.{ ask, pipe }
-import akka.util.Subclassification
 import java.io.InputStream
-import com.amazonaws.auth.policy.{ Policy, Principal, Statement }
-import com.amazonaws.auth.policy.Statement.Effect
-import com.amazonaws.auth.policy.actions.SQSActions
-import com.amazonaws.services.glacier.{ AmazonGlacier, AmazonGlacierClient, TreeHashGenerator }
+import com.amazonaws.services.glacier.AmazonGlacierClient
 import com.amazonaws.services.glacier.model._
-import com.amazonaws.services.s3.internal.InputSubstream
 import com.amazonaws.services.sqs.AmazonSQSClient
-import com.amazonaws.services.sqs.model.{ CreateQueueRequest, ListQueuesRequest, GetQueueAttributesRequest, SetQueueAttributesRequest, ReceiveMessageRequest }
+import com.amazonaws.services.sqs.model.{CreateQueueRequest, ListQueuesRequest, GetQueueAttributesRequest}
 import com.amazonaws.services.sns.AmazonSNSClient
 import com.amazonaws.services.sns.model.{ CreateTopicRequest, SubscribeRequest }
-import com.amazonaws.{ AmazonWebServiceRequest, ResponseMetadata, ClientConfiguration }
-import com.amazonaws.auth.AWSCredentials
-import org.joda.time.{ DateTime, Interval }
 import ArchiveType._
 import CryoStatus._
-import org.rejna.cryo.web.ResponseEvent
 
 class Event(path: String)
 case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event(path)
 case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event(path)
-case class Log(path: String, message: String) extends Event(path)
-
-sealed abstract class LogLevel(val path: String) {
-  lazy val name = getClass.getSimpleName
-}
-object Fatal extends LogLevel("Fatal")
-object Error extends LogLevel("Fatal/Error")
-object Warn  extends LogLevel("Fatal/Error/Warn")
-object Info  extends LogLevel("Fatal/Error/Warn/Info")
-object Debug extends LogLevel("Fatal/Error/Warn/Info/Debug")
-object Trace extends LogLevel("Fatal/Error/Warn/Info/Debug/Trace")
-object Log {
-  def apply(level: LogLevel, message: String): Log = Log(level.path, message)
-}
 
 trait EventPublisher {
   def publish(event: Event)
 }
 
-trait LoggingClass {
-  lazy val log = org.slf4j.LoggerFactory.getLogger(this.getClass)
+trait CryoEventBus extends EventBus {
+  type Event = org.rejna.cryo.models.Event
 }
 
 object Cryo extends EventPublisher {
   val system = ActorSystem("cryo") // FIXME (use cryoweb system)
-  //val actor = system.actorOf(Props(new CryoActor(this)), name = "cryo")
+  
+  private var _eventBus: Option[CryoEventBus] = None
+  def eventBus_=(eventBus: CryoEventBus) = _eventBus = Some(eventBus)
+  
+  def publish(event: Event) = {
+    for (bus <- _eventBus)
+      bus.publish(event)
+  }
+  lazy val attributeBuilder = new AttributeBuilder(this, "/cryo")
+  
   val inventory = new Inventory()
 
   val glacier = new AmazonGlacierClient(Config.awsCredentials);
@@ -110,9 +92,6 @@ object Cryo extends EventPublisher {
       _catalog += hash -> bl
       bl
     }
-
-  //lazy val eventBus = new CryoEventBus
-  lazy val attributeBuilder = new AttributeBuilder(this, "/cryo")
 
   def newArchive(archiveType: ArchiveType, id: String) = inventory.newArchive(archiveType, id)
 
@@ -191,17 +170,6 @@ object Cryo extends EventPublisher {
       .withVaultName(Config.vaultName)).getBody
 
 }
-
-//class CryoEventBus extends EventBus with SubchannelClassification {
-//  type Event = org.rejna.cryo.web.ResponseEvent
-//  type Classifier = String
-//  type Subscriber = ActorRef
-//
-//  protected def classify(event: ResponseEvent) = event.path
-//  protected def subclassification = new Subclassification[Classifier] {
-//    def isEqual(x: Classifier, y: Classifier) = x == y
-//    def isSubclass(x: Classifier, y: Classifier) = x.startsWith(y)
-//  }
 //
 //  protected def publish(event: Event, subscriber: Subscriber): Unit = subscriber ! event
 //}

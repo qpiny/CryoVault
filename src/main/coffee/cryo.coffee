@@ -38,7 +38,7 @@ class MessageHandler
 		#					// update filter in snapshot list (in cryoUI ?) and invalidate snapshot file list
 		#				}
 			
-class window.Cryo
+class Cryo
 	constructor: (uri) ->
 		@socket = $.websocket uri,
 			open: =>
@@ -53,16 +53,16 @@ class window.Cryo
 			message: (msg) -> window.cryoUI.log "=>#{$.toJSON(msg.originalEvent.data)}"
 			
 	subscribe: (subscription) =>
-		@socket.send 'Subscribe', subscription
+		@socket.send 'Subscribe', { subscription: subscription }
 		
 	unsubscribe: (subscription) =>
-		@socket.send 'Unsubscribe', subscription
+		@socket.send 'Unsubscribe', { subscription: subscription }
 
 	addIgnoreSubscription: (subscription) =>
-		@socket.send 'AddIgnoreSubscription', subscription
+		@socket.send 'AddIgnoreSubscription', { subscription: subscription }
 		
 	removeIgnoreSubscription: (subscription) =>
-		@socket.send 'RemoveIgnoreSubscription', subscription
+		@socket.send 'RemoveIgnoreSubscription', { subscription: subscription }
 
 	newSnapshot: =>
 		@socket.send 'CreateSnapshot'
@@ -84,4 +84,7 @@ class window.Cryo
 
 	uploadSnapshot: (snapshotId) =>
 		@socket.send 'UploadSnapshot',
-			snapshotId: snapshotId 
+			snapshotId: snapshotId
+
+$ ->
+	window.cryo = new Cryo("ws://" + document.location.host + "/websocket/")

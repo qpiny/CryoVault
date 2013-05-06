@@ -106,14 +106,8 @@ class Snapshot
 	
 
 window.CryoUI = (theme) ->
-	@_mainSplitter = $ '#mainSplitter'
-	@_topSplitter = $ '#topSplitter'
-	@_leftPanel = $ '#leftPanel'
-	@_leftHeader = $ '#leftHeader'
 	@_snapshotNew = $ '#snapshotNew'
 	@_snapshotList = $ '#snapshotList'
-	@_centerPanel = $ '#centerPanel'
-	@_centerHeader = $ '#centerHeader'
 	@_snapshotId = $ '#snapshotId'
 	@_snapshotDelete = $ '#snapshotDelete'
 	@_snapshotDate = $ '#snapshotDate'
@@ -125,12 +119,10 @@ window.CryoUI = (theme) ->
 	@_snapshotFiles = $ '#snapshotFiles'
 	@_snapshotFileForm = $ '#snapshotFileForm'
 	@_snapshotFileFilter = $ '#snapshotFileFilter'
-	@_rightPanel = $ '#rightPanel'
-	@_consolePanel = $ '#consolePanel'
+	@_console = $ '#console'
 	
 	@log = (msg) =>
-		@_consolePanel.jqxPanel 'append', '<div style="white-space: nowrap">' + msg + '</div>'
-		@_consolePanel.jqxPanel 'scrollTo', 0, @_consolePanel.jqxPanel 'getScrollHeight'
+		@_console.append '<div style="white-space: nowrap">' + msg + '</div>'
 	
 	@snapshotList =
 			add: (snapshot) =>
@@ -174,32 +166,7 @@ window.CryoUI = (theme) ->
 					ret = item.value
 				ret
 				
-	@performLayout = =>
-			@_consolePanel.jqxPanel 'height',
-				@_mainSplitter.height() - @_topSplitter.height() - 5
-			@_snapshotFiles.jqxTree 'height',
-				@_centerPanel.height() - @_centerHeader.height() - 5
-			@_snapshotList.jqxTree 'height',
-				@_leftPanel.height() - @_leftHeader.height()
-	
-	@_mainSplitter.jqxSplitter
-			#height: $(window).height(),
-			orientation: 'horizontal',
-			theme: theme,
-			width: '100%',
-			height: '100%',
-			panels: [{ collapsible: false, min: 200 },
-				{ collapsible: true }]
-		
-	@_topSplitter.jqxSplitter
-		theme: theme,
-		panels: [{ collapsible: true },
-			{ collapsible: false },
-			{ collapsible: true }]
-
 	@_snapshotList.jqxListBox
-			width: '100%',
-			height: @_leftPanel.height() - @_leftHeader.height(),
 			theme: theme,
 			displayMember: 'label',
 			valueMember: 'data',
@@ -238,8 +205,6 @@ window.CryoUI = (theme) ->
 		window.cryo.uploadSnapshot @snapshotList.selectedSnapshot().id
 
 	@_snapshotFiles.jqxTree
-		height: '100%'
-		width: '100%'
 		hasThreeStates: false
 		checkboxes: false
 		theme: theme
@@ -297,17 +262,8 @@ window.CryoUI = (theme) ->
 			window.cryo.updateSnapshotFileFilter snapshotId, el.file.path, @_snapshotFileFilter.val()
 		@_snapshotFileForm.hide()
 		@_snapshotFiles.jqxTree 'selectItem', null
+	this
 		
-	@_consolePanel.jqxPanel
-			height: '200px'
-			width: '100%'
-			autoUpdate: true
-			theme: theme
-		
-	@_mainSplitter.bind 'resize', @performLayout
-	$(window).bind 'resize', @performLayout
-	@performLayout()
-
 toIsoString = (value) ->
 	if (value < Math.pow(2, 10))
 		value
@@ -323,3 +279,12 @@ toIsoString = (value) ->
 		(value >> 50) + "Pi"
 	else
 		(value >> 60) + "Ei"
+
+
+$ ->
+	$("body").layout({ applyDefaultStyles: true })
+	theme = $.data(document.body, 'theme')
+	if (theme == null || theme == undefined)
+		theme = ''
+	window.cryoUI = new window.CryoUI(theme)
+	window.cryoUI.log("ok")

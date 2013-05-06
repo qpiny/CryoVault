@@ -6,21 +6,27 @@ import akka.actor.Props
 import _root_.org.mashupbots.socko.events.{ HttpResponseStatus, WebSocketHandshakeEvent }
 import _root_.org.mashupbots.socko.routes._
 import _root_.org.mashupbots.socko.handlers.{ StaticContentHandler, StaticContentHandlerConfig, StaticResourceRequest }
-import _root_.org.mashupbots.socko.webserver.WebServer
-import _root_.org.mashupbots.socko.webserver.WebServerConfig
+import _root_.org.mashupbots.socko.webserver.{ WebServer, WebServerConfig }
+import _root_.org.mashupbots.socko.infrastructure.LocalCache
+
+import org.rejna.cryo.models.Cryo
 
 object CryoWeb extends App {
 
   override def main(args: Array[String]) = {
-    val system = ActorSystem("cryo")
+    val system = Cryo.system
     
-    val staticHandler = system.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig)))
+    val staticHandler = system.actorOf(Props(new StaticContentHandler(StaticContentHandlerConfig(
+        rootFilePaths = Seq("/home/toom/git/CryoVault/build/resources/main"),
+        cache = new LocalCache(0, 16)))))
     val wsHandler = system.actorOf(Props[CryoSocket])
     
     val routes = Routes({
       case HttpRequest(request) => request match {
+        case GET(Path("/")) => 
+          staticHandler ! new StaticResourceRequest(request, "webapp/glacier.html")
         case GET(Path(path)) =>
-          staticHandler ! new StaticResourceRequest(request, path)
+          staticHandler ! new StaticResourceRequest(request, "webapp" + path)
         case _ => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
       }
 

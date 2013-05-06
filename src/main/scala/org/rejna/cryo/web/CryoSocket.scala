@@ -9,12 +9,33 @@ import akka.event.SubchannelClassification
 import akka.util.Subclassification
 import net.liftweb.json._
 import org.mashupbots.socko.events.WebSocketFrameEvent
-
 import org.rejna.cryo.models.{ Cryo, ArchiveType }
 
+object EventTypeHints extends TypeHints {
+  val hints = 
+    classOf[UploadSnapshot] ::
+    classOf[UpdateSnapshotFileFilter] ::
+    classOf[Unsubscribe] ::
+    classOf[Subscribe] ::
+    classOf[RemoveIgnoreSubscription] ::
+    classOf[RefreshInventory] ::
+    classOf[GetSnapshotList] ::
+    classOf[GetSnapshotFiles] ::
+    classOf[GetArchiveList] ::
+    classOf[CreateSnapshot] ::
+    classOf[AddIgnoreSubscription] ::
+    Nil
+
+  def hintFor(clazz: Class[_]) = clazz.getSimpleName
+  def classFor(hint: String) = hints find (hintFor(_) == hint)
+}
 object EventSerialization {
   implicit object CryoFormats extends DefaultFormats {
     override val typeHintFieldName = "type"
+    override val typeHints = EventTypeHints
+    override val customSerializers =
+      SnapshotJsonSerializer ::
+      Nil
   }
 
   case class EventSender(wsFrame: WebSocketFrameEvent) {
@@ -60,8 +81,11 @@ class CryoSocket extends Actor {
 
   def receive = {
     case wsFrame: WebSocketFrameEvent =>
-      val json = parse(wsFrame.readText)
-      val event = json.extract[RequestEvent]
+      val m = wsFrame.readText
+      println(s"receive: ${m}")
+      val event = Serialization.read[RequestEvent](m)
+      //val json = parse(wsFrame.readText)
+      //val event = json.extract[RequestEvent]
       event match {
         case Subscribe(subscription) =>
           CryoSocketBus.subscribe(wsFrame, subscription)
@@ -78,7 +102,7 @@ class CryoSocket extends Actor {
           wsFrame.write(ArchiveList(Cryo.inventory.archives.values.toList))
         case GetSnapshotList() =>
           wsFrame.write(SnapshotList(Cryo.inventory.snapshots.values.toList))
-        case UpdateInventory(maxAge) =>
+        case RefreshInventory(maxAge) =>
           Cryo.inventory.update(maxAge)
         case GetSnapshotFiles(snapshotId, directory) => {
           val snapshot = Cryo.inventory.snapshots(snapshotId)
@@ -87,7 +111,7 @@ class CryoSocket extends Actor {
             case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
           }
           val dir = new File(Config.baseDirectory, directory)
-          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters))) //fe.toList)
+          //wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters))) //fe.toList)
         }
         case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
           val snapshot = Cryo.inventory.snapshots(snapshotId)

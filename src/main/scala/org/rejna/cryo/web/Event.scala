@@ -1,12 +1,9 @@
 package org.rejna.cryo.web
 
 import java.io.File
-
 import scala.concurrent.duration._
-//import CryoJson._
 import net.liftweb.json._
-
-import org.rejna.cryo.models.{ Archive, ArchiveType, CryoStatus, Snapshot, ReadAttribute }
+import org.rejna.cryo.models.{Archive, ArchiveType, CryoStatus, Snapshot}
 
 abstract class Event
 abstract class RequestEvent extends Event {
@@ -32,7 +29,7 @@ case class UploadSnapshot(snapshotId: String) extends RequestEvent
 case class AddFile(snapshotId: String, file: String) extends RequestEvent
 case class SnapshotCreated(id: String) extends ResponseEvent("<null>")
 case class ArchiveCreation(file: File, archiveType: ArchiveType.ArchiveType, id: String, state: CryoStatus.CryoStatus) extends ResponseEvent(id)
-case class RefreshInventory(maxAge: Duration = 24 hours)
+case class RefreshInventory(maxAge: Duration = 24 hours) extends RequestEvent
 
 case class Error(message: String) extends ResponseEvent("<null>")
 case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent
@@ -96,32 +93,6 @@ object EventJsonProtocol {
     classOf[FileElement],
     classOf[UpdateSnapshotFileFilter])))
 }
-
-//    
-//    
-//    value.asJsObject.fields.get("type") match {
-//    case Some(JsString(eventName)) => eventName match {
-//      case "GetArchiveList" => GetArchiveList
-//      case "GetSnapshotList" => GetSnapshotList
-//      case "Subscribe" => Subscribe(
-//          (body \ "data").as[String])
-//      case "Unsubscribe" => Unsubscribe((body \ "data").as[String])
-//      case "AddIgnoreSubscription" => AddIgnoreSubscription((body \ "data").as[String])
-//      case "RemoveIgnoreSubscription" => RemoveIgnoreSubscription((body \ "data").as[String])
-//      case "CreateSnapshot" => CreateSnapshot
-//      case "AddFile" => AddFile(
-//          (body \ "data" \ "snapshotId").as[String],
-//          (body \ "data" \ "file").as[String])
-//      case "GetSnapshotFiles" => GetSnapshotFiles(
-//          (body \ "data" \ "snapshotId").as[String],
-//          (body \ "data" \ "directory").as[String])
-//      case "UpdateSnapshotFileFilter" => UpdateSnapshotFileFilter(
-//          (body \ "data" \ "snapshotId").as[String],
-//          (body \ "data" \ "directory").as[String],
-//          (body \ "data" \ "filter").as[String])
-//      case "UploadSnapshot" => UploadSnapshot(
-//          (body \ "data" \ "snapshotId").as[String])
-//    }
 //    case None => // ERROR
 //  }
 //
