@@ -1,12 +1,9 @@
-class MessageHandler
-	javascript: (e) ->
-		eval e.data
-	
+class MessageHandler	
 	SnapshotList: (e) ->
-		window.cryoUI.snapshotList.update e.data
+		window.cryoUI.snapshotList.update e.snapshots
 
 	SnapshotCreated: (e) ->
-		window.cryoUI.snapshotList.selectSnapshot e.data
+		window.cryoUI.snapshotList.selectSnapshot e.id
 	
 	SnapshotFiles: (e) ->
 		window.cryoUI.snapshotList.selectedSnapshot().showFiles e.directory, e.files

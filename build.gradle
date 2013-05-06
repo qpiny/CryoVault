@@ -63,9 +63,12 @@ dependencies {
 
 	
 tasks.withType(ScalaCompile) {
-	scalaCompileOptions.fork = true
+	scalaCompileOptions.fork = false
     scalaCompileOptions.unchecked = true
     scalaCompileOptions.deprecation = true
+    
+    scalaCompileOptions.useCompileDaemon = false
+    
 
     configure(scalaCompileOptions.forkOptions) {
         memoryMaximumSize = '1g'

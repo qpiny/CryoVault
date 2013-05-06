@@ -15,15 +15,14 @@ object CryoWeb extends App {
 
   override def main(args: Array[String]) = {
     val system = Cryo.system
-    
+
     val staticHandler = system.actorOf(Props(new StaticContentHandler(StaticContentHandlerConfig(
-        rootFilePaths = Seq("/home/toom/git/CryoVault/build/resources/main"),
-        cache = new LocalCache(0, 16)))))
+      cache = new LocalCache(0, 16)))))
     val wsHandler = system.actorOf(Props[CryoSocket])
-    
+
     val routes = Routes({
       case HttpRequest(request) => request match {
-        case GET(Path("/")) => 
+        case GET(Path("/")) =>
           staticHandler ! new StaticResourceRequest(request, "webapp/glacier.html")
         case GET(Path(path)) =>
           staticHandler ! new StaticResourceRequest(request, "webapp" + path)
@@ -37,24 +36,19 @@ object CryoWeb extends App {
       }
 
       case WebSocketFrame(wsFrame) => {
-        println("Register websocket connection")
         wsHandler ! wsFrame
       }
 
     })
 
-    println("Starting Solver web console ... ")
-    if (routes == null) {
-      println("Routes is null")
-    } else {
-      val webServer = new WebServer(WebServerConfig(), routes, system)
-      Runtime.getRuntime.addShutdownHook(new Thread {
-        override def run { webServer.stop() }
-      })
-      webServer.start()
+    Cryo.setEventBus(CryoSocketBus)
+    val webServer = new WebServer(WebServerConfig(), routes, system)
+    Runtime.getRuntime.addShutdownHook(new Thread {
+      override def run { webServer.stop() }
+    })
+    webServer.start()
 
-      println("Open a few browsers and navigate to http://localhost:8888/html.")
-    }
+    println("Open a few browsers and navigate to http://localhost:8888/html.")
   }
 }
 

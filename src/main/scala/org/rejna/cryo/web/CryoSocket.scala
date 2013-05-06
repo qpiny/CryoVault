@@ -3,28 +3,36 @@ package org.rejna.cryo.web
 import scala.util.matching.Regex
 import akka.actor.Actor
 import java.io.File
-import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Config }
+import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Config, CryoEventBus }
 import akka.event.EventBus
 import akka.event.SubchannelClassification
 import akka.util.Subclassification
 import net.liftweb.json._
 import org.mashupbots.socko.events.WebSocketFrameEvent
-import org.rejna.cryo.models.{ Cryo, ArchiveType }
+import org.rejna.cryo.models.{ Cryo, ArchiveType, AttributeChange, AttributeListChange, Event }
 
 object EventTypeHints extends TypeHints {
-  val hints = 
+  val hints =
     classOf[UploadSnapshot] ::
-    classOf[UpdateSnapshotFileFilter] ::
-    classOf[Unsubscribe] ::
-    classOf[Subscribe] ::
-    classOf[RemoveIgnoreSubscription] ::
-    classOf[RefreshInventory] ::
-    classOf[GetSnapshotList] ::
-    classOf[GetSnapshotFiles] ::
-    classOf[GetArchiveList] ::
-    classOf[CreateSnapshot] ::
-    classOf[AddIgnoreSubscription] ::
-    Nil
+      classOf[UpdateSnapshotFileFilter] ::
+      classOf[Unsubscribe] ::
+      classOf[Subscribe] ::
+      classOf[RemoveIgnoreSubscription] ::
+      classOf[RefreshInventory] ::
+      classOf[GetSnapshotList] ::
+      classOf[GetSnapshotFiles] ::
+      classOf[GetArchiveList] ::
+      classOf[CreateSnapshot] ::
+      classOf[SnapshotCreated] ::
+      classOf[AddIgnoreSubscription] ::
+      classOf[ArchiveList] ::
+      classOf[SnapshotList] ::
+      classOf[AddFile] ::
+      classOf[ArchiveCreation] ::
+      classOf[SnapshotFiles] ::
+      classOf[AttributeChange[_]] ::
+      classOf[AttributeListChange[_]] ::
+      Nil
 
   def hintFor(clazz: Class[_]) = clazz.getSimpleName
   def classFor(hint: String) = hints find (hintFor(_) == hint)
@@ -34,8 +42,8 @@ object EventSerialization {
     override val typeHintFieldName = "type"
     override val typeHints = EventTypeHints
     override val customSerializers =
-      SnapshotJsonSerializer ::
-      Nil
+      JsonSerializer ::
+        Nil
   }
 
   case class EventSender(wsFrame: WebSocketFrameEvent) {
@@ -45,14 +53,13 @@ object EventSerialization {
   implicit def toEventSender(wsFrame: WebSocketFrameEvent) = EventSender(wsFrame)
 }
 
-object CryoSocketBus extends EventBus with SubchannelClassification {
+object CryoSocketBus extends CryoEventBus with SubchannelClassification {
   import EventSerialization._
 
-  type Event = org.rejna.cryo.web.ResponseEvent
   type Classifier = String
   type Subscriber = WebSocketFrameEvent
 
-  protected def classify(event: ResponseEvent) = event.path
+  protected def classify(event: Event) = event.path
   protected def subclassification = new Subclassification[Classifier] {
     def isEqual(x: Classifier, y: Classifier) = x == y
     def isSubclass(x: Classifier, y: Classifier) = x.startsWith(y)
@@ -60,8 +67,12 @@ object CryoSocketBus extends EventBus with SubchannelClassification {
 
   // FIXME add synchronized + volatile
   protected def publish(event: Event, subscriber: Subscriber): Unit = {
-    if (!ignore(subscriber).exists(_.findFirstIn(event.path).isDefined))
-      subscriber.write(event)
+    ignore.get(subscriber) match {
+      case Some(filters) if !filters.exists(_.findFirstIn(event.path).isDefined) => // ignore
+      case _ =>
+        println("-->" + event)
+        subscriber.write(event)
+    }
   }
 
   private var ignore = Map[Subscriber, Set[Regex]]()

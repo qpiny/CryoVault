@@ -16,9 +16,9 @@ import com.amazonaws.services.sns.model.{ CreateTopicRequest, SubscribeRequest }
 import ArchiveType._
 import CryoStatus._
 
-class Event(path: String)
-case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event(path)
-case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event(path)
+abstract class Event { val path: String }
+case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event
+case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event
 
 trait EventPublisher {
   def publish(event: Event)
@@ -32,7 +32,7 @@ object Cryo extends EventPublisher {
   val system = ActorSystem("cryo") // FIXME (use cryoweb system)
   
   private var _eventBus: Option[CryoEventBus] = None
-  def eventBus_=(eventBus: CryoEventBus) = _eventBus = Some(eventBus)
+  def setEventBus(eventBus: CryoEventBus) = _eventBus = Some(eventBus)
   
   def publish(event: Event) = {
     for (bus <- _eventBus)
@@ -42,16 +42,16 @@ object Cryo extends EventPublisher {
   
   val inventory = new Inventory()
 
-  val glacier = new AmazonGlacierClient(Config.awsCredentials);
+  lazy val glacier = new AmazonGlacierClient(Config.awsCredentials);
   glacier.setEndpoint("https://glacier." + Config.region + ".amazonaws.com/")
-  val sqs = new AmazonSQSClient(Config.awsCredentials)
+  lazy val sqs = new AmazonSQSClient(Config.awsCredentials)
   sqs.setEndpoint("https://sqs." + Config.region + ".amazonaws.com")
-  val sns = new AmazonSNSClient(Config.awsCredentials)
+  lazy val sns = new AmazonSNSClient(Config.awsCredentials)
   sns.setEndpoint("https://sns." + Config.region + ".amazonaws.com")
 
   var sqsQueueARN = Config.sqsQueueARN
   var snsTopicARN = Config.sqsTopicARN
-  val sqsQueueURL = sqs.listQueues(new ListQueuesRequest(Config.sqsQueueName)).getQueueUrls.headOption.getOrElse {
+  lazy val sqsQueueURL = sqs.listQueues(new ListQueuesRequest(Config.sqsQueueName)).getQueueUrls.headOption.getOrElse {
     val url = sqs.createQueue(new CreateQueueRequest().withQueueName(Config.sqsQueueName)).getQueueUrl()
 
     var arn = sqs.getQueueAttributes(new GetQueueAttributesRequest()

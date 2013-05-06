@@ -38,7 +38,7 @@ object Config {
   val archiveSize = 50 mebi
 
   val fileFilter = new PrefixFileFilter("bk_")
-  val fileLocation = "/tmp"
+  val fileLocation = System.getProperty("java.io.tmpdir")
 
   val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
   val key = {
@@ -51,7 +51,7 @@ object Config {
   val paramSpec = new IvParameterSpec(iv)
   cipher.init(Cipher.ENCRYPT_MODE, key, paramSpec);
 
-  val cacheDirectory = new File("/tmp")
+  val cacheDirectory = new File(System.getProperty("java.io.tmpdir"))
   val inventoryFile = new File(cacheDirectory, "inventory.glacier")
 
   val baseDirectory = new File("/")

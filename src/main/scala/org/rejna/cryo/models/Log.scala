@@ -7,7 +7,9 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.core.spi.FilterReply
 
-case class Log(level: Level, marker: String, message: String) extends Event(Log.levelToPath(level) + '#' + marker)
+case class Log(level: Level, marker: String, message: String) extends Event {
+  val path = Log.levelToPath(level) + '#' + marker
+}
 object Log {
   val levelToPath = Map(
     Level.ALL -> "/log",

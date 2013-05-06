@@ -4,7 +4,7 @@ import net.liftweb.json._
 
 import org.rejna.cryo.models.Snapshot
 
-object SnapshotJsonSerializer extends Serializer[Snapshot] {
+object JsonSerializer extends Serializer[Snapshot] {
   import net.liftweb.json.JsonDSL._
   val SnapshotClass = classOf[Snapshot]
 
@@ -19,5 +19,7 @@ object SnapshotJsonSerializer extends Serializer[Snapshot] {
       ("size" -> s.size) ~ 
       ("status" -> s.state.toString) ~
       ("fileSelection" -> s.fileFilters)
+    case (k, v) =>
+      (k.toString -> Extraction.decompose(v))
   }
 }

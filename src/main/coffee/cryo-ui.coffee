@@ -8,10 +8,12 @@ class Snapshot
 		@status = init.status ? '<not_set>'
 		@transfer =
 			status: false,
-			value: 0
+			value: false
 		@fileFilter = init.fileFilter ? {}
 		
-	showDetails: =>
+	select: =>
+		$.data(@cryoui._snapshotList, 'selected', this)
+		window.cryo.subscribe "/cryo/Index/#{@id}"
 		@cryoui._snapshotId.text @id
 		@cryoui._snapshotDate.text @date
 		@cryoui._snapshotSize.text "#{toIsoString(@size)}B"
@@ -26,6 +28,7 @@ class Snapshot
 				path: '/'
 				type: 'directory'
 				
+		###
 		@cryoui._snapshotFiles.jqxTree 'clear'
 		@cryoui._snapshotFiles.jqxTree 'addTo',
 			html: '<span class="cryo-icon cryo-icon-folder" style="display:inline-block"></span>/',
@@ -38,8 +41,12 @@ class Snapshot
 			null,
 			false
 		@cryoui._snapshotFiles.jqxTree 'render'
+		###
 		
+	unselect: =>
+		window.cryo.unsubscribe "/cryo/Index/#{@id}"
 	showFiles: (directory, files) =>
+		return true
 		path = if directory is '/' then '' else directory
 		
 		for item in @cryoui._snapshotFiles.jqxTree 'getItems' when item.value? and $.evalJSON($.base64.decode item.value).file.path == directory
@@ -104,6 +111,18 @@ class Snapshot
 		if @cryoui.snapshotList.selectedSnapshot().id is @id
 			@cryoui._snapshotSize.text "#{toIsoString(@size)}B"
 	
+	label: =>
+		elem = $('<div><div class="snapshotLabel">' +
+			"#{@date} (#{@status})</div></div>")
+		if @transfer.status
+			progress = $('<div class="snapshotProgress"><div class="snapshotProgressLabel">' +
+				"#{@transfer.value}%</div></div>")
+			progress.progressbar
+				value: @transfer.value
+			elem.append progress
+				
+		elem.html()
+	
 
 window.CryoUI = (theme) ->
 	@_snapshotNew = $ '#snapshotNew'
@@ -131,85 +150,60 @@ window.CryoUI = (theme) ->
 					@snapshotList.add s for s in snapshot
 				else
 					snap = new Snapshot(this, snapshot)
-					@_snapshotList.jqxListBox 'addItem',
-						label: snap,
-						data: snap
+					item = $("<li>#{snap.label()}</li>")
+					$.data(item[0], 'snapshot', snap)
+					@_snapshotList.append item
 			
 			remove: (snapshot) =>
 				alert 'not implemented'
 			
 			purge: =>
-				@_snapshotList.jqxListBox 'clear'
+				@_snapshotList.empty
 			
 			update: (snapshots) =>
 				@snapshotList.purge()
 				@snapshotList.add snapshots
 				if (snapshots.length is 0)
 					@_snapshotNew.click()
-				else
-					@_snapshotList.jqxListBox 'selectIndex', 0
+				#else
+				#	@_snapshotList.jqxListBox 'selectIndex', 0
 		
 			selectSnapshot: (snapshotId) =>
-				index = 0
-				for item in @_snapshotList.jqxListBox 'getItems'
-					snapshot = item.value
+				for item in @_snapshotList.children('li')
+					item = $(item)
+					snapshot = $.data(item[0], 'snapshot')
 					if (snapshot.id is snapshotId)
-						@_snapshotList.jqxListBox 'selectIndex', index
-						@_snapshotList.jqxListBox 'ensureVisible', index
-					index++
-			
+						if (!item.hasClass('ui-selected'))
+							item.addClass('ui-selected')
+							snapshot.select()
+					else
+						if (item.hasClass('ui-selected'))
+							item.removeClass('ui-selected')
+							snapshot.unselect()
+
 			selectedSnapshot: =>
-				(@_snapshotList.jqxListBox 'getSelectedItem').value
+				$.data(@_snapshotList[0], 'selected')
 				
 			get: (snapshotId) =>
-				for item in @_snapshotList.jqxListBox 'getItems' when item.value.id is snapshotId
-					ret = item.value
+				for item in @_snapshotList.children('li') when $.data($(item)[0], 'snapshot').id is snapshotId
+					ret = $.data($(item)[0], 'snapshot')
 				ret
 				
-	@_snapshotList.jqxListBox
-			theme: theme,
-			displayMember: 'label',
-			valueMember: 'data',
-			renderer: (index, label, value) ->
-				elem = $('<div><div class="snapshotLabel">' +
-					"#{value.date} (#{value.status})</div>" +
-					'<div class="snapshotProgress"></div></div>')
-					
-				progress = elem.children '.snapshotProgress'
-				progress.jqxProgressBar
-					value: value.transfer.value,
-					showText: true
-
-				progress.toggle value.transfer.status
-				elem.html()
-
-	@_snapshotList.bind 'select', (event) =>
-		snapshot = (@_snapshotList.jqxListBox 'getItem', event.args.index).value
-		snapshot.showDetails()
-		
-		window.cryo.subscribe "/cryo/Index/#{snapshot.id}"
-
-	@_snapshotList.bind 'unselect', (event) =>
-		if (event.args.index >= 0)
-			snapshot = (@_snapshotList.jqxListBox 'getItem', event.args.index).value
-			window.cryo.unsubscribe "/cryo/Index/#{snapshot.id}"
-		
-	for button in $('.button')
-		$(button).jqxButton
-			theme: theme
+	@_snapshotList.selectable
+		selected: (event, ui) ->
+			$.data(ui.selected, 'snapshot').select()
+		unselected: (event, ui) ->
+			$.data(ui.unselected, 'snapshot').unselect()
 		
 	@_snapshotNew.bind 'click', =>
 		window.cryo.newSnapshot()
 		
 	@_snapshotUpload.bind 'click', =>
 		window.cryo.uploadSnapshot @snapshotList.selectedSnapshot().id
+	
+	@_snapshotFiles.jstree()
 
-	@_snapshotFiles.jqxTree
-		hasThreeStates: false
-		checkboxes: false
-		theme: theme
-
-	@_snapshotFiles.bind 'expand', (event) =>
+	@_snapshotFiles.bind 'open_node.jstree', (event) =>
 		el = $.evalJSON $.base64.decode (@_snapshotFiles.jqxTree 'getItem', event.args.element).value
 		@log "expand #{el.file.path} - #{el.loading}"
 		if (el.loading)
@@ -262,6 +256,7 @@ window.CryoUI = (theme) ->
 			window.cryo.updateSnapshotFileFilter snapshotId, el.file.path, @_snapshotFileFilter.val()
 		@_snapshotFileForm.hide()
 		@_snapshotFiles.jqxTree 'selectItem', null
+###
 	this
 		
 toIsoString = (value) ->

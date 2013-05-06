@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+<title>CryoVault</title>
+<link rel="shortcut icon" type="image/png" href="images/favicon.png">
+<link rel="stylesheet" href="jquery-ui-1.9.1.custom/css/ui-lightness/jquery-ui-1.9.1.custom.css" type="text/css" />
+<link rel="stylesheet" href="stylesheets/cryo.css" type="text/css" />
+<link rel="stylesheet" href="themes/default/style.css" type="text/css" />
+
+<script type="text/javascript" src="javascripts/gettheme.js"></script>
+
+<script type="text/javascript" src="javascripts/jquery-2.0.0.js"></script>
+<script type="text/javascript" src="jquery-ui-1.10.3/ui/jquery-ui.js"></script>
+<script type="text/javascript" src="javascripts/jquery.layout-latest.js"></script>
+<script type="text/javascript" src="javascripts/jquery.jstree.js"></script>
+<script type="text/javascript" src="javascripts/jquery.hotkeys.js"></script>
+<script type="text/javascript" src="javascripts/jquery.json-2.4.js"></script>
+<script type="text/javascript"
+	src="javascripts/jquery.websocket-0.0.1.js"></script>
+<script type="text/javascript" src="javascripts/jquery.base64.js"></script>
+
+<script type="text/javascript">
+	$(function() {
+		$('#snapshotFiles').jstree({
+			themes : { theme : "default" },
+			 types : {
+				 types : {
+					 file : {
+						 icon : {
+							 image : "images/icons.png",
+							 position : "-32px -96px"
+						 },
+						 valid_children : "none"
+					 },
+					 folder : {
+						 icon : {
+							 image : "images/icons.png",
+							 position : "-16px -96px"
+						 },
+						 valid_children : "all"
+					 }
+				 }
+			},
+			plugins : [ "themes", "html_data", "ui", "types" ]
+		});
+		$('#snapshotFiles').bind('open_node.jstree', function(event) {
+			$("#console").append("<div>expand</div>");
+		});
+		$("#addButton").bind("click", function(event) {
+			$("#snapshotFiles").jstree("create_node", -1, "last", {
+				attr : { rel: "folder" },
+				state: "open",
+				data: "plop"
+			}, false, false);
+		});
+	});
+</script>
+
+</head>
+<body>
+	<button id="addButton">Add</button>
+	<div id="snapshotFiles" class="ui-layout-content">
+		<ul>
+			<li rel="file"><a>File 1</a></li>
+			<li rel="folder" id="folder1">
+				<a>Folder 1</a>
+				<ul>
+					<li rel="file"><a>File 2</a></li>
+					<li rel="file"><a>File 3</a></li>
+				</ul>
+			</li>
+			<li rel="file"><a>File 4</a></li>
+		</ul>
+	</div>
+	<div id="console"></div>
+
+</body>
+</html>
