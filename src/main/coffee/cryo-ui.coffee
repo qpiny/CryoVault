@@ -28,8 +28,13 @@ class Snapshot
 				path: '/'
 				type: 'directory'
 				
-		###
-		@cryoui._snapshotFiles.jqxTree 'clear'
+		
+		# remove all nodes in tree @cryoui._snapshotFiles.jqxTree 'clear'
+		@cryoui._snapshotFiles.jstree "create_node", -1, "last", {
+				attr : { rel: "folder" },
+				state: "open",
+				data: "plop"
+			}, false, false);
 		@cryoui._snapshotFiles.jqxTree 'addTo',
 			html: '<span class="cryo-icon cryo-icon-folder" style="display:inline-block"></span>/',
 			value: value
@@ -201,9 +206,24 @@ window.CryoUI = (theme) ->
 	@_snapshotUpload.bind 'click', =>
 		window.cryo.uploadSnapshot @snapshotList.selectedSnapshot().id
 	
-	@_snapshotFiles.jstree()
+	@_snapshotFiles.jstree
+		themes:
+			theme: "default"
+		types:
+			types:
+				file:
+					icon:
+						image: "images/icons.png"
+						position: "-32px -96px"
+					valid_children: "none"
+				folder:
+					icon:
+						image: "images/icons.png"
+						position: "-16px -96px"
+					valid_children: "all"
+		plugins: [ "themes", "html_data", "ui", "types" ]
 
-	@_snapshotFiles.bind 'open_node.jstree', (event) =>
+	@_snapshotFiles.bind 'open_node.jstree', (event, data) =>
 		el = $.evalJSON $.base64.decode (@_snapshotFiles.jqxTree 'getItem', event.args.element).value
 		@log "expand #{el.file.path} - #{el.loading}"
 		if (el.loading)
@@ -244,7 +264,7 @@ window.CryoUI = (theme) ->
 		
 	@_snapshotFileFilter.bind 'blur', =>
 		@_snapshotFileForm.hide()
-		@_snapshotFiles.jqxTree 'selectItem', null
+		#@_snapshotFiles.jqxTree 'selectItem', null
 	
 	@_snapshotFileForm.hide()
 
@@ -256,7 +276,6 @@ window.CryoUI = (theme) ->
 			window.cryo.updateSnapshotFileFilter snapshotId, el.file.path, @_snapshotFileFilter.val()
 		@_snapshotFileForm.hide()
 		@_snapshotFiles.jqxTree 'selectItem', null
-###
 	this
 		
 toIsoString = (value) ->
