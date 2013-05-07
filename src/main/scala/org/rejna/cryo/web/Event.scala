@@ -26,8 +26,8 @@ case class ArchiveCreation(file: File, archiveType: ArchiveType.ArchiveType, id:
 case class RefreshInventory(maxAge: Duration = 24 hours) extends RequestEvent
 
 case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent
-class FileElement(file: File, count: Int, size: Long, filter: Option[String])
-class SnapshotFiles(snapshotId: String, directory: String, files: List[FileElement]) extends ResponseEvent("<null>")
+case class FileElement(file: File, count: Int, size: Long, filter: Option[String])
+case class SnapshotFiles(snapshotId: String, directory: String, files: List[FileElement]) extends ResponseEvent("<null>")
 case class UpdateSnapshotFileFilter(snapshotId: String, directory: String, filter: String) extends RequestEvent
 /*
 case class InventoryRequest() extends RequestEvent {

@@ -49,9 +49,9 @@
 		});
 		$("#addButton").bind("click", function(event) {
 			$("#snapshotFiles").jstree("create_node", -1, "last", {
-				attr : { rel: "folder" },
-				state: "open",
-				data: "plop"
+				attr : { rel: "file" },
+				state: false,
+				data: "plop<b>hehe</b>"
 			}, false, false);
 		});
 	});

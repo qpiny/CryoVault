@@ -22,15 +22,12 @@ class Snapshot
 		@cryoui._snapshotDuplicate.toggle @status isnt 'Creating'
 		@cryoui._snapshotUpload.toggle @status is 'Creating'
 		
-		value = $.base64.encode $.toJSON
-			loading: true
-			file:
-				path: '/'
-				type: 'directory'
-				
+		for child in @cryoui._snapshotFiles.jstree "_get_children", @cryoui._treeRootNode
+			@cryoui._snapshotFiles.jstree "delete_node", child
 		
-		# remove all nodes in tree @cryoui._snapshotFiles.jqxTree 'clear'
-		@cryoui._snapshotFiles.jstree "create_node", -1, "last", {
+		window.cryo.getSnapshotFiles @id, "/"
+		###
+		@cryoui._snapshotFiles.jstree "create_node", @cryoui._treeRootNode, "last", {
 				attr : { rel: "folder" },
 				state: "open",
 				data: "plop"
@@ -50,48 +47,34 @@ class Snapshot
 		
 	unselect: =>
 		window.cryo.unsubscribe "/cryo/Index/#{@id}"
+		
 	showFiles: (directory, files) =>
-		return true
-		path = if directory is '/' then '' else directory
+		path = directory.substring(1).split('/')
+		node = @_treeRootNode
+		for pathElement in path
+			node = $.grep(@_snapshotFiles.jstree("_get_children", node), (n) => $.data(n, 'name') == pathElement)
+			if not node?
+				@cryoui.log "Path not found (#{pathElement} in #{path}"
+				return false
 		
-		for item in @cryoui._snapshotFiles.jqxTree 'getItems' when item.value? and $.evalJSON($.base64.decode item.value).file.path == directory
-			# remove children
-			for child in $(item.element).find 'li'
-				@cryoui._snapshotFiles.jqxTree 'removeItem', child
-			
-			# add files
-			for file in files
-				# file.directory = directory
-				file.path = "#{path}/#{file.name}" 
-				# build label
-				label = file.name
-				if file.filter?
-					label += '<span class="cryo-icon cryo-icon-gear"></span>'
-				if (file.count ? 0) > 0
-					if file.type is 'directory'
-						label += " (#{file.count} files, #{toIsoString(file.size)}B)"
-					else
-						label += " (#{toIsoString(file.size)}B)"
-				
-				# build HTML element
-				value = $.base64.encode $.toJSON
-					loading: true
-					file: file
-				el = if file.type is 'directory'
-					html: '<span class="cryo-icon cryo-icon-folder"></span>' + label,
-					value: value
-					expanded: false,
-					items: [
-						html: '<span class="cryo-icon cryo-icon-loading"></span>Loading ...',
-						value: null
-					]
+		for file in files
+			# file.directory = directory
+			file.path = "#{path}/#{file.name}" 
+			# build label
+			label = file.name
+			if file.filter?
+				label += '<span class="cryo-icon cryo-icon-gear"></span>'
+			if (file.count ? 0) > 0
+				if file.type is 'directory'
+					label += " (#{file.count} files, #{toIsoString(file.size)}B)"
 				else
-					html: '<span class="cryo-icon cryo-icon-file"></span>' + label,
-					value: value
-		
-				@cryoui._snapshotFiles.jqxTree 'addTo', el, item.element, false
-			
-			@cryoui._snapshotFiles.jqxTree 'render'
+					label += " (#{toIsoString(file.size)}B)"
+				
+			# build HTML element
+			elementType = file.type is 'directory' ? 'folder-loading' : 'file'
+			@cryoui._snapshotFiles.jstree "create_node", node, "inside",
+				attr: { rel: elementType, data: file }
+				false, false
 	
 	updateFilter: (file, filter) =>
 		if (filter is '')
@@ -210,7 +193,15 @@ window.CryoUI = (theme) ->
 		themes:
 			theme: "default"
 		types:
+			valid_children: "root"
+			max_children: 1
 			types:
+				root:
+					icon:
+						image: "images/icons.png"
+						position: "0 -112px"
+					valid_children: [ "file", "folder" ]
+						
 				file:
 					icon:
 						image: "images/icons.png"
@@ -220,16 +211,36 @@ window.CryoUI = (theme) ->
 					icon:
 						image: "images/icons.png"
 						position: "-16px -96px"
-					valid_children: "all"
+					valid_children: [ "file", "folder", "folder-loading" ]
+				folder_loading:
+					icon:
+						image: "images/icons.png"
+						position: "-16px -96px"
+					valid_children: "loading"
+				loading:
+					icon:
+						image: "images/icons.png"
+						position: "-144px -64px"
+					valid_children: "none"
 		plugins: [ "themes", "html_data", "ui", "types" ]
-
+	setTimeout(
+		=> @_treeRootNode = @_snapshotFiles.jstree "create_node", -1, "last",
+			attr: { rel: "root" }
+			state: close
+			data: "/"
+			false, false
+		0)
+	###
+	window.cryo.getSnapshotFiles 
+	
+	
 	@_snapshotFiles.bind 'open_node.jstree', (event, data) =>
 		el = $.evalJSON $.base64.decode (@_snapshotFiles.jqxTree 'getItem', event.args.element).value
 		@log "expand #{el.file.path} - #{el.loading}"
 		if (el.loading)
 			snapshot = @snapshotList.selectedSnapshot()
 			window.cryo.getSnapshotFiles snapshot.id, "#{el.file.path}"
-		
+	
 	@_snapshotFiles.bind 'select', (event) =>
 		el = $.evalJSON $.base64.decode (@_snapshotFiles.jqxTree 'getItem', event.args.element).value
 		file = el.file
@@ -259,9 +270,10 @@ window.CryoUI = (theme) ->
 			window.cryo.updateSnapshotFileFilter snapshotId, file.path, filter
 			@_snapshotFiles.jqxTree 'selectItem', null
 		
+	
 	@_snapshotFileFilter.jqxInput
 			width: 100
-		
+	###	
 	@_snapshotFileFilter.bind 'blur', =>
 		@_snapshotFileForm.hide()
 		#@_snapshotFiles.jqxTree 'selectItem', null
@@ -301,4 +313,3 @@ $ ->
 	if (theme == null || theme == undefined)
 		theme = ''
 	window.cryoUI = new window.CryoUI(theme)
-	window.cryoUI.log("ok")

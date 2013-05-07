@@ -21,5 +21,10 @@ object JsonSerializer extends Serializer[Snapshot] {
       ("fileSelection" -> s.fileFilters)
     case (k, v) =>
       (k.toString -> Extraction.decompose(v))
+    case fe: FileElement =>
+      ("file" -> fe.file.getName) ~
+      ("count" -> fe.count) ~
+      ("size" -> fe.size)  ~
+      ("filter" -> fe.filter)
   }
 }

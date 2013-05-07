@@ -122,7 +122,7 @@ class CryoSocket extends Actor {
             case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
           }
           val dir = new File(Config.baseDirectory, directory)
-          //wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters))) //fe.toList)
+          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters))) //fe.toList)
         }
         case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
           val snapshot = Cryo.inventory.snapshots(snapshotId)
@@ -177,7 +177,7 @@ class CryoSocket extends Actor {
       }
     case msg => println("CryoActor has received an unknown message : " + msg)
   }
-
+*/
   def getDirectoryContent(directory: File, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, String]) = {
     //println("getDirectoryContent(%s, %s)".format(directory, fileSelection.mkString("(", ",", ")")))
     val dirContent = Option(directory.listFiles).getOrElse(Array[File]())
@@ -194,5 +194,4 @@ class CryoSocket extends Actor {
       new FileElement(f, count, size, fileFilters.get('/' + filePath))
     }).toList
   }
-  */
 }
