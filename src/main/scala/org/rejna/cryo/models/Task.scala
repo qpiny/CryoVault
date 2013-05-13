@@ -1,12 +1,5 @@
 package org.rejna.cryo.models
 
-import scala.collection.mutable.ArrayBuffer
-
-import java.io.{ File, InputStream, OutputStream }
-import java.util.concurrent.TimeUnit
-
-import com.amazonaws.services.glacier.model.{ DescribeJobRequest, DescribeJobResult }
-import com.amazonaws.services.glacier.TreeHashGenerator
 import org.rejna.util.IsoUnit
 
 trait ProgressStatus {
@@ -39,47 +32,3 @@ trait Transfer extends ProgressStatus {
   labelAttribute <* totalBytesAttribute <* transferredBytesAttribute
   def label = labelAttribute()
 }
-
-/*
-class UploadProcess(description: String, file: File) extends MonitoredInputStream(description, file) {
-  var _archive: Option[Promise[RemoteArchive]] = None
-  
-  //lazy val hash = Hash(TreeHashGenerator.calculateTreeHash(file))
-  
-  lazy val size = file.length
-  
-  def setPromiseArchive(promiseArchive: Promise[RemoteArchive]) = _archive = Some(promiseArchive)
-  
-  def setArchive(archive: RemoteArchive) = _archive = Some(Promise.pure(archive))
-  
-  def getPromiseArchive = _archive getOrElse { throw new InvalidStateException }
-  
-  def getArchive = getPromiseArchive.await.get
-}
-*/
-
-//class Job(val jobId: String, title: String, out: OutputStream) extends MonitoredOutputStream(title, out, 0) {
-//  var _status: Option[JobStatusMessage] = None
-//  private val success = ArrayBuffer[(JobStatusMessage, InputStream) => Unit]()
-//  
-//  /*
-//  def status: Promise[JobStatusMessage] = Akka.future {
-//    _status.getOrElse {
-//      Cryo.describeJob(jobId).await.get
-//    }
-//  }
-//  */
-//  
-//  def receive(message: JobStatusMessage) = {
-//    
-//  }
-//  
-//  def onSuccess(callback: (JobStatusMessage, InputStream) => Unit) = success += callback
-//
-//  /*
-//  def update = {
-//    _status = None
-//    status
-//  }
-//  */
-//}

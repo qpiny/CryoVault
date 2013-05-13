@@ -2,12 +2,12 @@ package org.rejna.cryo.web
 
 import scala.util.matching.Regex
 import scala.concurrent.duration._
-import scala.collection.JavaConversions._ 
+import scala.collection.JavaConversions._
 import scala.language.implicitConversions
 
 import akka.actor.Actor
 
-import java.nio.file.{ Path, Files }
+import java.nio.file.{ Path, Files, FileSystems }
 
 import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Config, CryoEventBus }
 import akka.event.EventBus
@@ -101,8 +101,6 @@ class CryoSocket extends Actor {
       val m = wsFrame.readText
       println(s"receive: ${m}")
       val event = Serialization.read[RequestEvent](m)
-      //val json = parse(wsFrame.readText)
-      //val event = json.extract[RequestEvent]
       event match {
         case Subscribe(subscription) =>
           CryoSocketBus.subscribe(wsFrame, subscription)
@@ -128,7 +126,7 @@ class CryoSocket extends Actor {
             case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
           }
           val dir = Config.baseDirectory.resolve(directory)
-          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters))) //fe.toList)
+          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters).toList))
         }
         case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
           val snapshot = Cryo.inventory.snapshots(snapshotId)
@@ -146,73 +144,19 @@ class CryoSocket extends Actor {
       }
 
   }
-  /*
-    case Subscribe(subscription) =>
-      Cryo.eventBus.subscribe(sender, subscription)
-    case Unsubscribe(subscription) =>
-      Cryo.eventBus.unsubscribe(sender, subscription)
-    case CreateSnapshot =>
-      val snapshot = Cryo.newArchive(ArchiveType.Index)
-      sender ! SnapshotCreated(snapshot.id)
-    case GetArchiveList =>
-      sender ! ArchiveList(Cryo.inventory.archives.values.toList)
-    case GetSnapshotList =>
-      sender ! SnapshotList(Cryo.inventory.snapshots.values.toList)
-    case RefreshInventory(maxAge) =>
-      Cryo.inventory.update(maxAge)
-    case GetSnapshotFiles(snapshotId, directory) => {
-      val snapshot = Cryo.inventory.snapshots(snapshotId)
-      val files = snapshot match {
-        case ls: LocalSnapshot => ls.files()
-        case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
-      }
-      val dir = new File(Config.baseDirectory, directory)
-      sender ! new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters)) //fe.toList)
-    }
-    case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
-      val snapshot = Cryo.inventory.snapshots(snapshotId)
-      snapshot match {
-        case ls: LocalSnapshot => ls.fileFilters(directory) = filter
-        case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
-      }
-    case UploadSnapshot(snapshotId) =>
-      val snapshot = Cryo.inventory.snapshots(snapshotId)
-      snapshot match {
-        case ls: LocalSnapshot => ls.create
-        case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
-      }
-    case msg => println("CryoActor has received an unknown message : " + msg)
-  }
-*/
+
   def getDirectoryContent(directory: Path, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, String]) = {
-    //println("getDirectoryContent(%s, %s)".format(directory, fileSelection.mkString("(", ",", ")")))
-    def removeTrailingSlash(s: String): String = {
-      if (s.endsWith("/"))
-        s.substring(0, s.length - 1)
-      else 
-        s
-    }
     val dirContent = Files.newDirectoryStream(directory)
-    
-    //val dirContent = Option(directory.listFiles).getOrElse(Array[File]())
-    for (f <- dirContent) {
-      //val filePath = removeTrailingSlash(Config.baseURI.relativize(f.toURI).getPath)
-      
-      //To be continued
-    }
-    
-    
-    
-    dirContent.map(f => {
+
+    for (f <- dirContent) yield {
       val filePath = Config.baseDirectory.relativize(f)
-      //println("f=%s; af=%s".format(f, af))
-      val (count, size) = ((0, 0L) /: fileSelection) {
-        case ((c, s), e) =>
-          if (true /* FIXME e.startsWith(filePath) */) (c + 1, s + Files.size(Config.baseDirectory.resolve(e))) else (c, s)
-      }
-      //val filePath = Config.baseURI.relativize(f.toURI).getPath
-      //println("getDirectoryContent: filePath=%s fileFilters=%s".format(filePath, fileFilters.mkString("(", ",", ")")))
-      new FileElement(f, count, size, fileFilters.get(filePath.toString))
-    }).toList
+      val fileSize = for (
+        fs <- fileSelection;
+        fp = FileSystems.getDefault.getPath(fs);
+        if fp.startsWith(filePath)
+      ) yield Files.size(fp)
+
+      new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString))
+    }
   }
 }

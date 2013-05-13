@@ -8,8 +8,10 @@ import scala.io.Source
 
 import java.io.{ FileOutputStream, FileNotFoundException, InputStream, OutputStream }
 import java.util.Date
+import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption._
+import java.nio.channels.FileChannel
 
 import akka.actor._
 
@@ -65,13 +67,13 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
   def size = sizeAttribute()
   protected def size_= = sizeAttribute() = _
 
-  // FIXME lazy val dataStream: Output = Resource.fromOutputStream(Files.newOutputStream(file, CREATE, APPEND))
+  val dataStream = FileChannel.open(file, CREATE_NEW)
 
   lazy val description = s"${archiveType}-${date.toISOString}"
 
   def writeBlock(block: Block) = {
     if (state != Creating) throw InvalidStateException
-    // FIXME dataStream.write(block.data)
+    dataStream.write(ByteBuffer.wrap(block.data))
     val bl = BlockLocation(block.hash, this, size, block.size)
     size += block.size
     bl
@@ -79,6 +81,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
 
   def upload: RemoteArchive = synchronized {
     if (state != Creating) throw InvalidStateException
+    dataStream.close
     state = Uploading
 
     val rarchive = if (size > Config.multipart_threshold)

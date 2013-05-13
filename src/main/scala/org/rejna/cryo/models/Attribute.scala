@@ -43,8 +43,6 @@ trait AttributeChangeCallback {
 
 trait AttributeListCallback {
   def onListChange[A](attribute: ReadAttribute[List[A]], addedValues: List[A], removedValues: List[A]) = {}
-  //def onAdd[A, B](attribute: ReadAttribute[List[A], S], values: List[B])(implicit serializer: List[B] => S) = {}
-  //def onRemove[A, B](attribute: ReadAttribute[List[A], S], values: List[B])(implicit serializer: List[B] => S) = {}
 }
 
 trait ReadAttribute[A] {

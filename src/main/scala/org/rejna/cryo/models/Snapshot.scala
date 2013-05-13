@@ -96,9 +96,6 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
   }
 
   private def splitFile(f: String) = new  Traversable[Block] {
-//    val file = new File(Config.baseDirectory, fileURI)
-//    val blockSize = Config.blockSizeFor(file.length)
-//    Source.fromFile(file)(scala.io.Codec.ISO8859).sliding(blockSize, blockSize).map(data => Block(data.map(_.toByte).toArray)) // FIXME close the file
     def foreach[U](func: Block => U) = {
       val input = FileChannel.open(Config.baseDirectory.resolve(f), READ)
       try {

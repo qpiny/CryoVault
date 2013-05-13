@@ -15,11 +15,11 @@ case object InvalidStateException extends Exception
 case class BlockLocation(val hash: Hash, val archive: Archive, val offset: Long, val size: Int) {
   def read = {
     val arc = archive match {
-      case a: LocalArchive =>
-        a.remoteArchive.getOrElse { throw InvalidStateException }
-      case a: RemoteArchive =>
-        if (a.state != Cached) throw InvalidStateException
-        a
+      case la: LocalArchive =>
+        la.remoteArchive.getOrElse { throw InvalidStateException }
+      case ra: RemoteArchive =>
+        if (ra.state != Cached) throw InvalidStateException
+        ra
     }
 
     val channel = FileChannel.open(arc.file, Set(CREATE, TRUNCATE_EXISTING, WRITE)) //, READ)

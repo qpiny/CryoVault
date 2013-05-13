@@ -1,11 +1,15 @@
 package org.rejna.cryo.models
 
 import java.security.MessageDigest
-import java.io.{ File, FileInputStream }
 
-class Hash(val value: Array[Byte]) {
+import java.nio.ByteBuffer
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption._
+import java.nio.channels.FileChannel
+
+class Hash(val value: Array[Byte], var version: Int = 0) {
   override def toString = value.map("%02X" format _).mkString
-  
+
   override def equals(a: Any) = a match {
     case Hash(v) => v.sameElements(value)
     case _ => false
@@ -13,16 +17,16 @@ class Hash(val value: Array[Byte]) {
 }
 
 object Hash {
-  def apply(file: File) = {
+  def apply(file: Path) = {
     val md = MessageDigest.getInstance(Config.hashAlgorithm)
-    val buffer = Array.ofDim[Byte](Config.bufferSize)
-    val fis = new FileInputStream(file)
-    var nread = 0
-    do {
-      nread = fis.read(buffer)
-      md.update(buffer, 0, nread)
-    } while (nread == Config.bufferSize)
-    fis.close
+
+    val buffer = ByteBuffer.allocate(Config.bufferSize)
+    val input = FileChannel.open(file, READ)
+    try {
+      Iterator.continually(input.read(buffer)) takeWhile (_ != -1) filter (_ > 0) foreach (size => md.update(buffer.array, 0, size))
+    } finally {
+      input.close
+    }
     new Hash(md.digest)
   }
 
@@ -35,6 +39,6 @@ object Hash {
     val h = List.range(0, hl.size, 2).map { i => java.lang.Integer.parseInt(hl.slice(i, i + 2).mkString, 16).toByte }
     new Hash(h.toArray)
   }
-  
+
   def unapply(h: Hash): Option[Array[Byte]] = Some(h.value)
 }

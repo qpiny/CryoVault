@@ -6,3 +6,4 @@
 /gradle.properties
 /bin
 /.cache
+/gradle-app.setting

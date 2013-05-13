@@ -3,14 +3,21 @@ package org.rejna.cryo.models
 import scala.collection.mutable.HashMap
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
+
 import java.util.UUID
+import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption._
+import java.nio.channels.FileChannel
+
 import akka.actor._
 import akka.event._
-import java.io.InputStream
+
 import com.amazonaws.services.glacier.AmazonGlacierClient
 import com.amazonaws.services.glacier.model._
 import com.amazonaws.services.sqs.AmazonSQSClient
-import com.amazonaws.services.sqs.model.{CreateQueueRequest, ListQueuesRequest, GetQueueAttributesRequest}
+import com.amazonaws.services.sqs.model.{ CreateQueueRequest, ListQueuesRequest, GetQueueAttributesRequest }
 import com.amazonaws.services.sns.AmazonSNSClient
 import com.amazonaws.services.sns.model.{ CreateTopicRequest, SubscribeRequest }
 import ArchiveType._
@@ -30,16 +37,16 @@ trait CryoEventBus extends EventBus {
 
 object Cryo extends EventPublisher {
   val system = ActorSystem("cryo") // FIXME (use cryoweb system)
-  
+
   private var _eventBus: Option[CryoEventBus] = None
   def setEventBus(eventBus: CryoEventBus) = _eventBus = Some(eventBus)
-  
+
   def publish(event: Event) = {
     for (bus <- _eventBus)
       bus.publish(event)
   }
   lazy val attributeBuilder = new AttributeBuilder(this, "/cryo")
-  
+
   val inventory = new Inventory()
 
   lazy val glacier = new AmazonGlacierClient(Config.awsCredentials);
@@ -80,18 +87,39 @@ object Cryo extends EventPublisher {
 
   var jobs = Map[String, String => Unit]()
 
-  private val _catalog = HashMap[Hash, BlockLocation]()
+  private val _catalog = HashMap[Hash, HashMap[Int, BlockLocation]]()
 
   def catalog = _catalog.toMap
 
   def updateCatalog(entries: Map[Hash, BlockLocation]) = _catalog ++ entries
 
-  def getOrUpdateBlockLocation(hash: Hash, createBlockLocation: => BlockLocation): BlockLocation =
-    _catalog.get(hash) getOrElse {
-      var bl = createBlockLocation
-      _catalog += hash -> bl
+  def getOrUpdateBlockLocation(block: Block, createBlockLocation: => BlockLocation): BlockLocation = {
+    def checkCollition(bl: BlockLocation, file: Path) = {
+      val buffer = ByteBuffer.allocate(bl.size)
+      val input = FileChannel.open(file, READ)
+      try {
+        input.read(buffer, bl.offset)
+      } finally { input.close }
+
+      buffer.compareTo(ByteBuffer.wrap(block.data)) == 0
+    }
+
+    def addBlockLocation(bl: BlockLocation, version: Int) = {
+      _catalog += block.hash -> (version -> bl)
       bl
     }
+
+    _catalog.get(block.hash) match {
+      case None => addBlockLocation(createBlockLocation, 0)
+      case Some(bl) =>
+        // check hash collision
+        val r = bl.archive match {
+          case la: LocalArchive => if (checkCollition(bl, la.file)) addBlockLocation(createBlockLocation)
+          case ra: RemoteArchive => if (ra.state == Cached && checkCollition(bl, ra.file)) addBlockLocation(createBlockLocation)
+          case _: Any => bl
+        }
+    }
+  }
 
   def newArchive(archiveType: ArchiveType, id: String) = inventory.newArchive(archiveType, id)
 

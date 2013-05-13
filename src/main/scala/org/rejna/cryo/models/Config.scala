@@ -3,8 +3,7 @@ package org.rejna.cryo.models
 import scala.util.Random
 import scala.language.postfixOps
 
-//import java.io.File
-import java.nio.file._
+import java.nio.file.{ Path, FileSystems }
 import javax.crypto.{ Cipher, KeyGenerator, CipherOutputStream }
 import javax.crypto.spec.IvParameterSpec
 import com.amazonaws.auth.BasicAWSCredentials

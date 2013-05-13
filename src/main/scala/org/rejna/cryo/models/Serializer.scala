@@ -1,15 +1,11 @@
 package org.rejna.cryo.models
 
-import java.io.File
-
 import sbinary._
-
-import Operations._
-
-import ArchiveType._
+import sbinary.Operations._
 
 import org.joda.time.DateTime
-//import org.joda.time.format.DateTimeFormat
+
+import ArchiveType._
 
 object CryoBinary extends DefaultProtocol {
   import DefaultProtocol._
@@ -40,12 +36,6 @@ object CryoBinary extends DefaultProtocol {
   implicit def RemoteArchiveFormat = asProduct5[RemoteArchive, ArchiveType, DateTime, String, Long, Hash](
     (t, d, i, s, h) => new RemoteArchive(t, d, i, s, h))(
       ra => (ra.archiveType, ra.date, ra.id, ra.size, ra.hash))
-  //  
-  //  implicit val ArchiveFormat = wrap[Archive, RemoteArchive](a => a match {
-  //    case la: LocalArchive => la.remoteArchive.getOrElse { sys.error("Local archive is not serializable") }
-  //    case ra: RemoteArchive => ra
-  //    case _ =>  sys.error("Invalid archive class")
-  //  }, _.asInstanceOf[Archive])
 
   implicit def BlockLocationFormat = asProduct4(
     (hash: Hash, archiveId: String, offset: Long, size: Int) => BlockLocation(hash, Cryo.inventory.archives(archiveId), offset, size))(
@@ -56,15 +46,4 @@ object CryoBinary extends DefaultProtocol {
     case rs: RemoteSnapshot => rs
     case _ => sys.error("Invalid snapshot class")
   }, _.asInstanceOf[Snapshot])
-
-  ////////////////////////////////////////////////////////////////////////////
-  // implicit val RemoteFileFormat = asProduct3[RemoteFile, String, File, List[BlockLocation]](
-  //      (i, f, bls) => new RemoteFile(Cryo.attributeBuilder.subBuilder("archive").withAlias("snapshot").subBuilder(i).subBuilder("files"), i, f, bls: _*))(
-  //          rf => (rf.snapshotId, rf.file, rf.blockLocations.toList))
-
-  //def IndexFormat(id: String) = asProduct3[(Map[Hash, BlockLocation], Map[String, List[Hash]], Map[String, String]),
-  //  Map[Hash, BlockLocation], Map[String, List[Hash]], Map[String, String](_)()
-
-  //wrap[Tuple2[File, List[BlockLocation]], RemoteFile](rf => new RemoteFile(Cryo.attributeBuilder.subBuilder("dummy"), id, rf._1, rf._2: _*), sys.error("Deserialization of Index is not permitted"))
-
 }
