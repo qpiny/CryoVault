@@ -1,19 +1,16 @@
-typeIsArray = Array.isArray || ( value ) -> return {}.toString.call(value) is '[object Array]'
-
 class Snapshot
 	constructor: (@cryoui, init) ->
 		@id = init.id ? '<not_set>'
 		@date = init.date ? '<not_set>'
 		@size = init.size ? 0
 		@status = init.status ? '<not_set>'
-		@transfer =
-			status: false,
-			value: false
+		@transfer = { status: false, value: false }
 		@fileFilter = init.fileFilter ? {}
 		
 	select: =>
 		$.data(@cryoui._snapshotList, 'selected', this)
 		window.cryo.subscribe "/cryo/Index/#{@id}"
+		$.data(@cryoui._snapshotList[0], 'selected', this)
 		@cryoui._snapshotId.text @id
 		@cryoui._snapshotDate.text @date
 		@cryoui._snapshotSize.text "#{toIsoString(@size)}B"
@@ -49,32 +46,58 @@ class Snapshot
 		window.cryo.unsubscribe "/cryo/Index/#{@id}"
 		
 	showFiles: (directory, files) =>
-		path = directory.substring(1).split('/')
-		node = @_treeRootNode
+		if directory == '/'
+			directory = ""
+		path = directory.split('/')
+		path.shift()
+
+		node = @cryoui._treeRootNode
 		for pathElement in path
-			node = $.grep(@_snapshotFiles.jstree("_get_children", node), (n) => $.data(n, 'name') == pathElement)
-			if not node?
-				@cryoui.log "Path not found (#{pathElement} in #{path}"
+			r = $.grep($.jstree._reference(@cryoui._snapshotFiles)._get_children(node), (n) => $.data(n, "file").file == pathElement)
+			if r.length == 0
+				@cryoui.log "Path not found (#{pathElement} in #{path})"
 				return false
+			node = r[0]
+		
+		loading_children = $.jstree._reference(@cryoui._snapshotFiles)._get_children(node)
+		if directory != ""
+			@cryoui._snapshotFiles.jstree("set_type", "folder", node)
 		
 		for file in files
 			# file.directory = directory
-			file.path = "#{path}/#{file.name}" 
+			file.path = "#{directory}/#{file.file}"
+			js = { metadata: { file: file }, attr: {} }
 			# build label
-			label = file.name
 			if file.filter?
-				label += '<span class="cryo-icon cryo-icon-gear"></span>'
+				js.attr.class = 'tree-element-filter'
 			if (file.count ? 0) > 0
 				if file.type is 'directory'
-					label += " (#{file.count} files, #{toIsoString(file.size)}B)"
+					js.data = file.file + " (#{file.count} files, #{toIsoString(file.size)}B)"
 				else
-					label += " (#{toIsoString(file.size)}B)"
+					js.data = file.file + " (#{toIsoString(file.size)}B)"
+			else
+					js.data = file.file
 				
 			# build HTML element
-			elementType = file.type is 'directory' ? 'folder-loading' : 'file'
-			@cryoui._snapshotFiles.jstree "create_node", node, "inside",
-				attr: { rel: elementType, data: file }
+			if file.isDirectory
+				js.attr.rel = 'folder_loading'
+				js.state = 'close'
+			else
+				js.attr.rel = 'file'
+			newNode = @cryoui._snapshotFiles.jstree "create_node", node, "inside",
+				js
 				false, false
+				
+			if file.isDirectory
+				@cryoui._snapshotFiles.jstree "create_node", newNode, "inside",
+					attr: { rel: "loading" }
+					data: "Loading..."
+					false, false
+				
+		for child in loading_children
+			@cryoui._snapshotFiles.jstree("delete_node", child)
+		
+		0
 	
 	updateFilter: (file, filter) =>
 		if (filter is '')
@@ -134,7 +157,7 @@ window.CryoUI = (theme) ->
 	@snapshotList =
 			add: (snapshot) =>
 				@log "addSnapshot(#{$.toJSON(snapshot)})"
-				if (typeIsArray snapshot)
+				if ($.isArray(snapshot))
 					@snapshotList.add s for s in snapshot
 				else
 					snap = new Snapshot(this, snapshot)
@@ -200,7 +223,7 @@ window.CryoUI = (theme) ->
 					icon:
 						image: "images/icons.png"
 						position: "0 -112px"
-					valid_children: [ "file", "folder" ]
+					valid_children: [ "file", "folder", "folder_loading" ]
 						
 				file:
 					icon:
@@ -211,26 +234,57 @@ window.CryoUI = (theme) ->
 					icon:
 						image: "images/icons.png"
 						position: "-16px -96px"
-					valid_children: [ "file", "folder", "folder-loading" ]
+					valid_children: [ "file", "folder", "folder_loading", "loading" ]
 				folder_loading:
 					icon:
 						image: "images/icons.png"
-						position: "-16px -96px"
-					valid_children: "loading"
+						position: "0px -96px"
+					valid_children: [ "loading" ]
+					open_node: (node) =>
+						snapshot = @snapshotList.selectedSnapshot()
+						file = node.data('file')
+						window.cryo.getSnapshotFiles snapshot.id, file.path
 				loading:
 					icon:
 						image: "images/icons.png"
 						position: "-144px -64px"
-					valid_children: "none"
+					valid_children: [ "none" ]
 		plugins: [ "themes", "html_data", "ui", "types" ]
 	setTimeout(
 		=> @_treeRootNode = @_snapshotFiles.jstree "create_node", -1, "last",
 			attr: { rel: "root" }
-			state: close
+			state: 'open'
 			data: "/"
+			metadata: { file: { file: "/", isDirectory: true, count: 0, size: 0 } }
 			false, false
 		0)
 	###
+	
+	
+	
+	file.path = "#{directory}/#{file.file}"
+			js = { metadata: { file: file }, attr: {} }
+			# build label
+			if file.filter?
+				js.attr.class = 'tree-element-filter'
+			if (file.count ? 0) > 0
+				if file.type is 'directory'
+					js.data = file.file + " (#{file.count} files, #{toIsoString(file.size)}B)"
+				else
+					js.data = file.file + " (#{toIsoString(file.size)}B)"
+			else
+					js.data = file.file
+				
+			# build HTML element
+			if file.isDirectory
+				js.attr.rel = 'folder_loading'
+				js.state = 'close'
+			else
+				js.attr.rel = 'file'
+			@cryoui._snapshotFiles.jstree "create_node", node, "inside",
+				js
+				false, false
+	
 	window.cryo.getSnapshotFiles 
 	
 	

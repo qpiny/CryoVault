@@ -3,7 +3,7 @@ package org.rejna.cryo.models
 import ArchiveType._;
 import CryoBinary._;
 
-import scala.collection.mutable.{ HashMap, ListBuffer }
+import scala.collection.mutable.{ HashMap, ListBuffer, LinkedList }
 import scala.collection.JavaConversions._
 import scala.io.Source
 
@@ -11,8 +11,10 @@ import scalax.io.Resource
 
 import akka.actor._
 
-import java.io.{ File, FileFilter, FileOutputStream, FileInputStream }
+import java.io.{ File, FileFilter, FileOutputStream, FileInputStream, IOException }
 import java.util.UUID
+import java.nio.file._
+import java.nio.file.attribute._
 
 import ArchiveType._
 import CryoStatus._
@@ -41,27 +43,45 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
   def remoteSnapshot: Option[RemoteSnapshot] = remoteSnapshotAttribute()
   protected def remoteSnapshot_= = remoteSnapshotAttribute() = _
 
-  val fileFilters = attributeBuilder.map("fileFilters", Map[String, String]())
+  val fileFilters = attributeBuilder.map("fileFilters", Map.empty[String, String])
 
-  val files = attributeBuilder.list("files", () => {
-    fileFilters.flatMap(df => {
-      val filterBase = new File(Config.baseDirectory, df._1)
-      if (filterBase.isDirectory)
-        FileUtils.iterateFiles(filterBase, new WildcardFileFilter(df._2), TrueFileFilter.INSTANCE)
-      else
-        Some(filterBase)
-    }).toList.distinct.map(f => Config.baseURI.relativize(f.toURI).getPath)
-  })
+  val files = attributeBuilder.list("files", List.empty[String])
 
-  files <* fileFilters
-
-  files <+> new AttributeListCallback {
-    override def onListChange[A, B](attribute: ReadAttribute[List[A]], addedValues: List[B], removedValues: List[B]) = {
-      size += addedValues.map(f => new File(Config.baseDirectory, f.toString).length()).sum -
-        removedValues.map(f => new File(Config.baseDirectory, f.toString).length()).sum
+  fileFilters <+> new AttributeListCallback {
+    override def onListChange[A](attribute: ReadAttribute[List[A]], addedValues: List[A], removedValues: List[A]) = {
+      var newSize = size
+      var addedFiles = LinkedList.empty[String]
+      if (removedValues.isEmpty) {
+        val (addedFiles, addedSize) = walkFileSystem(addedValues.asInstanceOf[List[(String, String)]])
+        files ++= addedFiles.toList // FIXME API collision ++=(TraversableOnce) and ++=(List)
+        size += addedSize
+      }
+      else {
+        val (newFiles, newSize) = walkFileSystem(fileFilters)
+        files()= newFiles.toList
+        size = newSize
+      }
     }
   }
 
+  private def walkFileSystem(filters: Iterable[(String, String)]) = {
+    var size = 0L
+    var files = LinkedList.empty[String]
+    for ((file, filter) <- filters) {
+      Files.walkFileTree(FileSystems.getDefault().getPath(file), new SimpleFileVisitor[Path] {
+        override def visitFileFailed(file: Path, exc: IOException) = FileVisitResult.CONTINUE
+        override def visitFile(file: Path, attrs: BasicFileAttributes) = {
+          if (attrs.isRegularFile) {
+            files = LinkedList(file.toString) append files // FIXME relativize + check if toString has correct return
+            size += attrs.size
+          }
+          FileVisitResult.CONTINUE
+        }
+      })
+    }
+    (files, size)
+  }
+  
   private def splitFile(fileURI: String): Iterator[Block] = {
     val file = new File(Config.baseDirectory, fileURI)
     val blockSize = Config.blockSizeFor(file.length)
@@ -72,7 +92,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
     import CryoBinary._
     if (state != Creating) throw InvalidStateException
     // TODO check hash collision
-    
+
     // serialize index: [File -> [Hash]] ++ [Hash -> BlockLocation] ++ [File -> IOFileFilter]
     println("Creating archive in %s".format(file.getAbsolutePath))
     val output = new FileOutputStream(file)

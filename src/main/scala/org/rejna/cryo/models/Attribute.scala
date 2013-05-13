@@ -1,6 +1,6 @@
 package org.rejna.cryo.models
 
-import scala.collection.mutable.{ Buffer, ListBuffer, Map, HashMap }
+import scala.collection.mutable.{ Buffer, ListBuffer, Map, HashMap, Set }
 import scala.collection.immutable.{ Map => IMap }
 import net.liftweb.json._
 
@@ -14,8 +14,8 @@ class AttributeBuilder(val publisher: EventPublisher, path: String*) {
     }
   }
   object listCallback extends AttributeListCallback {
-    override def onListChange[B, C](attribute: ReadAttribute[List[B]], addedValues: List[C], removedValues: List[C]): Unit = {
-      println("attribute[%s#%s] add: %s remove: %s".format(paths.mkString("(", ",", ")"), attribute.name, addedValues, removedValues))
+    override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit = {
+      println("attribute[%s#%s] add: %s remove: %s".format(paths.mkString("(", ",", ")"), attribute.name, addedValues.take(10), removedValues.take(10)))
       for (p <- paths) publisher.publish(AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
     }
   }
@@ -32,9 +32,7 @@ class AttributeBuilder(val publisher: EventPublisher, path: String*) {
 
   def map[A, B](name: String, body: () => IMap[A, B]) = new MetaMapAttribute(name, body) <+> listCallback
 
-  @Deprecated
-  def subBuilder(subpath: String) = new AttributeBuilder(publisher, path.map { p => "%s/%s".format(p, subpath) }: _*)
-  def / = subBuilder _
+  def /(subpath: String) = new AttributeBuilder(publisher, path.map { p => "%s/%s".format(p, subpath) }: _*)
 
   def withAlias(path: String) = new AttributeBuilder(publisher, path :: paths: _*)
 }
@@ -44,7 +42,7 @@ trait AttributeChangeCallback {
 }
 
 trait AttributeListCallback {
-  def onListChange[A, B](attribute: ReadAttribute[List[A]], addedValues: List[B], removedValues: List[B]) = {}
+  def onListChange[A](attribute: ReadAttribute[List[A]], addedValues: List[A], removedValues: List[A]) = {}
   //def onAdd[A, B](attribute: ReadAttribute[List[A], S], values: List[B])(implicit serializer: List[B] => S) = {}
   //def onRemove[A, B](attribute: ReadAttribute[List[A], S], values: List[B])(implicit serializer: List[B] => S) = {}
 }
@@ -147,13 +145,13 @@ trait ListCallback[A, B <: ReadAttribute[List[A]]] { self: B =>
       val add = now diff previous
       val remove = previous diff now
       for (c <- listCallbacks)
-        c.onListChange(self, add, remove)      
+        c.onListChange(self, add, remove)
     }
   })
 
   def onAdd(cb: (=> Unit) => Unit) = {
     lazy val ac: AttributeListCallback = new AttributeListCallback {
-      override def onListChange[B, C](attribute: ReadAttribute[List[B]], addedValues: List[C], removedValues: List[C]): Unit =
+      override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit =
         cb { removeCallback(ac) }
     }
     addCallback(ac)
@@ -161,7 +159,8 @@ trait ListCallback[A, B <: ReadAttribute[List[A]]] { self: B =>
 
   def onRemove(cb: (=> Unit) => Unit) = {
     lazy val ac: AttributeListCallback = new AttributeListCallback {
-      override def onListChange[B, C](attribute: ReadAttribute[List[B]], addedValues: List[C], removedValues: List[C]): Unit = cb { removeCallback(ac) }
+      override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit =
+        cb { removeCallback(ac) }
     }
     addCallback(ac)
   }
@@ -186,6 +185,11 @@ class ListAttribute[A](name: String, initValue: List[A])
 
   def +=(elem: A) = {
     update(now :+ elem)
+    this
+  }
+  
+  def ++=(elems:  List[A]) = {
+    update(now ::: elems)
     this
   }
 

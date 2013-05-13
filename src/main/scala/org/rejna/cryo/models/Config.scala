@@ -56,6 +56,7 @@ object Config {
 
   val baseDirectory = new File("/")
   val baseURI = baseDirectory.toURI
+  //val baseDirectory = java.nio.file.FileSystems.getDefault.getPath("/")
 
   def getFile(archiveType: ArchiveType, id: String) = new File(Config.cacheDirectory.getAbsolutePath + File.separator + archiveType + "_" + id + ".glacier")
 

@@ -96,7 +96,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
   }
 
   protected def uploadInSimplePart = {
-    val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), s"Uploading ${description} ...", file)
+    val input = new MonitoredInputStream(attributeBuilder / "transfer", s"Uploading ${description} ...", file)
     transfer = Some(input)
     val checksum = TreeHashGenerator.calculateTreeHash(file)
     val newId = Cryo.uploadArchive(input, description, checksum)
@@ -106,7 +106,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
   }
 
   protected def uploadInMultiplePart = {
-    val input = new MonitoredInputStream(attributeBuilder.subBuilder("transfer"), s"Uploading ${description} (multipart) ...", file)
+    val input = new MonitoredInputStream(attributeBuilder / "transfer", s"Uploading ${description} (multipart) ...", file)
     transfer = Some(input)
     val uploadId = Cryo.initiateMultipartUpload(description)
     val binaryChecksums = ArrayBuffer[Array[Byte]]()

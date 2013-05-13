@@ -1,12 +1,12 @@
 class MessageHandler	
 	SnapshotList: (e) ->
-		window.cryoUI.snapshotList.update e.snapshots
+		window.cryoUI.snapshotList.update(e.snapshots)
 
 	SnapshotCreated: (e) ->
-		window.cryoUI.snapshotList.selectSnapshot e.id
+		window.cryoUI.snapshotList.selectSnapshot(e.id)
 	
 	SnapshotFiles: (e) ->
-		window.cryoUI.snapshotList.selectedSnapshot().showFiles e.directory, e.files
+		window.cryoUI.snapshotList.selectedSnapshot().showFiles(e.directory, e.files)
 	
 	AttributeChange: (e) ->
 		if (e.path.endsWith('#size'))

@@ -1,6 +1,7 @@
 package org.rejna.cryo.web
 
 import scala.util.matching.Regex
+import scala.concurrent.duration._
 import akka.actor.Actor
 import java.io.File
 import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Config, CryoEventBus }
@@ -67,23 +68,23 @@ object CryoSocketBus extends CryoEventBus with SubchannelClassification {
 
   // FIXME add synchronized + volatile
   protected def publish(event: Event, subscriber: Subscriber): Unit = {
-    ignore.get(subscriber) match {
-      case Some(filters) if !filters.exists(_.findFirstIn(event.path).isDefined) => // ignore
+    ignore.get(subscriber.channel.getId) match { // FIXME Ignore doesn't work !
+      case Some(filters) if filters.exists(_.findFirstIn(event.path).isDefined) => // ignore
       case _ =>
         println("-->" + event)
         subscriber.write(event)
     }
   }
 
-  private var ignore = Map[Subscriber, Set[Regex]]()
+  private var ignore = Map[Int, Set[Regex]]()
   def addIgnoreSubscription(subscriber: Subscriber, subscription: String) = {
-    ignore = ignore.updated(subscriber,
-      ignore.getOrElse(subscriber, Set[Regex]()) + subscription.r)
+    ignore = ignore.updated(subscriber.channel.getId,
+      ignore.getOrElse(subscriber.channel.getId, Set[Regex]()) + subscription.r)
   }
 
   def removeIgnoreSubscription(subscriber: Subscriber, subscription: String) = {
-    ignore = ignore.updated(subscriber,
-      ignore.getOrElse(subscriber, Set[Regex]()) - subscription.r)
+    ignore = ignore.updated(subscriber.channel.getId,
+      ignore.getOrElse(subscriber.channel.getId, Set[Regex]()) - subscription.r)
   }
 }
 
@@ -180,7 +181,21 @@ class CryoSocket extends Actor {
 */
   def getDirectoryContent(directory: File, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, String]) = {
     //println("getDirectoryContent(%s, %s)".format(directory, fileSelection.mkString("(", ",", ")")))
+    def removeTrailingSlash(s: String): String = {
+      if (s.endsWith("/"))
+        s.substring(0, s.length - 1)
+      else 
+        s
+    }
     val dirContent = Option(directory.listFiles).getOrElse(Array[File]())
+    for (f <- dirContent) {
+      val filePath = removeTrailingSlash(Config.baseURI.relativize(f.toURI).getPath)
+      
+      To be continued
+    }
+    
+    
+    
     dirContent.map(f => {
       val filePath = Config.baseURI.relativize(f.toURI).getPath match {
         case x if x.endsWith("/") => x.substring(0, x.length - 1)
