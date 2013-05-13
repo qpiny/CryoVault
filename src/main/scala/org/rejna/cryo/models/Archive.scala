@@ -5,12 +5,11 @@ import scala.collection.JavaConversions._
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.io.Source
-import scalax.io._
 
-import java.io.{ File, FileOutputStream }
+import java.io.{ FileOutputStream, FileNotFoundException, InputStream, OutputStream }
 import java.util.Date
-
-import akka.actor.Cancellable
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption._
 
 import akka.actor._
 
@@ -50,30 +49,29 @@ abstract class Archive(val archiveType: ArchiveType, val id: String, val date: D
 
   val file = Config.getFile(archiveType, id)
 
-  def deleteCache = file.delete
-  
+  def deleteCache = Files.delete(file)
+
   def size: Long
 }
 
 class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archiveType, id, new DateTime, Creating) {
   import DateUtil._
-  if (!file.exists) file.createNewFile
 
   protected val remoteArchiveAttribute = attributeBuilder[Option[RemoteArchive]]("remoteArchive", None)
   def remoteArchive: Option[RemoteArchive] = remoteArchiveAttribute()
   protected def remoteArchive_= = remoteArchiveAttribute() = _
 
-  protected val sizeAttribute = attributeBuilder("size", file.length)
+  protected val sizeAttribute = attributeBuilder("size", Files.size(file))
   def size = sizeAttribute()
   protected def size_= = sizeAttribute() = _
 
-  val dataStream: Output = Resource.fromFile(file)
+  // FIXME lazy val dataStream: Output = Resource.fromOutputStream(Files.newOutputStream(file, CREATE, APPEND))
 
   lazy val description = s"${archiveType}-${date.toISOString}"
 
   def writeBlock(block: Block) = {
     if (state != Creating) throw InvalidStateException
-    dataStream.write(block.data)
+    // FIXME dataStream.write(block.data)
     val bl = BlockLocation(block.hash, this, size, block.size)
     size += block.size
     bl
@@ -82,14 +80,13 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
   def upload: RemoteArchive = synchronized {
     if (state != Creating) throw InvalidStateException
     state = Uploading
-    
+
     val rarchive = if (size > Config.multipart_threshold)
       uploadInMultiplePart
     else
       uploadInSimplePart
 
-    
-    file.renameTo(rarchive.file)
+    Files.move(file, rarchive.file)
     remoteArchive = Some(rarchive)
     state = Cached
     rarchive
@@ -98,7 +95,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
   protected def uploadInSimplePart = {
     val input = new MonitoredInputStream(attributeBuilder / "transfer", s"Uploading ${description} ...", file)
     transfer = Some(input)
-    val checksum = TreeHashGenerator.calculateTreeHash(file)
+    val checksum = TreeHashGenerator.calculateTreeHash(Files.newInputStream(file)) // calculateTreeHash closes input stream
     val newId = Cryo.uploadArchive(input, description, checksum)
     transfer = None
     input.close
@@ -134,10 +131,14 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
 
 class RemoteArchive(archiveType: ArchiveType, date: DateTime, id: String, val size: Long, val hash: Hash) extends Archive(archiveType, id, date, Remote) {
 
-  if (!file.exists || file.length == 0 || Hash(TreeHashGenerator.calculateTreeHash(file)) != hash)
-    file.delete
-  else
-    state = Cached
+  try {
+    if (Hash(TreeHashGenerator.calculateTreeHash(Files.newInputStream(file))) != hash)
+      Files.delete(file)
+    else
+      state = Cached
+  } catch {
+    case _: FileNotFoundException =>
+  }
 
   def forceDownload = {
     state = Remote
@@ -170,11 +171,16 @@ class RemoteArchive(archiveType: ArchiveType, date: DateTime, id: String, val si
         state = Downloading
         val input = Cryo.getJobOutput(jobId)
         val output = new MonitoredOutputStream(attributeBuilder, s"Downloading archive ${id}",
-          new FileOutputStream(file),
+          Files.newOutputStream(file, CREATE_NEW),
           input.available)
-        transfer = Some(output)
-        Resource.fromInputStream(input) copyDataTo Resource.fromOutputStream(output)
-        state = Cached
+        try {
+          transfer = Some(output)
+          StreamOps.copyStream(input, output)
+          state = Cached
+        } finally {
+          input.close
+          output.close
+        }
       })
     }
   }

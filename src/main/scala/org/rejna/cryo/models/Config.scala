@@ -1,11 +1,13 @@
 package org.rejna.cryo.models
 
 import scala.util.Random
-import java.io.File
+import scala.language.postfixOps
+
+//import java.io.File
+import java.nio.file._
 import javax.crypto.{ Cipher, KeyGenerator, CipherOutputStream }
 import javax.crypto.spec.IvParameterSpec
 import com.amazonaws.auth.BasicAWSCredentials
-import org.apache.commons.io.filefilter._
 
 import ArchiveType._
 
@@ -37,7 +39,7 @@ object Config {
 
   val archiveSize = 50 mebi
 
-  val fileFilter = new PrefixFileFilter("bk_")
+  //val fileFilter = new PrefixFileFilter("bk_")
   val fileLocation = System.getProperty("java.io.tmpdir")
 
   val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
@@ -51,14 +53,15 @@ object Config {
   val paramSpec = new IvParameterSpec(iv)
   cipher.init(Cipher.ENCRYPT_MODE, key, paramSpec);
 
-  val cacheDirectory = new File(System.getProperty("java.io.tmpdir"))
-  val inventoryFile = new File(cacheDirectory, "inventory.glacier")
+  val cacheDirectory =FileSystems.getDefault.getPath(System.getProperty("java.io.tmpdir"))
+  val inventoryFile = cacheDirectory.resolve("inventory.glacier")
 
-  val baseDirectory = new File("/")
-  val baseURI = baseDirectory.toURI
-  //val baseDirectory = java.nio.file.FileSystems.getDefault.getPath("/")
+  //val baseDirectory = new File("/")
+  //val baseURI = baseDirectory.toURI
+  val baseDirectory = FileSystems.getDefault.getPath("/")
 
-  def getFile(archiveType: ArchiveType, id: String) = new File(Config.cacheDirectory.getAbsolutePath + File.separator + archiveType + "_" + id + ".glacier")
+  def getFile(archiveType: ArchiveType, id: String) = //new File(Config.cacheDirectory.getAbsolutePath + File.separator + archiveType + "_" + id + ".glacier")
+   cacheDirectory.resolve(archiveType + "_" + id + ".glacier")
 
   /*
   def archiveToFile(archiveId: String): File = {

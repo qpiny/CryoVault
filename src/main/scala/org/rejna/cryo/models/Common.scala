@@ -1,6 +1,10 @@
 package org.rejna.cryo.models
 
-import java.io.{ File, FileInputStream }
+import scala.collection.JavaConversions._
+
+import java.nio.ByteBuffer
+import java.nio.file.StandardOpenOption._
+import java.nio.channels.FileChannel
 
 import com.amazonaws.services.s3.internal.InputSubstream
 
@@ -17,7 +21,15 @@ case class BlockLocation(val hash: Hash, val archive: Archive, val offset: Long,
         if (a.state != Cached) throw InvalidStateException
         a
     }
-    new InputSubstream(new FileInputStream(arc.file), offset, size, true)
+
+    val channel = FileChannel.open(arc.file, Set(CREATE, TRUNCATE_EXISTING, WRITE)) //, READ)
+    try {
+      val buffer = ByteBuffer.allocate(size)
+      channel.read(buffer, offset)
+      buffer
+    } finally {
+      channel.close()
+    }
   }
 }
 

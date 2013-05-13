@@ -1,5 +1,7 @@
 package org.rejna.cryo.models
 
+import scala.language.implicitConversions
+
 import org.joda.time.DateTime
 import org.joda.time.format.ISODateTimeFormat
 

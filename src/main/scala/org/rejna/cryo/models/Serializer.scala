@@ -1,7 +1,6 @@
 package org.rejna.cryo.models
 
 import java.io.File
-import org.apache.commons.io.filefilter._
 
 import sbinary._
 

@@ -1,5 +1,7 @@
 package org.rejna.util
 
+import scala.language.implicitConversions
+
 object IsoUnit {
   implicit def apply(value: Long) = new IsoUnit(value)
   implicit def isoUnitToLong(u: IsoUnit) = u.value

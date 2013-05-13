@@ -1,5 +1,7 @@
 package org.rejna.cryo.web
 
+import java.nio.file.Files
+
 import net.liftweb.json._
 
 import org.rejna.cryo.models.{ Snapshot, AttributeChange, AttributeListChange }
@@ -22,8 +24,8 @@ object JsonSerializer extends Serializer[Snapshot] {
     case (k, v) =>
       (k.toString -> Extraction.decompose(v))
     case fe: FileElement =>
-      ("file" -> fe.file.getName) ~
-      ("isDirectory" -> fe.file.isDirectory()) ~ 
+      ("file" -> fe.file.toString) ~
+      ("isDirectory" -> Files.isDirectory(fe.file)) ~ 
       ("count" -> fe.count) ~
       ("size" -> fe.size)  ~
       ("filter" -> fe.filter)

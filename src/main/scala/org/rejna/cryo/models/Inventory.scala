@@ -1,18 +1,18 @@
 package org.rejna.cryo.models
 
 import scala.io.Source
-
-import scalax.io.Resource
-
 import scala.concurrent.duration._
-
-import java.io.{ File, FileOutputStream }
+import scala.language.postfixOps
+import java.io.FileOutputStream
+import java.nio.file.{ Files, Path }
+import java.nio.file.StandardOpenOption._
+import java.nio.CharBuffer
+import java.nio.channels.FileChannel
 import java.util.UUID
-
 import org.joda.time.{ DateTime, Interval }
-
 import ArchiveType._
 import CryoStatus._
+import java.nio.CharBuffer
 
 class Inventory {
   val dateAttribute = Cryo.attributeBuilder("inventoryDate", DateTime.now)
@@ -28,10 +28,18 @@ class Inventory {
 
   val file = Config.inventoryFile
 
-  if (file.exists)
+  if (Files.exists(file))
     update(file)
 
-  def update(f: File): Unit = update(InventoryMessage(Source.fromFile(f).mkString))
+  def update(f: Path): Unit = {
+    val channel = FileChannel.open(f)
+    try {
+      val buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size)
+      update(InventoryMessage(buffer.asCharBuffer.toString))
+    } finally {
+      channel.close
+    }
+  }
 
   def update(message: InventoryMessage): Unit = {
     date = message.date
@@ -47,10 +55,15 @@ class Inventory {
       Cryo.initiateInventory(jobId => {
         val input = Cryo.getJobOutput(jobId)
         val output = new MonitoredOutputStream(Cryo.attributeBuilder, "Downloading inventory",
-          new FileOutputStream(file),
+          Files.newOutputStream(file, CREATE_NEW),
           input.available)
-        Resource.fromInputStream(input) copyDataTo Resource.fromOutputStream(output)
-        update(file)
+        try {
+          StreamOps.copyStream(input, output)
+          update(file)
+        } finally {
+          input.close
+          output.close
+        }
       })
     }
   }
@@ -74,7 +87,7 @@ class Inventory {
     archives += newId -> r
     r
   }
-  
+
   def migrate(snapshot: LocalSnapshot, archive: RemoteArchive) = {
     var r = new RemoteSnapshot(archive.date, archive.id, archive.size, archive.hash)
     snapshots -= snapshot.id
