@@ -110,7 +110,7 @@ object Cryo extends EventPublisher {
     glacier.initiateMultipartUpload(new InitiateMultipartUploadRequest()
       .withArchiveDescription(description)
       .withVaultName(Config.vaultName)
-      .withPartSize(Config.partSize.value.toString)).getUploadId
+      .withPartSize(Config.partSize.toString)).getUploadId
 
   def uploadMultipartPart(uploadId: String, input: InputStream, range: String, checksum: String): Unit =
     glacier.uploadMultipartPart(new UploadMultipartPartRequest()

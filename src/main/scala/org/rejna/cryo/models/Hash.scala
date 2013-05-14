@@ -28,7 +28,7 @@ object Hash {
   def apply(file: Path) = {
     val md = MessageDigest.getInstance(Config.hashAlgorithm)
 
-    val buffer = ByteBuffer.allocate(Config.bufferSize)
+    val buffer = ByteBuffer.allocate(Config.bufferSize.intValue)
     val input = FileChannel.open(file, READ)
     try {
       Iterator.continually(input.read(buffer)) takeWhile (_ != -1) filter (_ > 0) foreach (size => md.update(buffer.array, 0, size))

@@ -5,7 +5,7 @@ import java.nio.file.{ Path, Files }
 
 object StreamOps {
   def copyStream(from: InputStream, to: OutputStream) = {
-    val buffer = Array.ofDim[Byte](Config.bufferSize)
+    val buffer = Array.ofDim[Byte](Config.bufferSize.intValue)
     Iterator continually (from read buffer) takeWhile (_ != -1) filter (_ > 0) foreach { to.write(buffer, 0, _) }
   }
 }

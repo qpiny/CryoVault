@@ -84,7 +84,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
     dataStream.close
     state = Uploading
 
-    val rarchive = if (size > Config.multipart_threshold)
+    val rarchive = if (size > Config.multipartThreshold)
       uploadInMultiplePart
     else
       uploadInSimplePart
