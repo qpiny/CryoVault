@@ -36,7 +36,7 @@ trait CryoEventBus extends EventBus {
 }
 
 object Cryo extends EventPublisher {
-  val system = ActorSystem("cryo") // FIXME (use cryoweb system)
+  val system = ActorSystem("cryo")
 
   private var _eventBus: Option[CryoEventBus] = None
   def setEventBus(eventBus: CryoEventBus) = _eventBus = Some(eventBus)
@@ -45,6 +45,7 @@ object Cryo extends EventPublisher {
     for (bus <- _eventBus)
       bus.publish(event)
   }
+
   lazy val attributeBuilder = new AttributeBuilder(this, "/cryo")
 
   val inventory = new Inventory()
@@ -86,40 +87,6 @@ object Cryo extends EventPublisher {
   }
 
   var jobs = Map[String, String => Unit]()
-
-  private val _catalog = HashMap[Hash, HashMap[Int, BlockLocation]]()
-
-  def catalog = _catalog.toMap
-
-  def updateCatalog(entries: Map[Hash, BlockLocation]) = _catalog ++ entries
-
-  def getOrUpdateBlockLocation(block: Block, createBlockLocation: => BlockLocation): BlockLocation = {
-    def checkCollition(bl: BlockLocation, file: Path) = {
-      val buffer = ByteBuffer.allocate(bl.size)
-      val input = FileChannel.open(file, READ)
-      try {
-        input.read(buffer, bl.offset)
-      } finally { input.close }
-
-      buffer.compareTo(ByteBuffer.wrap(block.data)) == 0
-    }
-
-    def addBlockLocation(bl: BlockLocation, version: Int) = {
-      _catalog += block.hash -> (version -> bl)
-      bl
-    }
-
-    _catalog.get(block.hash) match {
-      case None => addBlockLocation(createBlockLocation, 0)
-      case Some(bl) =>
-        // check hash collision
-        val r = bl.archive match {
-          case la: LocalArchive => if (checkCollition(bl, la.file)) addBlockLocation(createBlockLocation)
-          case ra: RemoteArchive => if (ra.state == Cached && checkCollition(bl, ra.file)) addBlockLocation(createBlockLocation)
-          case _: Any => bl
-        }
-    }
-  }
 
   def newArchive(archiveType: ArchiveType, id: String) = inventory.newArchive(archiveType, id)
 
@@ -198,6 +165,3 @@ object Cryo extends EventPublisher {
       .withVaultName(Config.vaultName)).getBody
 
 }
-//
-//  protected def publish(event: Event, subscriber: Subscriber): Unit = subscriber ! event
-//}

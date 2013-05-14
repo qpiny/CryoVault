@@ -7,7 +7,15 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption._
 import java.nio.channels.FileChannel
 
-class Hash(val value: Array[Byte], var version: Int = 0) {
+class Hash(val value: Array[Byte], vers: Option[Int] = None) {
+  private var _version = vers
+  
+  def version = _version
+  
+  def version_=(v: Int) = _version match { // version can be set only once
+    case None => _version = Some(v)
+    case _: Any => // ignore XXX add log ?
+  }
   override def toString = value.map("%02X" format _).mkString
 
   override def equals(a: Any) = a match {

@@ -171,9 +171,9 @@ class ListAttribute[A](name: String, initValue: List[A])
 
   def remove(n: Int) = {
     val (start, stop) = now splitAt n
-    var r = stop.head
+    val h = stop.head
     update(start ::: (stop drop 1))
-    r
+    h
   }
 
   def insertAll(n: Int, elems: Traversable[A]) = {
@@ -186,8 +186,8 @@ class ListAttribute[A](name: String, initValue: List[A])
     this
   }
   
-  def ++=(elems:  List[A]) = {
-    update(now ::: elems)
+  override def ++=(elems: TraversableOnce[A]) = {
+    update(now ::: elems.toList)
     this
   }
 

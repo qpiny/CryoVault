@@ -1,15 +1,7 @@
 package org.rejna.cryo.models
 
-import ArchiveType._;
-import CryoBinary._;
-
 import scala.collection.mutable.{ HashMap, ListBuffer, LinkedList }
 import scala.collection.JavaConversions._
-import scala.io.Source
-
-//import scalax.io.Resource
-
-import akka.actor._
 
 import java.io.{ FileOutputStream, FileInputStream, IOException }
 import java.util.UUID
@@ -70,7 +62,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
       var addedFiles = LinkedList.empty[String]
       if (removedValues.isEmpty) {
         val (addedFiles, addedSize) = walkFileSystem(addedValues.asInstanceOf[List[(String, String)]])
-        files ++= addedFiles.toList // FIXME API collision ++=(TraversableOnce) and ++=(List)
+        files ++= addedFiles
         size += addedSize
       } else {
         val (newFiles, newSize) = walkFileSystem(fileFilters)
@@ -87,7 +79,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
       new TraversePath(path).foreach {
         case (f, attrs) =>
           if (attrs.isRegularFile) {
-            files = LinkedList(f.toString) append files // FIXME relativize + check if toString has correct return
+            files = LinkedList(Config.baseDirectory.relativize(f).toString) append files
             size += attrs.size
           }
       }
@@ -110,7 +102,6 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
   def create = {
     import CryoBinary._
     if (state != Creating) throw InvalidStateException
-    // TODO check hash collision
 
     // serialize index: [File -> [Hash]] ++ [Hash -> BlockLocation] ++ [File -> Filter]
     println(s"Creating archive in ${file}")
@@ -126,7 +117,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
             currentArchive.upload
             currentArchive = Cryo.newArchive(Data)
           }
-          val bl = Cryo.getOrUpdateBlockLocation(block.hash, currentArchive.writeBlock(block))
+          val bl = Catalog.getOrUpdate(block, currentArchive.writeBlock(block))
           format[Boolean].writes(output, true)
           format[Hash].writes(output, block.hash)
         }
@@ -151,13 +142,12 @@ class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends
   val fileFilters = scala.collection.mutable.Map[String, String]()
 
   onStateChange(stop => {
-    //implicit val _cryo = cryo
     if (state == Cached) {
       // Load snapshot from file
       import CryoBinary._
       val input =  Files.newInputStream(file)
       try {
-	      Cryo.updateCatalog(format[Map[Hash, BlockLocation]].reads(input))
+	      Catalog ++= format[Map[Hash, BlockLocation]].reads(input)
 	      remoteFiles ++= format[Map[String, Iterator[Hash]]].reads(input).map {
 	        case (f, hashes) => new RemoteFile(id, Config.baseDirectory.resolve(f), hashes.toSeq: _*)
 	      }
@@ -183,8 +173,8 @@ class RemoteFile(val snapshotId: String, val file: Path, val blockHash: Hash*) {
   val statusAttribute = Cryo.attributeBuilder("status", Remote)
   def status = statusAttribute()
   def status_= = statusAttribute() = _
-  val blockLocations = blockHash.map(h => Cryo.catalog(h))
-  val archives = blockLocations.map(_.archive.asInstanceOf[RemoteArchive]) //List(blockLocations.map(_.archive.asInstanceOf[RemoteArchive]): _*)
+  val blockLocations = blockHash.map(h => Catalog.get(h).getOrElse(sys.error("Block location is not found in catalog")))
+  val archives = blockLocations.map(_.archive.asInstanceOf[RemoteArchive])
 
   val remoteArchives = Cryo.attributeBuilder.list("remoteArchive", List[RemoteArchive]())
   remoteArchives ++ archives.map(archive =>

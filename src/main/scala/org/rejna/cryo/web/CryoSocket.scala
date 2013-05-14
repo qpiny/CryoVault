@@ -73,7 +73,7 @@ object CryoSocketBus extends CryoEventBus with SubchannelClassification {
 
   // FIXME add synchronized + volatile
   protected def publish(event: Event, subscriber: Subscriber): Unit = {
-    ignore.get(subscriber.channel.getId) match { // FIXME Ignore doesn't work !
+    ignore.get(subscriber.channel.getId) match {
       case Some(filters) if filters.exists(_.findFirstIn(event.path).isDefined) => // ignore
       case _ =>
         println("-->" + event)

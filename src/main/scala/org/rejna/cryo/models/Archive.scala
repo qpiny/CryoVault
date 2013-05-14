@@ -97,38 +97,44 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
 
   protected def uploadInSimplePart = {
     val input = new MonitoredInputStream(attributeBuilder / "transfer", s"Uploading ${description} ...", file)
-    transfer = Some(input)
-    val checksum = TreeHashGenerator.calculateTreeHash(Files.newInputStream(file)) // calculateTreeHash closes input stream
-    val newId = Cryo.uploadArchive(input, description, checksum)
-    transfer = None
-    input.close
-    Cryo.migrate(this, newId, size, Hash(checksum))
+    try {
+      val checksum = TreeHashGenerator.calculateTreeHash(Files.newInputStream(file)) // calculateTreeHash closes input stream
+      transfer = Some(input)
+      val newId = Cryo.uploadArchive(input, description, checksum)
+      transfer = None
+      Cryo.migrate(this, newId, size, Hash(checksum))
+    } finally {
+      input.close
+    }
   }
 
   protected def uploadInMultiplePart = {
     val input = new MonitoredInputStream(attributeBuilder / "transfer", s"Uploading ${description} (multipart) ...", file)
-    transfer = Some(input)
-    val uploadId = Cryo.initiateMultipartUpload(description)
-    val binaryChecksums = ArrayBuffer[Array[Byte]]()
-    for (partStart <- (0L to size by Config.partSize)) {
-      val length = (size - partStart).min(Config.partSize)
-      val subInput = new InputSubstream(input, partStart, length, false)
+    try {
+      transfer = Some(input)
+      val uploadId = Cryo.initiateMultipartUpload(description)
+      val binaryChecksums = ArrayBuffer[Array[Byte]]()
+      for (partStart <- (0L to size by Config.partSize)) {
+        val length = (size - partStart).min(Config.partSize)
+        val subInput = new InputSubstream(input, partStart, length, false)
 
-      subInput.mark(-1)
-      val checksum = TreeHashGenerator.calculateTreeHash(subInput)
-      binaryChecksums += Array.range(0, checksum.size, 2).map { i =>
-        java.lang.Integer.parseInt(checksum.slice(i, i + 2).mkString, 16).toByte
+        subInput.mark(-1)
+        val checksum = TreeHashGenerator.calculateTreeHash(subInput)
+        binaryChecksums += Array.range(0, checksum.size, 2).map { i =>
+          java.lang.Integer.parseInt(checksum.slice(i, i + 2).mkString, 16).toByte
+        }
+        subInput.reset
+
+        Cryo.uploadMultipartPart(uploadId, subInput, "bytes " + partStart + "-" + (partStart + length - 1) + "/*", checksum)
       }
-      subInput.reset
+      transfer = None
+      val checksum = TreeHashGenerator.calculateTreeHash(binaryChecksums)
+      val newId = Cryo.completeMultipartUpload(uploadId, size, checksum)
+      Cryo.migrate(this, newId, size, Hash(checksum))
 
-      Cryo.uploadMultipartPart(uploadId, subInput, "bytes " + partStart + "-" + (partStart + length - 1) + "/*", checksum)
+    } finally {
+      input.close
     }
-    transfer = None
-    input.close
-
-    val checksum = TreeHashGenerator.calculateTreeHash(binaryChecksums)
-    val newId = Cryo.completeMultipartUpload(uploadId, size, checksum)
-    Cryo.migrate(this, newId, size, Hash(checksum))
   }
 }
 
