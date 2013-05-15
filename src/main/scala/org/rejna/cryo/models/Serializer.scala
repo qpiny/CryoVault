@@ -1,11 +1,45 @@
 package org.rejna.cryo.models
 
+import java.nio.{ ByteBuffer, BufferOverflowException }
+import java.nio.channels.FileChannel
+
 import sbinary._
 import sbinary.Operations._
 
 import org.joda.time.DateTime
 
 import ArchiveType._
+
+class ByteBufferOutput(fc: FileChannel) extends Output {
+  val buffer = ByteBuffer.allocateDirect(Config.bufferSize)
+  def writeByte(value: Byte) = try {
+    buffer.put(value)
+  } catch {
+    case e: BufferOverflowException =>
+      buffer.flip
+      fc.write(buffer)
+      buffer.compact
+      buffer.put(value)
+  }
+
+  override def writeAll(source: Array[Byte], offset: Int, length: Int) = try {
+    buffer.put(source, offset, length)
+  } catch {
+    case e: BufferOverflowException =>
+      buffer.flip
+      fc.write(buffer)
+      buffer.compact
+      try { buffer.put(source, offset, length) }
+      catch {
+        case e: BufferOverflowException => super.writeAll(source, offset, length)
+      }
+  }
+
+  def close = {
+    while (buffer.hasRemaining)
+      fc.write(buffer)
+  }
+}
 
 object CryoBinary extends DefaultProtocol {
   import DefaultProtocol._

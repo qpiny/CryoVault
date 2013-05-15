@@ -88,8 +88,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
       uploadInMultiplePart
     else
       uploadInSimplePart
-
-    Files.move(file, rarchive.file)
+      
     remoteArchive = Some(rarchive)
     state = Cached
     rarchive

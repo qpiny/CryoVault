@@ -9,9 +9,9 @@ import java.nio.channels.FileChannel
 
 class Hash(val value: Array[Byte], vers: Option[Int] = None) {
   private var _version = vers
-  
+
   def version = _version
-  
+
   def version_=(v: Int) = _version match { // version can be set only once
     case None => _version = Some(v)
     case _: Any => // ignore XXX add log ?
@@ -31,7 +31,10 @@ object Hash {
     val buffer = ByteBuffer.allocate(Config.bufferSize.intValue)
     val input = FileChannel.open(file, READ)
     try {
-      Iterator.continually(input.read(buffer)) takeWhile (_ != -1) filter (_ > 0) foreach (size => md.update(buffer.array, 0, size))
+      Iterator.continually(input.read(buffer.clear.asInstanceOf[ByteBuffer]))
+        .takeWhile(_ != -1)
+        .filter(_ > 0)
+        .foreach(size => md.update(buffer.array, 0, size))
     } finally {
       input.close
     }

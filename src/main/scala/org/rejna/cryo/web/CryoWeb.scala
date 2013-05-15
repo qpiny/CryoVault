@@ -31,7 +31,6 @@ object CryoWeb extends App {
 
       case WebSocketHandshake(wsHandshake) => wsHandshake match {
         case Path("/websocket/") =>
-          println("Authorize websocket connection")
           wsHandshake.authorize()
       }
 

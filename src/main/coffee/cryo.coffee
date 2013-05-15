@@ -220,8 +220,8 @@ $ =>
 			@addIgnoreSubscription('#files$')
 			@getSnapshotList()
 			
-		#message: (msg) =>
-		#	@log('=>' + $.toJSON(msg.originalEvent.data))
+		message: (msg) =>
+			@log('=>' + $.toJSON(msg.originalEvent.data))
 		
 		events:
 			SnapshotList: (e) =>

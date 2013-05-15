@@ -17,7 +17,7 @@ object Config {
   import org.rejna.util.IsoUnit._
   val config = ConfigFactory.defaultOverrides.withFallback(ConfigFactory.load)
   val hashAlgorithm = config.getString("cryo.hash-algorithm")
-  val bufferSize = config.getBytes("cryo.buffer-size")
+  val bufferSize = config.getBytes("cryo.buffer-size").toInt
 
   val multipartThreshold = config.getBytes("cryo.multipart-threshold")
   val partSize = config.getBytes("cryo.part-size")

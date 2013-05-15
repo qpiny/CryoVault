@@ -3,26 +3,31 @@ package org.rejna.cryo.models
 import scala.concurrent.duration.Duration
 import scala.util.parsing.combinator.JavaTokenParsers
 
-import java.nio.file.{ Path, FileSystems }
+import java.nio.file.{ Files, Path, FileSystems }
+import java.nio.file.attribute.FileTime
+import java.util.Date
 
 case class ParseError(message: String) extends Exception(message)
 object FileFilterParser extends JavaTokenParsers {
   def param = "[^)]".r
   def duration = wholeNumber ~ ident ^^ { case length ~ unit => Duration(length.toLong, unit) }
-  def extensionFilter = "ext(" ~> param <~ ")" ^^ ExtensionFilter
-  def ageFilter = "age(" ~> duration <~ ")" ^^ AgeFilter
+  def extension = "ext(" ~> param <~ ")" ^^ ExtensionFilter
+  def older = "older(" ~> duration <~ ")" ^^ OlderFilter
+  def newer = "newer(" ~> duration <~ ")" ^^ NewerFilter
   def or = "or(" ~> filter ~ "," ~ filter <~ ")" ^^ { case filter1 ~ "," ~ filter2 => Or(filter1, filter2) }
   def and = "and(" ~> filter ~ "," ~ filter <~ ")" ^^ { case filter1 ~ "," ~ filter2 => And(filter1, filter2) }
   def not = "not(" ~> filter <~ ")" ^^ Not
   def all = "all" ^^ (x => All)
 
-  def filter: Parser[FileFilter] = (extensionFilter
-    | ageFilter
-    | or
-    | and
-    | not
-    | all)
-  
+  def filter: Parser[FileFilter] =
+    (extension
+      | older
+      | newer
+      | or
+      | and
+      | not
+      | all)
+
   def parse(s: String): Either[String, FileFilter] = parseAll(filter, s) match {
     case Success(result, input) => Right(result)
     case NoSuccess(message, input) => Left(message)
@@ -39,9 +44,14 @@ case class ExtensionFilter(ext: String) extends FileFilter {
   override def toString = s"ext(${ext})"
 }
 
-case class AgeFilter(age: Duration) extends FileFilter {
-  def accept(file: Path) = true // TODO
-  override def toString = s"age(${age})"
+case class OlderFilter(age: Duration) extends FileFilter {
+  def accept(file: Path) = Files.getLastModifiedTime(file).toMillis < (System.currentTimeMillis - age.toMillis)
+  override def toString = s"older(${age})"
+}
+
+case class NewerFilter(age: Duration) extends FileFilter {
+  def accept(file: Path) = Files.getLastModifiedTime(file).toMillis > (System.currentTimeMillis - age.toMillis)
+  override def toString = s"older(${age})"
 }
 
 case class Or(ff1: FileFilter, ff2: FileFilter) extends FileFilter {

@@ -59,7 +59,7 @@ object EventSerialization {
   implicit def toEventSender(wsFrame: WebSocketFrameEvent) = EventSender(wsFrame)
 }
 
-object CryoSocketBus extends CryoEventBus with SubchannelClassification {
+object CryoSocketBus extends CryoEventBus with SubchannelClassification with LoggingClass {
   import EventSerialization._
 
   type Classifier = String
@@ -76,7 +76,6 @@ object CryoSocketBus extends CryoEventBus with SubchannelClassification {
     ignore.get(subscriber.channel.getId) match {
       case Some(filters) if filters.exists(_.findFirstIn(event.path).isDefined) => // ignore
       case _ =>
-        println("-->" + event)
         subscriber.write(event)
     }
   }
@@ -99,7 +98,6 @@ class CryoSocket extends Actor with LoggingClass {
   def receive = {
     case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
-      println(s"receive: ${m}")
       val event = Serialization.read[RequestEvent](m)
       event match {
         case Subscribe(subscription) =>
@@ -132,19 +130,22 @@ class CryoSocket extends Actor with LoggingClass {
         case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
           val snapshot = Cryo.inventory.snapshots(snapshotId)
           snapshot match {
-            case ls: LocalSnapshot => FileFilterParser.parse(filter) match {
-              case Right(filter) => ls.fileFilters(directory) = filter
-              case Left(message) => // TODO LOG
-            }
-            case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
+            case ls: LocalSnapshot =>
+              if (filter == "")
+                ls.fileFilters -= directory
+              else
+                FileFilterParser.parse(filter).fold(
+                  message => log.error("UpdateSnapshotFileFilter has failed : " + message),
+                  filter => ls.fileFilters(directory) = filter)
+            case _ => log.error("UpdateSnapshotFileFilter: File filters in remote snapshot are immutable")
           }
         case UploadSnapshot(snapshotId) =>
           val snapshot = Cryo.inventory.snapshots(snapshotId)
           snapshot match {
             case ls: LocalSnapshot => ls.create
-            case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
+            case _ => log.error("UploadSnapshot: Remote snapshot can't be updaloaded")
           }
-        case msg => println("CryoActor has received an unknown message : " + msg)
+        case msg => log.warn("Unknown message has been received : " + msg)
       }
 
   }
@@ -153,18 +154,18 @@ class CryoSocket extends Actor with LoggingClass {
     try {
       val dirContent = Files.newDirectoryStream(directory)
 
-	    for (f <- dirContent) yield {
-	      val filePath = Config.baseDirectory.relativize(f)
-	      val fileSize = for (
-	        fs <- fileSelection;
-	        fp = FileSystems.getDefault.getPath(fs);
-	        if fp.startsWith(filePath)
-	      ) yield Files.size(Config.baseDirectory.resolve(fp))
-	
-	      new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
-	    }
+      for (f <- dirContent) yield {
+        val filePath = Config.baseDirectory.relativize(f)
+        val fileSize = for (
+          fs <- fileSelection;
+          fp = FileSystems.getDefault.getPath(fs);
+          if fp.startsWith(filePath)
+        ) yield Files.size(Config.baseDirectory.resolve(fp))
+
+        new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
+      }
     } catch {
-      case e: AccessDeniedException => Some(new FileElement(directory.resolve("_Access_denied_"), 0, 0, None)) 
+      case e: AccessDeniedException => Some(new FileElement(directory.resolve("_Access_denied_"), 0, 0, None))
     }
   }
 }

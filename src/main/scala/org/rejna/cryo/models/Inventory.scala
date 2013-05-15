@@ -32,9 +32,10 @@ class Inventory {
     update(file)
 
   def update(f: Path): Unit = {
-    val channel = FileChannel.open(f)
+    val channel = FileChannel.open(f, READ)
     try {
       val buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size)
+      buffer.flip
       update(InventoryMessage(buffer.asCharBuffer.toString))
     } finally {
       channel.close
@@ -82,6 +83,7 @@ class Inventory {
   }
 
   def migrate(archive: LocalArchive, newId: String, size: Long, hash: Hash) = {
+    Files.move(archive.file, Config.getFile(archive.archiveType, newId))
     val r = new RemoteArchive(archive.archiveType, archive.date, newId, size, hash)
     archives -= archive.id
     archives += newId -> r

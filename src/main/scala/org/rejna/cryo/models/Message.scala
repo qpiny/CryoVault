@@ -127,7 +127,7 @@ object InventoryMessage {
 //      InventoryMessage(
 //        (json \ "InventoryDate").as[DateTime],
 //        (json \\ "ArchiveList").map(a => new RemoteArchive(
-//          null, // FIXME Cryo.attributeBuilder.subBuilder("archive"),
+//          null, 
 //          ArchiveType.withName(t),
 //          isoToDate(d),
 //          (json \ "ArchiveId").as[String],

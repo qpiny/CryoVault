@@ -6,10 +6,6 @@ import scala.concurrent.duration._
 
 import java.util.UUID
 import java.io.InputStream
-import java.nio.ByteBuffer
-import java.nio.file.Path
-import java.nio.file.StandardOpenOption._
-import java.nio.channels.FileChannel
 
 import akka.actor._
 import akka.event._
@@ -35,7 +31,7 @@ trait CryoEventBus extends EventBus {
   type Event = org.rejna.cryo.models.Event
 }
 
-object Cryo extends EventPublisher {
+object Cryo extends EventPublisher with LoggingClass {
   val system = ActorSystem("cryo")
 
   private var _eventBus: Option[CryoEventBus] = None
@@ -67,14 +63,14 @@ object Cryo extends EventPublisher {
       .withAttributeNames("QueueArn"))
       .getAttributes.get("QueueArn")
     if (arn != sqsQueueARN) {
-      println("WARNING : sqsQueueARN in config is not correct (%s should be %s)".format(sqsQueueARN, arn))
+      log.warn(s"cryo.sqs-queue-arn in config is not correct (${sqsQueueARN} should be ${arn})")
       sqsQueueARN = arn
     }
 
     if (!sns.listTopics.getTopics.exists(_.getTopicArn == snsTopicARN)) {
       arn = sns.createTopic(new CreateTopicRequest().withName(Config.snsTopicName)).getTopicArn
       if (arn != snsTopicARN) {
-        println("WARNING : snsTopicARN in config is not correct (%s should be %s)".format(snsTopicARN, arn))
+        log.warn(s"cryo.sns-topic-arn in config is not correct (${snsTopicARN} should be ${arn})")
         snsTopicARN = arn
       }
     }

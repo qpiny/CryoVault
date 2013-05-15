@@ -75,6 +75,7 @@ object Catalog {
         input.read(buffer, bl.offset)
       } finally { input.close }
 
+      buffer.flip
       buffer.compareTo(ByteBuffer.wrap(block.data)) == 0
     }
   }

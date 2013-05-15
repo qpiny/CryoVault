@@ -37,3 +37,11 @@ case class Block(val data: Array[Byte]) {
   lazy val hash = Hash(data)
   lazy val size = data.size
 }
+
+object Block {
+  def apply(buffer: ByteBuffer) = {
+    val data = Array.ofDim[Byte](buffer.remaining)
+    buffer.get(data)
+    new Block(data)
+  }
+}

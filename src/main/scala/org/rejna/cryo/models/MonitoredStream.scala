@@ -13,7 +13,6 @@ object StreamOps {
 class MonitoredOutputStream(val attributeBuilder: AttributeBuilder, val title: String, out: OutputStream, val size: Long) extends FilterOutputStream(out) with Transfer {
   totalBytes = size
   override def write(b: Array[Byte]) = {
-    println("MonitoredOutputStream.write(%d)".format(b.length))
     out.write(b)
     transferredBytes = transferredBytes + b.length
   }
