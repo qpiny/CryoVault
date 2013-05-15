@@ -3,8 +3,7 @@ package org.rejna.cryo.web
 import java.nio.file.Path
 import scala.concurrent.duration._
 import net.liftweb.json._
-import org.rejna.cryo.models.{ Archive, ArchiveType, CryoStatus, Snapshot, Event }
-
+import org.rejna.cryo.models.{ Archive, ArchiveType, CryoStatus, Snapshot, Event, FileFilter }
 
 abstract class RequestEvent extends Event { val path = "<null>" }
 abstract class ResponseEvent(val path: String) extends Event
@@ -26,8 +25,8 @@ case class ArchiveCreation(file: Path, archiveType: ArchiveType.ArchiveType, id:
 case class RefreshInventory(maxAge: Duration = 24 hours) extends RequestEvent
 
 case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent
-case class FileElement(file: Path, count: Int, size: Long, filter: Option[String])
-case class SnapshotFiles(snapshotId: String, directory: String, files: List[FileElement]) extends ResponseEvent("<null>")
+case class FileElement(file: Path, count: Int, size: Long, filter: Option[FileFilter])
+case class SnapshotFiles(snapshotId: String, directory: String, files: Iterable[FileElement]) extends ResponseEvent("<null>")
 case class UpdateSnapshotFileFilter(snapshotId: String, directory: String, filter: String) extends RequestEvent
 /*
 case class InventoryRequest() extends RequestEvent {

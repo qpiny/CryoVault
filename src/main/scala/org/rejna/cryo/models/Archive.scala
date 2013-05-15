@@ -59,15 +59,15 @@ abstract class Archive(val archiveType: ArchiveType, val id: String, val date: D
 class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archiveType, id, new DateTime, Creating) {
   import DateUtil._
 
+  val dataStream = FileChannel.open(file, WRITE, CREATE_NEW)
+
   protected val remoteArchiveAttribute = attributeBuilder[Option[RemoteArchive]]("remoteArchive", None)
   def remoteArchive: Option[RemoteArchive] = remoteArchiveAttribute()
   protected def remoteArchive_= = remoteArchiveAttribute() = _
 
-  protected val sizeAttribute = attributeBuilder("size", Files.size(file))
+  protected val sizeAttribute = attributeBuilder("size", 0L)
   def size = sizeAttribute()
   protected def size_= = sizeAttribute() = _
-
-  val dataStream = FileChannel.open(file, CREATE_NEW)
 
   lazy val description = s"${archiveType}-${date.toISOString}"
 

@@ -32,6 +32,10 @@ object CryoBinary extends DefaultProtocol {
   implicit val DateTimeFormat = wrap[DateTime, Long](_.getMillis, new DateTime(_))
   implicit val ArchiveTypeFormat = wrap[ArchiveType, Int](_.id, ArchiveType.apply(_))
   implicit val HashFormat = wrap[Hash, Array[Byte]](_.value, new Hash(_))
+  implicit val FileFilterFormat = wrap[FileFilter, String](_.toString, FileFilterParser.parse(_) match {
+    case Right(ff) => ff
+    case Left(message) => throw ParseError(message)
+  })
 
   implicit def RemoteArchiveFormat = asProduct5[RemoteArchive, ArchiveType, DateTime, String, Long, Hash](
     (t, d, i, s, h) => new RemoteArchive(t, d, i, s, h))(

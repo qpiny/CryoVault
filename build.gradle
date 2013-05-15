@@ -82,7 +82,6 @@ task wrapper(type: Wrapper) {
 }
 
 task generateFmppSources << {
-	println 'Generating sources....'
 	ant.taskdef(name: 'fmpp', classname: 'fmpp.tools.AntTask', classpath: configurations.fmpp.asPath)
 	ant.fmpp skipUnchanged: 'all', srcDir: 'src/main/fmpp', outputRoot: 'build/generated-sources/main/scala'
 }
@@ -104,7 +103,6 @@ sourceSets {
 task compileCoffee(type: CoffeeScriptCompile) {
   source fileTree('src/main/coffee')
   destinationDir file('build/coffee/webapp/javascripts')
-  //destinationDir file('src/main/resources/webapp/coffee')
 }
 processResources.dependsOn compileCoffee
 sourceSets {

@@ -26,7 +26,7 @@ trait Snapshot { //self: Archive =>
   val id: String
   def state: CryoStatus
   val attributeBuilder: AttributeBuilder
-  val fileFilters: scala.collection.mutable.Map[String, String]
+  val fileFilters: scala.collection.mutable.Map[String, FileFilter]
 }
 
 class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
@@ -52,7 +52,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
   def remoteSnapshot: Option[RemoteSnapshot] = remoteSnapshotAttribute()
   protected def remoteSnapshot_= = remoteSnapshotAttribute() = _
 
-  val fileFilters = attributeBuilder.map("fileFilters", Map.empty[String, String])
+  val fileFilters = attributeBuilder.map("fileFilters", Map.empty[String, FileFilter])
 
   val files = attributeBuilder.list("files", List.empty[String])
 
@@ -61,7 +61,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
       var newSize = size
       var addedFiles = LinkedList.empty[String]
       if (removedValues.isEmpty) {
-        val (addedFiles, addedSize) = walkFileSystem(addedValues.asInstanceOf[List[(String, String)]])
+        val (addedFiles, addedSize) = walkFileSystem(addedValues.asInstanceOf[List[(String, FileFilter)]])
         files ++= addedFiles
         size += addedSize
       } else {
@@ -72,13 +72,13 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
     }
   }
 
-  private def walkFileSystem(filters: Iterable[(String, String)]) = {
+  private def walkFileSystem(filters: Iterable[(String, FileFilter)]) = {
     var size = 0L
     var files = LinkedList.empty[String]
     for ((path, filter) <- filters) {
       new TraversePath(path).foreach {
         case (f, attrs) =>
-          if (attrs.isRegularFile) {
+          if (attrs.isRegularFile && filter.accept(path)) {
             files = LinkedList(Config.baseDirectory.relativize(f).toString) append files
             size += attrs.size
           }
@@ -125,7 +125,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
       }
 
       // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
-      format[Map[String, String]].writes(output, fileFilters.toMap)
+      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
     } finally {
       output.close
     }
@@ -139,7 +139,7 @@ class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends
 
   val remoteFiles = attributeBuilder.list("files", List[RemoteFile]())
 
-  val fileFilters = scala.collection.mutable.Map[String, String]()
+  val fileFilters = scala.collection.mutable.Map[String, FileFilter]()
 
   onStateChange(stop => {
     if (state == Cached) {
@@ -151,7 +151,7 @@ class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends
 	      remoteFiles ++= format[Map[String, Iterator[Hash]]].reads(input).map {
 	        case (f, hashes) => new RemoteFile(id, Config.baseDirectory.resolve(f), hashes.toSeq: _*)
 	      }
-	      fileFilters ++= format[Map[String, String]].reads(input)
+	      fileFilters ++= format[Map[String, FileFilter]].reads(input)
 	      //index ++= sbinary.Operations.fromFile[List[RemoteFile]](file)
 	      stop
       } finally {

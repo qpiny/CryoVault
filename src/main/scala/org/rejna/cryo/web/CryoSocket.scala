@@ -7,7 +7,7 @@ import scala.language.implicitConversions
 
 import akka.actor.Actor
 
-import java.nio.file.{ Path, Files, FileSystems }
+import java.nio.file.{ Path, Files, FileSystems, AccessDeniedException }
 
 import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Config, CryoEventBus }
 import akka.event.EventBus
@@ -15,7 +15,7 @@ import akka.event.SubchannelClassification
 import akka.util.Subclassification
 import net.liftweb.json._
 import org.mashupbots.socko.events.WebSocketFrameEvent
-import org.rejna.cryo.models.{ Cryo, ArchiveType, AttributeChange, AttributeListChange, Event }
+import org.rejna.cryo.models._
 
 object EventTypeHints extends TypeHints {
   val hints =
@@ -93,7 +93,7 @@ object CryoSocketBus extends CryoEventBus with SubchannelClassification {
   }
 }
 
-class CryoSocket extends Actor {
+class CryoSocket extends Actor with LoggingClass {
   import EventSerialization._
 
   def receive = {
@@ -111,6 +111,7 @@ class CryoSocket extends Actor {
         case RemoveIgnoreSubscription(subscription) =>
 
         case CreateSnapshot() =>
+          log.info("Creating new snapshot")
           val snapshot = Cryo.newArchive(ArchiveType.Index)
           wsFrame.write(SnapshotCreated(snapshot.id))
         case GetArchiveList() =>
@@ -131,7 +132,10 @@ class CryoSocket extends Actor {
         case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
           val snapshot = Cryo.inventory.snapshots(snapshotId)
           snapshot match {
-            case ls: LocalSnapshot => ls.fileFilters(directory) = filter
+            case ls: LocalSnapshot => FileFilterParser.parse(filter) match {
+              case Right(filter) => ls.fileFilters(directory) = filter
+              case Left(message) => // TODO LOG
+            }
             case _ => println("UpdateSnapshotFileFilter is valid only for LocalSnapshot")
           }
         case UploadSnapshot(snapshotId) =>
@@ -145,18 +149,22 @@ class CryoSocket extends Actor {
 
   }
 
-  def getDirectoryContent(directory: Path, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, String]) = {
-    val dirContent = Files.newDirectoryStream(directory)
+  def getDirectoryContent(directory: Path, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, FileFilter]): Iterable[FileElement] = {
+    try {
+      val dirContent = Files.newDirectoryStream(directory)
 
-    for (f <- dirContent) yield {
-      val filePath = Config.baseDirectory.relativize(f)
-      val fileSize = for (
-        fs <- fileSelection;
-        fp = FileSystems.getDefault.getPath(fs);
-        if fp.startsWith(filePath)
-      ) yield Files.size(fp)
-
-      new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString))
+	    for (f <- dirContent) yield {
+	      val filePath = Config.baseDirectory.relativize(f)
+	      val fileSize = for (
+	        fs <- fileSelection;
+	        fp = FileSystems.getDefault.getPath(fs);
+	        if fp.startsWith(filePath)
+	      ) yield Files.size(Config.baseDirectory.resolve(fp))
+	
+	      new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
+	    }
+    } catch {
+      case e: AccessDeniedException => Some(new FileElement(directory.resolve("_Access_denied_"), 0, 0, None)) 
     }
   }
 }
