@@ -9,12 +9,13 @@ import _root_.org.mashupbots.socko.handlers.{ StaticContentHandler, StaticConten
 import _root_.org.mashupbots.socko.webserver.{ WebServer, WebServerConfig }
 import _root_.org.mashupbots.socko.infrastructure.LocalCache
 
-import org.rejna.cryo.models.Cryo
+import org.rejna.cryo.models.{ Cryo, LoggingClass }
 
-object CryoWeb extends App {
+object CryoWeb extends App with LoggingClass {
 
   override def main(args: Array[String]) = {
     val system = Cryo.system
+    log.info("Starting cryo ...")
 
     val staticHandler = system.actorOf(Props(new StaticContentHandler(StaticContentHandlerConfig(
       cache = new LocalCache(0, 16)))))
@@ -47,7 +48,7 @@ object CryoWeb extends App {
     })
     webServer.start()
 
-    println("Open a few browsers and navigate to http://localhost:8888/html.")
+    log.info("Open a few browsers and navigate to http://localhost:8888/html")
   }
 }
 

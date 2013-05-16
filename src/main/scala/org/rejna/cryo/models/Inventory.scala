@@ -15,14 +15,15 @@ import CryoStatus._
 import java.nio.CharBuffer
 
 class Inventory {
-  val dateAttribute = Cryo.attributeBuilder("inventoryDate", DateTime.now)
+  val attributeBuilder = Cryo.attributeBuilder / "inventory"
+  val dateAttribute = attributeBuilder("date", DateTime.now)
   def date = dateAttribute()
   private def date_= = dateAttribute() = _
 
   val snapshots = Cryo.attributeBuilder.map("snapshots", Map[String, Snapshot]())
   val archives = Cryo.attributeBuilder.map("archives", Map[String, Archive]())
 
-  protected val stateAttribute = Cryo.attributeBuilder("state", Remote)
+  protected val stateAttribute = attributeBuilder("state", Remote)
   def state = stateAttribute()
   protected def state_= = stateAttribute() = _
 
@@ -30,6 +31,8 @@ class Inventory {
 
   if (Files.exists(file))
     update(file)
+  else
+    update(0 second)
 
   def update(f: Path): Unit = {
     val channel = FileChannel.open(f, READ)

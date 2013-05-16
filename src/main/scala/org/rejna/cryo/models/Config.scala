@@ -10,6 +10,7 @@ import javax.crypto.spec.IvParameterSpec
 import com.typesafe.config.ConfigFactory
 
 import com.amazonaws.auth.BasicAWSCredentials
+import com.amazonaws.{ ClientConfiguration, Protocol }
 
 import ArchiveType._
 
@@ -58,4 +59,20 @@ object Config {
   val sqsQueueARN = config.getString("glacier.sqs-queue-arn")
   val sqsTopicARN = config.getString("glacier.sqs-topic-arn")
   val vaultName = config.getString("glacier.vault-name")
+
+  val awsConfig = (new ClientConfiguration)
+    .withConnectionTimeout(config.getInt("aws.connection-timeout"))
+    .withMaxConnections(config.getInt("aws.max-connections"))
+    .withMaxErrorRetry(config.getInt("aws.max-error-retry"))
+    .withProtocol(Protocol.valueOf(config.getString("aws.protocol")))
+    .withProxyDomain(try { config.getString("aws.proxy-domain") } catch { case _: Throwable => null })
+    .withProxyHost(try { config.getString("aws.proxy-host") } catch { case _: Throwable => null })
+    .withProxyPassword(try { config.getString("aws.proxy-password") } catch { case _: Throwable => null })
+    .withProxyPort(config.getInt("aws.proxy-port"))
+    .withProxyUsername(try { config.getString("aws.proxy-username") } catch { case _: Throwable => null })
+    .withProxyWorkstation(try { config.getString("aws.proxy-workstation") } catch { case _: Throwable => null })
+    .withSocketBufferSizeHints(
+      config.getInt("aws.socket-send-buffer-size-hint"), config.getInt("aws.socket-receive-buffer-size-hint"))
+    .withSocketTimeout(config.getInt("aws.socket-timeout"))
+    .withUserAgent(config.getString("aws.user-agent"))
 }

@@ -2,13 +2,13 @@ version = '0.0.1'
 
 import org.gradle.plugins.javascript.coffeescript.CoffeeScriptCompile
 buildscript {
-    repositories {
-        mavenCentral()
-    }
+	repositories {
+		mavenCentral()
+	}
 
-    dependencies {
-        classpath group: 'de.obqo.gradle', name: 'gradle-lesscss-plugin', version: '1.0-1.3.3'
-    }
+	dependencies {
+		classpath group: 'de.obqo.gradle', name: 'gradle-lesscss-plugin', version: '1.0-1.3.3'
+	}
 }
 
 apply plugin: 'scala'
@@ -48,37 +48,38 @@ dependencies {
 	// Force akka version
 	compile group: 'com.typesafe.akka', name: 'akka-actor_' + majorScalaVersion, version: akkaVersion
 	//compile group: 'com.typesafe.akka', name: 'akka-slf4j_' + majorScalaVersion, version: akkaVersion
-	compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.12'
-	//test group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
-	//compile group: 'commons-io', name: 'commons-io', version: '2.4'
-      //"org.scala-tools.sbinary"	% "sbinary_2.9.0"	% "0.4.0",
-     compile group: 'joda-time', name: 'joda-time', version: '2.1'
-     compile group: 'com.amazonaws', name: 'aws-java-sdk', version: '1.4.3'
-     compile group: 'net.liftweb', name: 'lift-json_' + majorScalaVersion, version: '2.5-RC5'
-     compile group: 'net.liftweb', name: 'lift-json-ext_' + majorScalaVersion, version: '2.5-RC5'
-     //compile group: 'com.github.scala-incubator.io', name: 'scala-io-core_2.10', version: '0.4.2'
-     //compile group: 'org.clapper', name: 'classutil_' + majorScalaVersion, version: '1.0.1'
-     //compile group: 'com.jsuereth', name: 'scala-arm_' + majorScalaVersion, version: '1.3'
-     fmpp group: 'net.sourceforge.fmpp', name: 'fmpp', version: '0.9.14'
+	compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+	//"org.scala-tools.sbinary"	% "sbinary_2.9.0"	% "0.4.0",
+	compile group: 'joda-time', name: 'joda-time', version: '2.1'
+	compile group: 'com.amazonaws', name: 'aws-java-sdk', version: '1.4.3'
+	compile group: 'net.liftweb', name: 'lift-json_' + majorScalaVersion, version: '2.5-RC5'
+	compile group: 'net.liftweb', name: 'lift-json-ext_' + majorScalaVersion, version: '2.5-RC5'
+	fmpp group: 'net.sourceforge.fmpp', name: 'fmpp', version: '0.9.14'
 }
-
+configurations.all {
+	resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+		if (details.requested.name == 'commons-logging') {
+			details.useTarget "org.slf4j:jcl-over-slf4j:1.7.5"
+		}
+	}
+}
 	
 tasks.withType(ScalaCompile) {
 	scalaCompileOptions.fork = false
-    scalaCompileOptions.unchecked = true
-    scalaCompileOptions.deprecation = true
-    
-    scalaCompileOptions.useCompileDaemon = false
-    
-
-    configure(scalaCompileOptions.forkOptions) {
-        memoryMaximumSize = '1g'
-        jvmArgs = ['-XX:MaxPermSize=512m']
-    }
+	scalaCompileOptions.unchecked = true
+	scalaCompileOptions.deprecation = true
+	
+	scalaCompileOptions.useCompileDaemon = false
+	
+	
+	configure(scalaCompileOptions.forkOptions) {
+		memoryMaximumSize = '1g'
+		jvmArgs = ['-XX:MaxPermSize=512m']
+	}
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '1.5'
+	gradleVersion = '1.5'
 }
 
 task generateFmppSources << {
@@ -91,9 +92,9 @@ sourceSets {
 }
 
 lesscss {
-    source = fileTree('src/main/less')
-    dest = 'build/less/webapp/stylesheets'
-    compress = true
+	source = fileTree('src/main/less')
+	dest = 'build/less/webapp/stylesheets'
+	compress = true
 }
 processResources.dependsOn 'lesscss'
 sourceSets {
@@ -101,8 +102,8 @@ sourceSets {
 }
 
 task compileCoffee(type: CoffeeScriptCompile) {
-  source fileTree('src/main/coffee')
-  destinationDir file('build/coffee/webapp/javascripts')
+	source fileTree('src/main/coffee')
+	destinationDir file('build/coffee/webapp/javascripts')
 }
 processResources.dependsOn compileCoffee
 sourceSets {

@@ -76,10 +76,17 @@ class MetaAttribute[A](val name: String, body: () => A) extends ReadAttribute[A]
 
   object Invalidate extends AttributeChangeCallback {
     override def onChange[C](attribute: ReadAttribute[C]) = {
-      if (_now.isDefined)
+      if (callbacks.isEmpty) {
+        if (_now.isDefined) {
+          _previous = _now
+          _now = None
+        }
+      } else {
         _previous = _now
-      _now = None
-      for (c <- callbacks) c.onChange(self)
+        _now = Some(body())
+        if (_previous != _now)
+          for (c <- callbacks) c.onChange(self)
+      }
     }
   }
 
@@ -185,7 +192,7 @@ class ListAttribute[A](name: String, initValue: List[A])
     update(now :+ elem)
     this
   }
-  
+
   override def ++=(elems: TraversableOnce[A]) = {
     update(now ::: elems.toList)
     this

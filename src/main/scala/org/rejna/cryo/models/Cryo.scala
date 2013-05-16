@@ -10,6 +10,11 @@ import java.io.InputStream
 import akka.actor._
 import akka.event._
 
+import org.apache.http.client.params.AuthPolicy
+import org.apache.http.auth.params.AuthPNames
+import org.apache.http.client.HttpClient
+import com.amazonaws.AmazonWebServiceClient
+import com.amazonaws.http.AmazonHttpClient
 import com.amazonaws.services.glacier.AmazonGlacierClient
 import com.amazonaws.services.glacier.model._
 import com.amazonaws.services.sqs.AmazonSQSClient
@@ -32,7 +37,7 @@ trait CryoEventBus extends EventBus {
 }
 
 object Cryo extends EventPublisher with LoggingClass {
-  val system = ActorSystem("cryo")
+  lazy val system = ActorSystem("cryo")
 
   private var _eventBus: Option[CryoEventBus] = None
   def setEventBus(eventBus: CryoEventBus) = _eventBus = Some(eventBus)
@@ -43,19 +48,34 @@ object Cryo extends EventPublisher with LoggingClass {
   }
 
   lazy val attributeBuilder = new AttributeBuilder(this, "/cryo")
-
-  val inventory = new Inventory()
-
-  lazy val glacier = new AmazonGlacierClient(Config.awsCredentials);
+  
+  var jobs = Map[String, String => Unit]()
+  
+  def __hackAddProxyAuthPref(awsClient: AmazonWebServiceClient) = {
+    val clientField = classOf[AmazonWebServiceClient].getDeclaredField("client")
+    clientField.setAccessible(true)
+    val client = clientField.get(awsClient).asInstanceOf[AmazonHttpClient]
+    val httpClientField = classOf[AmazonHttpClient].getDeclaredField("httpClient")
+    httpClientField.setAccessible(true)
+    val httpClient = httpClientField.get(client).asInstanceOf[HttpClient]
+    val l = new java.util.ArrayList[String]
+    l.add(AuthPolicy.BASIC)
+    httpClient.getParams.setParameter(AuthPNames.PROXY_AUTH_PREF, l)
+  }
+  /* Initialize Glacier connector */
+  lazy val glacier = new AmazonGlacierClient(Config.awsCredentials, Config.awsConfig)
+  __hackAddProxyAuthPref(glacier)
   glacier.setEndpoint("https://glacier." + Config.region + ".amazonaws.com/")
-  lazy val sqs = new AmazonSQSClient(Config.awsCredentials)
+  lazy val sqs = new AmazonSQSClient(Config.awsCredentials, Config.awsConfig)
+  __hackAddProxyAuthPref(sqs)
   sqs.setEndpoint("https://sqs." + Config.region + ".amazonaws.com")
-  lazy val sns = new AmazonSNSClient(Config.awsCredentials)
+  lazy val sns = new AmazonSNSClient(Config.awsCredentials, Config.awsConfig)
+  __hackAddProxyAuthPref(sns)
   sns.setEndpoint("https://sns." + Config.region + ".amazonaws.com")
 
   var sqsQueueARN = Config.sqsQueueARN
   var snsTopicARN = Config.sqsTopicARN
-  lazy val sqsQueueURL = sqs.listQueues(new ListQueuesRequest(Config.sqsQueueName)).getQueueUrls.headOption.getOrElse {
+  val sqsQueueURL = sqs.listQueues(new ListQueuesRequest(Config.sqsQueueName)).getQueueUrls.headOption.getOrElse {
     val url = sqs.createQueue(new CreateQueueRequest().withQueueName(Config.sqsQueueName)).getQueueUrl()
 
     var arn = sqs.getQueueAttributes(new GetQueueAttributesRequest()
@@ -81,9 +101,10 @@ object Cryo extends EventPublisher with LoggingClass {
       .withProtocol("sqs"))
     url
   }
-
-  var jobs = Map[String, String => Unit]()
-
+  
+  lazy val inventory = new Inventory()
+  
+  /* Glacier operations */
   def newArchive(archiveType: ArchiveType, id: String) = inventory.newArchive(archiveType, id)
 
   def newArchive(archiveType: ArchiveType): LocalArchive = inventory.newArchive(archiveType, UUID.randomUUID.toString)

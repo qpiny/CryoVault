@@ -209,6 +209,9 @@ class Snapshot
 @uploadSnapshot = (snapshotId) =>
 	@socket.send('UploadSnapshot', { snapshotId: snapshotId })
 
+@refreshInventory = =>
+	@socket.send('RefreshInventory', { age: 0 })
+	
 $ =>
 	@socket = $.websocket('ws://' + document.location.host + '/websocket/',
 		open: =>
@@ -216,6 +219,7 @@ $ =>
 			@subscribe('/cryo#snapshots')
 			@subscribe('/cryo#archives')
 			@subscribe('/cryo/Data')
+			@subscribe('/cryo/inventory')
 			@subscribe('/log')
 			@addIgnoreSubscription('#files$')
 			@getSnapshotList()
@@ -238,6 +242,10 @@ $ =>
 					snapshotId = e.path.replace(new RegExp('/cryo/Index/(.*)#size'), '$1')
 					snapshot = @snapshotList.get(snapshotId)
 					snapshot.setSize(e.after)
+				else if (e.path is '/cryo/inventory#state')
+					@_ui_inventoryState.text(e.after)
+				else if (e.path is '/cryo/inventory#date')
+					@_ui_inventoryDate.text(e.after)
 		
 			AttributeListChange: (e) =>
 				if (e.path is '/cryo#snapshots')
@@ -275,11 +283,13 @@ $ =>
 	@_ui_snapshotFiles = $('#snapshotFiles')
 	@_ui_snapshotFileFilter = $('#snapshotFileFilter')
 	@_ui_snapshotFileForm = $('#snapshotFileForm')
-	
+	@_ui_inventoryRefresh = $('#inventoryRefresh')
+	@_ui_inventoryDate = $('#inventoryDate')
+	@_ui_inventoryState = $('#inventoryState')
 	
 	# UI operations
 	@log = (msg) =>
-			@_ui_console.append('<div style="white-space: nowrap">' + msg + '</div>')
+			@_ui_console.append(msg + '<br/>')
 	
 	# Build UI
 	$('body').layout({ applyDefaultStyles: true })
@@ -380,4 +390,6 @@ $ =>
 		@_ui_snapshotFileForm.hide()
 		@_ui_snapshotFiles.deselect_all()
 	)
+	
+	@_ui_inventoryRefresh.bind('click', => @refreshInventory)
 	undefined
