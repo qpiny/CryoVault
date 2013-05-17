@@ -75,4 +75,7 @@ object Config {
       config.getInt("aws.socket-send-buffer-size-hint"), config.getInt("aws.socket-receive-buffer-size-hint"))
     .withSocketTimeout(config.getInt("aws.socket-timeout"))
     .withUserAgent(config.getString("aws.user-agent"))
+    
+  if (config.getBoolean("aws.disable-cert-checking"))
+    System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 }

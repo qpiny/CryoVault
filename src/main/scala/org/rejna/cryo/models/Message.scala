@@ -1,6 +1,7 @@
 package org.rejna.cryo.models
 
 import com.amazonaws.services.glacier.model.DescribeJobResult
+import com.amazonaws.services.glacier.model.GlacierJobDescription
 
 import java.util.Date
 import org.joda.time.DateTime
@@ -136,3 +137,53 @@ object InventoryMessage {
 //    }
 //  }
 //}
+
+case class Job(
+  id: String,
+  action: String,
+  description: String,
+  archive: Option[Archive],
+  creationDate: DateTime,
+  status: String,
+  completed: Boolean,
+  completedDate: Option[DateTime],
+  callback: Option[Function1[Job, Unit]]) {
+  def update(newerJob: Job) = newerJob.copy(callback = callback)
+}
+
+object Job extends LoggingClass {
+  def apply(gjd: GlacierJobDescription): Job = {
+    val archive = Option(gjd.getArchiveId) flatMap { aid =>
+      Cryo.inventory.archives.get(aid).orElse {
+        log.warn(s"Job ${gjd.getJobId} refers an unknown archive (${aid}). The local inventory is not up-to-date.")
+        None
+      }
+    }
+    Job(
+      gjd.getJobId,
+      gjd.getAction,
+      gjd.getJobDescription,
+      archive,
+      DateUtil.fromISOString(gjd.getCreationDate),
+      s"${gjd.getStatusCode}(${gjd.getStatusMessage()})",
+      gjd.getCompleted,
+      Option(DateUtil.fromISOString(gjd.getCompletionDate)),
+      None)
+  }
+}
+
+/*
+
+{
+  "Type" : "Notification",
+  "MessageId" : "ac1ae29d-d193-553b-9a97-a88dc9ea701e",
+  "TopicArn" : "arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic",
+  "Message" : "{\"Action\":\"InventoryRetrieval\",\"ArchiveId\":null,\"ArchiveSHA256TreeHash\":null,\"ArchiveSizeInBytes\":null,\"Completed\":true,\"CompletionDate\":\"2013-05-17T11:36:25.669Z\",\"CreationDate\":\"2013-05-17T07:36:17.140Z\",\"InventorySizeInBytes\":1159,\"JobDescription\":null,\"JobId\":\"Vg6tHfPPIo7HrsY15dMwi-E0dGmHFM8qAwvjtYP8jfbkHYuoXjB-tvH9f6oI0U8B_zwhpZ8eEFv0b3Yzp6cYX-OeMNex\",\"RetrievalByteRange\":null,\"SHA256TreeHash\":null,\"SNSTopic\":\"arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic\",\"StatusCode\":\"Succeeded\",\"StatusMessage\":\"Succeeded\",\"VaultARN\":\"arn:aws:glacier:eu-west-1:235715319590:vaults/cryo\"}",
+  "Timestamp" : "2013-05-17T11:36:25.752Z",
+  "SignatureVersion" : "1",
+  "Signature" : "Kss0qWBDaYq7ANfFmweyWnzqo/dTaq4Ql3jKK7Lm/4fsfbv0OaFFnG5yNGaswxBVK90vDxiwLc9w2TF7OaEgqRHcjD2GCx4YFqdatY2Px8WziBm5dpLhWcuvqJzxxbpV5SH7qhqaZUrESi5IJxnNfLLWUYtlVhzlCdpQr8Kf3Ds=",
+  "SigningCertURL" : "https://sns.eu-west-1.amazonaws.com/SimpleNotificationService-f3ecfb7224c7233fe7bb5f59f96de52f.pem",
+  "UnsubscribeURL" : "https://sns.eu-west-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic:65e5dbb6-ee7c-484c-8a40-d0641c4ace49"
+}
+
+*/

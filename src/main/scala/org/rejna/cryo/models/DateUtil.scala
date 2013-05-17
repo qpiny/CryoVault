@@ -1,14 +1,9 @@
 package org.rejna.cryo.models
 
-import scala.language.implicitConversions
-
 import org.joda.time.DateTime
 import org.joda.time.format.ISODateTimeFormat
 
-case class DateFormatter(date: DateTime) {
-  def toISOString = ISODateTimeFormat.dateTimeNoMillis().print(date)
-}
-
 object DateUtil {
-  implicit def toDateformatter(date: DateTime) = DateFormatter(date)
+  def toISOString(date: DateTime) = ISODateTimeFormat.dateTimeNoMillis().print(date)
+  def fromISOString(date: String) = ISODateTimeFormat.dateTimeNoMillis.parseDateTime(date)
 }

@@ -21,7 +21,6 @@ import com.amazonaws.services.glacier.TreeHashGenerator
 import com.amazonaws.services.s3.internal.InputSubstream
 
 import org.joda.time.DateTime
-import org.joda.time.format.ISODateTimeFormat
 
 object CryoStatus extends Enumeration {
   type CryoStatus = Value
@@ -69,7 +68,7 @@ class LocalArchive(archiveType: ArchiveType, id: String) extends Archive(archive
   def size = sizeAttribute()
   protected def size_= = sizeAttribute() = _
 
-  lazy val description = s"${archiveType}-${date.toISOString}"
+  lazy val description = s"${archiveType}-${DateUtil.toISOString(date)}"
 
   def writeBlock(block: Block) = {
     if (state != Creating) throw InvalidStateException
@@ -175,9 +174,9 @@ class RemoteArchive(archiveType: ArchiveType, date: DateTime, id: String, val si
       })
       job
       * DEBUG */
-      val jobId = Cryo.initiateDownload(id, jobId => {
+      Cryo.initiateDownload(this, job => {
         state = Downloading
-        val input = Cryo.getJobOutput(jobId)
+        val input = Cryo.getJobOutput(job.id)
         val output = new MonitoredOutputStream(attributeBuilder, s"Downloading archive ${id}",
           Files.newOutputStream(file, CREATE_NEW),
           input.available)

@@ -2,21 +2,24 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.{ Buffer, ListBuffer, Map, HashMap, Set }
 import scala.collection.immutable.{ Map => IMap }
+
+import akka.actor.ActorRef
+
 import net.liftweb.json._
 
-class AttributeBuilder(val publisher: EventPublisher, path: String*) {
+class AttributeBuilder(val publisher: ActorRef, path: String*) {
   var paths = List(path: _*)
 
   object callback extends AttributeChangeCallback {
     override def onChange[A](attribute: ReadAttribute[A]) = {
       println("attribute[%s#%s] change: %s -> %s".format(paths.mkString("(", ",", ")"), attribute.name, attribute.previous, attribute.now))
-      for (p <- paths) publisher.publish(AttributeChange(p + '#' + attribute.name, attribute))
+      for (p <- paths) publisher ! AttributeChange(p + '#' + attribute.name, attribute)
     }
   }
   object listCallback extends AttributeListCallback {
     override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit = {
       println("attribute[%s#%s] add: %s remove: %s".format(paths.mkString("(", ",", ")"), attribute.name, addedValues.take(10), removedValues.take(10)))
-      for (p <- paths) publisher.publish(AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
+      for (p <- paths) publisher ! AttributeListChange(p + '#' + attribute.name, addedValues, removedValues)
     }
   }
 

@@ -1,5 +1,7 @@
 package org.rejna.cryo.models
 
+import org.joda.time.DateTime
+
 import org.rejna.util.IsoUnit
 
 trait ProgressStatus {
