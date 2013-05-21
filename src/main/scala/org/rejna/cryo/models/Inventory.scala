@@ -2,9 +2,12 @@ package org.rejna.cryo.models
 
 import scala.io.Source
 import scala.concurrent.duration._
+import scala.collection.mutable.Buffer
 import scala.language.postfixOps
 
 import akka.actor.Actor
+import akka.pattern.ask
+import akka.util.Timeout
 
 import java.io.FileOutputStream
 import java.nio.file.{ Files, Path }
@@ -15,90 +18,77 @@ import java.util.UUID
 
 import org.joda.time.{ DateTime, Interval }
 
-import ArchiveType._
-import CryoStatus._
-
-case class OpenArchive(id: String, size: Long)
-case class Data(id: String, position: Long, buffer: ByteBuffer)
-case class CloseData(id: String)
 case class LoadInventoryFromFile(file: Path)
 case class LoadInventoryFromMessage(message: InventoryMessage)
-case class RefreshInventory(maxAge: Duration)
-case class NewArchive(archiveType: ArchiveType, id: String)
-case class MigrateArchive(archive: LocalArchive, newId: String, size: Long, hash: Hash)
-case class MigrateSnapshot(snapshot: LocalSnapshot, archive: RemoteArchive)
+case object CreateArchive
+case class ArchiveCreated(id: String)
 
-class Inventory(val attributeBuilder: AttributeBuilder) extends Actor with LoggingClass {
-  val cryo = context.actorFor("/user/cryo")
+case class InventoryMessage(data: String) // TODO
 
-  //val attributeBuilder = Cryo.attributeBuilder / "inventory"
+class Inventory extends Actor with LoggingClass {
+  val glacier = context.actorFor("/user/glacier")
+  val datastore = context.actorFor("/user/datastore")
+
+  val attributeBuilder = new AttributeBuilder("/cryo/inventory")
   val dateAttribute = attributeBuilder("date", DateTime.now)
   def date = dateAttribute()
   private def date_= = dateAttribute() = _
 
   val snapshots = attributeBuilder.map("snapshots", Map[String, Snapshot]())
-  val archives = attributeBuilder.map("archives", Map[String, Archive]())
+  val archiveIds = Buffer.empty[String]
 
-  protected val stateAttribute = attributeBuilder("state", Remote)
-  def state = stateAttribute()
-  protected def state_= = stateAttribute() = _
-
-  val file = Config.inventoryFile
-
+  implicit val timeout = Timeout(10 seconds)
   def preStart = {
-    if (Files.exists(file))
-      self ! LoadInventoryFromFile(file)
-    else // check if InventoryRetrieval job is already in jobList
-      self ! RefreshInventory(0 second)
+    CryoEventBus.subscribe(self, "/cryo/datastore")
+    datastore ! GetDataStatus("inventory")
   }
-  
-  
 
   def receive = {
-    case Data(id, position, buffer) =>
-    case LoadInventoryFromFile(file) =>
-      val channel = FileChannel.open(file, READ)
-      try {
-        val buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size)
-        buffer.flip
-        self ! LoadInventoryFromMessage(InventoryMessage(buffer.asCharBuffer.toString))
-      } finally {
-        channel.close
+    case DataStatus(status, size) =>
+      status match {
+        case EntryStatus.Creating => // wait
+        case EntryStatus.Created =>
+          datastore ! ReadData("inventory", 0, size)
+        case EntryStatus.NonExistent =>
+          glacier ! RefreshInventory
       }
 
-    case LoadInventoryFromMessage(message) =>
-      date = message.date
-      val sa = message.archives.partition(_.archiveType == Index)
-      snapshots ++= sa._1.map { a => a.id -> new RemoteSnapshot(a) }
-      archives ++= sa._2.map { a => a.id -> a }
-      state = Cached
+    case DataRead(id, position, buffer) =>
+      // TODO check id and position
+      val message = InventoryMessage(buffer.asByteBuffer.asCharBuffer.toString)
+//      date = message.date
+//      val (s, a) = message.archives.partition(_.archiveType == Index)
+//      snapshots ++= s.map { a => a.id -> new RemoteSnapshot(a) }
+//      archives ++= a.map { a => a.id -> a }
 
-    case RefreshInventory(maxAge) =>
-      if (state != Downloading && maxAge < (new Interval(date, new DateTime).toDurationMillis millis)) {
-        state = Downloading
-        cryo ! InitiateInventoryRequest
+    case AttributeChange(path, attribute) =>
+      val pathRegex = "/cryo/datastore/([^/]*)#(.*)".r
+      path match {
+        case pathRegex("inventory", "status") => 
+	      CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
+	      if (attribute.now == EntryStatus.Created) {
+	        datastore ! GetDataStatus("inventory")
+	      }
+        case pathRegex(id, attr) =>
+          if (archiveIds.contains(id))
+            CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", attribute))
+            // idem for snapshots ?
       }
-
-    case NewArchive(archiveType, id) => // TODO create actor for each archive
-      archiveType match {
-        case Data =>
-          val a = new LocalArchive(archiveType, id)
-          archives += id -> a
-        case Index =>
-          val a = new LocalSnapshot(id)
-          snapshots += id -> a
-      }
-
-    case MigrateArchive(archive, newId, size, hash) =>
-      // TODO create an actor which manage store (all archive files)
-      Files.move(archive.file, Config.getFile(archive.archiveType, newId))
-      val r = new RemoteArchive(archive.archiveType, archive.date, newId, size, hash)
-      archives -= archive.id
-      archives += newId -> r
-
-    case MigrateSnapshot(snapshot, archive) =>
-      var r = new RemoteSnapshot(archive.date, archive.id, archive.size, archive.hash)
-      snapshots -= snapshot.id
-      snapshots += r.id -> r
+    case CreateArchive =>
+      val id = UUID.randomUUID().toString
+      datastore ! CreateData(id, 0)
+      sender ! ArchiveCreated(id)
+      
+//    case MigrateArchive(archive, newId, size, hash) =>
+//      // TODO create an actor which manage store (all archive files)
+//      Files.move(archive.file, Config.getFile(archive.archiveType, newId))
+//      val r = new RemoteArchive(archive.archiveType, archive.date, newId, size, hash)
+//      archives -= archive.id
+//      archives += newId -> r
+//
+//    case MigrateSnapshot(snapshot, archive) =>
+//      var r = new RemoteSnapshot(archive.date, archive.id, archive.size, archive.hash)
+//      snapshots -= snapshot.id
+//      snapshots += r.id -> r
   }
 }

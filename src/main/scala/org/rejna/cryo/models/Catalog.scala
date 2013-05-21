@@ -7,8 +7,6 @@ import java.nio.ByteBuffer
 import java.nio.file.StandardOpenOption._
 import java.nio.channels.FileChannel
 
-import CryoStatus._
-
 object Catalog {
   private val content = HashMap.empty[Hash, HashMap[Int, BlockLocation]]
 

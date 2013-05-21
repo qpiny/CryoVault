@@ -2,6 +2,8 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.{ HashMap, ListBuffer, LinkedList }
 import scala.collection.JavaConversions._
+import scala.concurrent.duration._
+import scala.language.postfixOps
 
 import java.io.{ FileOutputStream, FileInputStream, IOException }
 import java.util.UUID
@@ -11,8 +13,11 @@ import java.nio.file.StandardOpenOption._
 import java.nio.file.attribute._
 import java.nio.channels.FileChannel
 
-import ArchiveType._
-import CryoStatus._
+import akka.actor.Actor
+import akka.pattern.ask
+import akka.util.Timeout
+
+import com.typesafe.config.Config
 
 import sbinary._
 import sbinary.DefaultProtocol._
@@ -20,14 +25,14 @@ import sbinary.Operations._
 
 import org.joda.time.DateTime
 
-trait Snapshot { //self: Archive =>
-  val date: DateTime
-  def size: Long
-  val id: String
-  def state: CryoStatus
-  val attributeBuilder: AttributeBuilder
-  val fileFilters: scala.collection.mutable.Map[String, FileFilter]
-}
+//trait Snapshot { //self: Archive =>
+//  val date: DateTime
+//  def size: Long
+//  val id: String
+//  def state: CryoStatus
+//  val attributeBuilder: AttributeBuilder
+//  val fileFilters: scala.collection.mutable.Map[String, FileFilter]
+//}
 
 class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
   def this(path: String) = this(FileSystems.getDefault.getPath(path))
@@ -46,14 +51,15 @@ class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] 
   }
 }
 
-protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with Snapshot with LoggingClass {
+class LocalSnapshot(id: String)(implicit config: Config) extends Actor with LoggingClass {
+  val attributeBuilder = new AttributeBuilder(s"/cryo/snapshot/${id}")
+  val baseDirectory = FileSystems.getDefault.getPath(config.getString("cryo.baseDirectory"))
+  val datastore = context.actorFor("/user/datastore")
 
-  protected val remoteSnapshotAttribute = attributeBuilder[Option[RemoteSnapshot]]("remoteSnapshot", None)
-  def remoteSnapshot: Option[RemoteSnapshot] = remoteSnapshotAttribute()
-  protected def remoteSnapshot_= = remoteSnapshotAttribute() = _
-
+  val sizeAttribute = attributeBuilder("size", 0L)
+  def size = sizeAttribute()
+  def size_= = sizeAttribute() = _
   val fileFilters = attributeBuilder.map("fileFilters", Map.empty[String, FileFilter])
-
   val files = attributeBuilder.list("files", List.empty[String])
 
   fileFilters <+> new AttributeListCallback {
@@ -79,7 +85,7 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
       new TraversePath(path).foreach {
         case (f, attrs) =>
           if (attrs.isRegularFile && filter.accept(path)) {
-            files = LinkedList(Config.baseDirectory.relativize(f).toString) append files
+            files = LinkedList(baseDirectory.relativize(f).toString) append files
             size += attrs.size
           }
       }
@@ -89,9 +95,9 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
 
   private def splitFile(f: String) = new Traversable[Block] {
     def foreach[U](func: Block => U) = {
-      val input = FileChannel.open(Config.baseDirectory.resolve(f), READ)
+      val input = FileChannel.open(baseDirectory.resolve(f), READ)
       try {
-        val buffer = ByteBuffer.allocate(Config.blockSizeFor(Files.size(file)))
+        val buffer = ByteBuffer.allocate(1024) //FIXME blockSizeFor(Files.size(file)))
         Iterator.continually { buffer.clear; input.read(buffer) }
           .takeWhile(_ != -1)
           .filter(_ > 0)
@@ -103,22 +109,20 @@ protected class LocalSnapshot(id: String) extends LocalArchive(Index, id) with S
   }
 
   def create = {
-    import CryoBinary._
-    if (state != Creating) throw InvalidStateException
-
     // serialize index: [File -> [Hash]] ++ [Hash -> BlockLocation] ++ [File -> Filter]
-    log.info(s"Creating archive in ${file}")
-    val output = new ByteBufferOutput(dataStream)
+    implicit val timeout = Timeout(10 seconds)
+    implicit val cxt = context.system.dispatcher
     try {
-      var currentArchive = Cryo.newArchive(Data)
-      format[Int].writes(output, files().length)
+      var currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
+      var currentArchiveSize = 0L
+      //TODO format[Int].writes(output, files().length)
       for (f <- files()) {
         log.info(s"add file ${f} in archive")
-        format[String].writes(output, f)
+        // TODO format[String].writes(output, f)
         for (block <- splitFile(f)) {
-          if (currentArchive.size > Config.archiveSize) {
-            currentArchive.upload
-            currentArchive = Cryo.newArchive(Data)
+          if (currentArchiveSize > 10*1024*1024) { //TODO Config.archiveSize) {
+            // TODO upload archive currentArchiveId.map(glacier
+            currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
           }
           val bl = Catalog.getOrUpdate(block, currentArchive.writeBlock(block))
           format[Boolean].writes(output, true)

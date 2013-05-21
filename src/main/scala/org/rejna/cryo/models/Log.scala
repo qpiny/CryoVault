@@ -31,7 +31,7 @@ trait LoggingClass {
 object LogDispatcher extends TurboFilter {
   override def decide(marker: Marker, logger: Logger, level: Level, format: String, params: Array[AnyRef], t: Throwable) = {
     val message = MessageFormatter.arrayFormat(format, params).getMessage
-    Cryo.publish(Log(level, if (marker == null) "" else marker.toString, message))
+    CryoEventBus.publish(Log(level, if (marker == null) "" else marker.toString, message))
     FilterReply.ACCEPT
   }
 }

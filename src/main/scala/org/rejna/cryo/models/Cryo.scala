@@ -27,26 +27,7 @@ abstract class Event { val path: String }
 case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event
 case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event
 
-trait EventPublisher {
-  def publish(event: Event)
-}
-
-trait CryoEventBus extends EventBus {
-  type Event = org.rejna.cryo.models.Event
-}
-
-object Logger extends EventPublisher {
-  private var _eventBus: Option[CryoEventBus] = None
-  def setEventBus(eventBus: CryoEventBus) = _eventBus = Some(eventBus)
-
-  def publish(event: Event) = {
-    for (bus <- _eventBus)
-      bus.publish(event)
-  }
-}
-
 case class JobCompleted(job: Job)
-case object RefreshJobList
 case object GetQueueMessage
 
 class Cryo extends Actor with LoggingClass {
@@ -55,10 +36,6 @@ class Cryo extends Actor with LoggingClass {
   val notificationHandler = context.actorFor("/user/notification")
   
   val jobs = HashMap.empty[String, Job]
-
-  def preStart = {
-    context.system.scheduler.schedule(0 second, Config.queueRequestInterval, self, GetQueueMessage)(context.dispatcher)
-  }
 
   def receive = {
     case InventoryRequest =>

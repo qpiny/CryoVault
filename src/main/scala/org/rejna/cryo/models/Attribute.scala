@@ -7,19 +7,19 @@ import akka.actor.ActorRef
 
 import net.liftweb.json._
 
-class AttributeBuilder(val publisher: ActorRef, path: String*) {
+class AttributeBuilder(path: String*) {
   var paths = List(path: _*)
 
   object callback extends AttributeChangeCallback {
     override def onChange[A](attribute: ReadAttribute[A]) = {
       println("attribute[%s#%s] change: %s -> %s".format(paths.mkString("(", ",", ")"), attribute.name, attribute.previous, attribute.now))
-      for (p <- paths) publisher ! AttributeChange(p + '#' + attribute.name, attribute)
+      for (p <- paths) CryoEventBus.publish(AttributeChange(p + '#' + attribute.name, attribute))
     }
   }
   object listCallback extends AttributeListCallback {
     override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit = {
       println("attribute[%s#%s] add: %s remove: %s".format(paths.mkString("(", ",", ")"), attribute.name, addedValues.take(10), removedValues.take(10)))
-      for (p <- paths) publisher ! AttributeListChange(p + '#' + attribute.name, addedValues, removedValues)
+      for (p <- paths) CryoEventBus.publish(AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
     }
   }
 
@@ -35,9 +35,9 @@ class AttributeBuilder(val publisher: ActorRef, path: String*) {
 
   def map[A, B](name: String, body: () => IMap[A, B]) = new MetaMapAttribute(name, body) <+> listCallback
 
-  def /(subpath: String) = new AttributeBuilder(publisher, path.map { p => "%s/%s".format(p, subpath) }: _*)
+  def /(subpath: String) = new AttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
 
-  def withAlias(path: String) = new AttributeBuilder(publisher, path :: paths: _*)
+  def withAlias(path: String) = new AttributeBuilder(path :: paths: _*)
 }
 
 trait AttributeChangeCallback {
