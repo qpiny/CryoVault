@@ -11,7 +11,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 
 import com.amazonaws.services.glacier.AmazonGlacierClient
-import com.amazonaws.services.glacier.model.{ ListJobsRequest, InitiateJobRequest, JobParameters, GetJobOutputRequest }
+import com.amazonaws.services.glacier.model._
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sns.AmazonSNSClient
 
@@ -35,6 +35,7 @@ class Glacier(config: Settings) extends Actor {
   val datastore = context.actorFor("/user/datastore")
   val manager = context.actorFor("/user/manager")
   val inventory = context.actorFor("/user/inventory")
+  implicit val executionContext = context.system.dispatcher
 
   def preStart = {
     glacier = new AmazonGlacierClient(config.awsCredentials, config.awsConfig)
@@ -87,12 +88,47 @@ class Glacier(config: Settings) extends Actor {
 
       val job = ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
       manager ! AddJob(job)
-      
+
     case UploadData(id) =>
       implicit val timeout = Timeout(10 seconds)
-      val status = (datastore ? GetDataStatus(id)).mapTo[DataStatus]
-      status.map(_.)
-      
+      (datastore ? GetDataStatus(id))
+        .map {
+          case DataStatus(status, size) =>
+            if (status == EntryStatus.Created) {
+              
+            }
+            0
+        }
+
   }
+  
+  def uploadArchive(data: InputStream, description: String, checksum: String): String =
+    glacier.uploadArchive(new UploadArchiveRequest()
+      .withArchiveDescription(description)
+      .withVaultName(config.vaultName)
+      .withChecksum(checksum)
+      .withBody(input)
+      .withContentLength(input.available)).getArchiveId
+
+  def initiateMultipartUpload(description: String): String =
+    glacier.initiateMultipartUpload(new InitiateMultipartUploadRequest()
+      .withArchiveDescription(description)
+      .withVaultName(Config.vaultName)
+      .withPartSize(Config.partSize.toString)).getUploadId
+
+  def uploadMultipartPart(uploadId: String, input: InputStream, range: String, checksum: String): Unit =
+    glacier.uploadMultipartPart(new UploadMultipartPartRequest()
+      .withChecksum(checksum)
+      .withBody(input)
+      .withRange(range)
+      .withUploadId(uploadId)
+      .withVaultName(Config.vaultName))
+
+  def completeMultipartUpload(uploadId: String, size: Long, checksum: String): String =
+    glacier.completeMultipartUpload(new CompleteMultipartUploadRequest()
+      .withArchiveSize(size.toString)
+      .withVaultName(Config.vaultName)
+      .withChecksum(checksum)
+      .withUploadId(uploadId)).getArchiveId
 }
 
