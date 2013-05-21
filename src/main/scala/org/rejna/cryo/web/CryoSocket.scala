@@ -9,7 +9,7 @@ import akka.actor.Actor
 
 import java.nio.file.{ Path, Files, FileSystems, AccessDeniedException }
 
-import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Config, CryoEventBus }
+import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Settings, CryoEventBus }
 import akka.event.EventBus
 import akka.event.SubchannelClassification
 import akka.util.Subclassification
@@ -59,38 +59,6 @@ object EventSerialization {
   implicit def toEventSender(wsFrame: WebSocketFrameEvent) = EventSender(wsFrame)
 }
 
-object CryoSocketBus extends CryoEventBus with SubchannelClassification with LoggingClass {
-  import EventSerialization._
-
-  type Classifier = String
-  type Subscriber = WebSocketFrameEvent
-
-  protected def classify(event: Event) = event.path
-  protected def subclassification = new Subclassification[Classifier] {
-    def isEqual(x: Classifier, y: Classifier) = x == y
-    def isSubclass(x: Classifier, y: Classifier) = x.startsWith(y)
-  }
-
-  // FIXME add synchronized + volatile
-  protected def publish(event: Event, subscriber: Subscriber): Unit = {
-    ignore.get(subscriber.channel.getId) match {
-      case Some(filters) if filters.exists(_.findFirstIn(event.path).isDefined) => // ignore
-      case _ =>
-        subscriber.write(event)
-    }
-  }
-
-  private var ignore = Map[Int, Set[Regex]]()
-  def addIgnoreSubscription(subscriber: Subscriber, subscription: String) = {
-    ignore = ignore.updated(subscriber.channel.getId,
-      ignore.getOrElse(subscriber.channel.getId, Set[Regex]()) + subscription.r)
-  }
-
-  def removeIgnoreSubscription(subscriber: Subscriber, subscription: String) = {
-    ignore = ignore.updated(subscriber.channel.getId,
-      ignore.getOrElse(subscriber.channel.getId, Set[Regex]()) - subscription.r)
-  }
-}
 
 class CryoSocket extends Actor with LoggingClass {
   import EventSerialization._

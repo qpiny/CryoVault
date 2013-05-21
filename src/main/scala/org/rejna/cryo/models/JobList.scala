@@ -31,6 +31,6 @@ class JobList(attributeBuilder: AttributeBuilder) extends Actor {
           case None =>
             jobs += job.id -> job
         }
-    // TODO remove jobs
+    // TODO remove obsolete jobs
   }
 }

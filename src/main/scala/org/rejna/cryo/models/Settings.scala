@@ -1,6 +1,7 @@
 package org.rejna.cryo.models
 
 import scala.util.Random
+import scala.concurrent.duration._
 import scala.language.postfixOps
 
 import java.nio.file.{ Path, FileSystems }
@@ -14,7 +15,7 @@ import com.amazonaws.{ ClientConfiguration, Protocol }
 
 import ArchiveType._
 
-object Config {
+class Settings {
   import org.rejna.util.IsoUnit._
   val config = ConfigFactory.defaultOverrides.withFallback(ConfigFactory.load)
   val hashAlgorithm = config.getString("cryo.hash-algorithm")
@@ -38,6 +39,8 @@ object Config {
     else if (fileSize < (512 gibi)) 512 mebi
     else 1 gibi
   }
+  
+  val queueRequestInterval = config.getMilliseconds("cryo.queue-request-interval").toInt milliseconds
 
   val cipher = Cipher.getInstance(config.getString("cryo.cipher"));
   val key = {

@@ -3,6 +3,7 @@ package org.rejna.cryo.models
 import com.amazonaws.services.glacier.model.DescribeJobResult
 import com.amazonaws.services.glacier.model.GlacierJobDescription
 
+import akka.actor.ActorRef
 import java.util.Date
 import org.joda.time.DateTime
 import org.joda.time.format.ISODateTimeFormat
@@ -137,20 +138,41 @@ object InventoryMessage {
 //    }
 //  }
 //}
+sealed class JobType
+case object InventoryRetrieval extends JobType
+case object ArchiveRetrieval extends JobType 
 
-case class Job(
+sealed class JobStatus(message: String)
+case class InProgress(message: String) extends JobStatus(message)
+case class Succeeded(message: String) extends JobStatus(message)
+case class Failed(message: String) extends JobStatus(message)
+
+class Job(
   id: String,
-  action: String,
+  action: JobType,
   description: String,
-  archive: Option[Archive],
   creationDate: DateTime,
-  status: String,
-  completed: Boolean,
+  status: JobStatus,
   completedDate: Option[DateTime],
-  callback: Option[Function1[Job, Unit]]) {
-  def update(newerJob: Job) = newerJob.copy(callback = callback)
-}
+  requester: ActorRef)
 
+case class InventoryJob(
+    id: String,
+    description: String,
+    creationDate: DateTime,
+    status: JobStatus,
+    completedDate: Option[DateTime],
+    requester: ActorRef) extends Job(id, InventoryRetrieval, description, creationDate, status, completedDate, requester)
+
+case class ArchiveJob(
+    id: String,
+    description: String,
+    creationDate: DateTime,
+    status: JobStatus,
+    completedDate: Option[DateTime],
+    archiveId: String,
+    requester: ActorRef) extends Job(id, ArchiveRetrieval, description, creationDate, status, completedDate, requester)
+    
 object Job extends LoggingClass {
   def apply(gjd: GlacierJobDescription): Job = {
     val archive = Option(gjd.getArchiveId) flatMap { aid =>

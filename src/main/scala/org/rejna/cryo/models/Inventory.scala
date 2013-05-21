@@ -9,7 +9,7 @@ import akka.actor.Actor
 import java.io.FileOutputStream
 import java.nio.file.{ Files, Path }
 import java.nio.file.StandardOpenOption._
-import java.nio.CharBuffer
+import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
 import java.util.UUID
 
@@ -18,6 +18,9 @@ import org.joda.time.{ DateTime, Interval }
 import ArchiveType._
 import CryoStatus._
 
+case class OpenArchive(id: String, size: Long)
+case class Data(id: String, position: Long, buffer: ByteBuffer)
+case class CloseData(id: String)
 case class LoadInventoryFromFile(file: Path)
 case class LoadInventoryFromMessage(message: InventoryMessage)
 case class RefreshInventory(maxAge: Duration)
@@ -48,8 +51,11 @@ class Inventory(val attributeBuilder: AttributeBuilder) extends Actor with Loggi
     else // check if InventoryRetrieval job is already in jobList
       self ! RefreshInventory(0 second)
   }
+  
+  
 
   def receive = {
+    case Data(id, position, buffer) =>
     case LoadInventoryFromFile(file) =>
       val channel = FileChannel.open(file, READ)
       try {
