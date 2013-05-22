@@ -2,11 +2,15 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.{ HashMap, ArrayBuffer }
 import scala.collection.JavaConversions.bufferAsJavaList
+import scala.annotation.tailrec
+import scala.concurrent.Await
+import scala.concurrent.duration._
 
-import akka.actor.Actor
-import akka.util.ByteString
+import akka.actor.{ Actor, ActorSystem, ActorRefFactory }
+import akka.pattern.ask
+import akka.util.{ ByteString, ByteIterator, Timeout }
 
-import java.io.IOException
+import java.io.{ InputStream, OutputStream, IOException }
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.{ FileSystems, Files }
@@ -190,5 +194,76 @@ class DataStore(config: Config) extends Actor with LoggingClass {
           sender ! WriteError("Invalid data entry state")
       }
   }
+}
 
+class DataStoreInputStream(id: String, val size: Long = 0, var position: Long = 0)(implicit system: ActorSystem, timeout: Timeout) extends InputStream {
+  val datastore = system.actorFor("/user/datastore")
+  implicit val contextExecutor = system.dispatcher 
+  
+  var buffer: ByteIterator = ByteIterator.ByteArrayIterator.empty
+  var limit = 0
+
+  private def requestMoreData: Int = {
+    if (limit < size)
+      Await.result((datastore ? ReadData(id, limit, Math.min(1024, (size - limit).toInt)))
+        .map {
+          case DataRead(id, position, data) =>
+            // TODO check position == limit && id == id ?
+            buffer ++= data
+            val s = data.size
+            limit += s
+            s
+          case _ => -1
+        }, 10 seconds)
+    else
+      -1
+  }
+
+  @tailrec
+  override def read: Int = {
+    if (buffer.hasNext) {
+      position += 1
+      buffer.next().toInt & 0xff
+    } else {
+      if (available > 0 && requestMoreData >= 0)
+        read
+      else
+        -1
+    }
+  }
+
+  override def read(b: Array[Byte], off: Int, len: Int): Int = {
+    val n = math.min(available, len)
+    if (available < len)
+      -1
+    else if (limit - position < n && requestMoreData >= 0)
+      read(b, off, n)
+    else {
+      buffer.copyToArray(b, off, n)
+      n
+    }
+  }
+  
+  //override def skip(n: Long): Long = {
+}
+
+class DataStoreOutputStream(id: String)(implicit val system: ActorRefFactory) extends OutputStream {
+  val datastore = system.actorFor("/user/datastore")
+  var position = 0
+  def close = {}
+  def flush = {}
+  def write(b: Array[Byte]) = {
+    datastore ! WriteData(id, position, ByteString(b))
+    position += b.length
+  }
+
+  def write(b: Array[Byte], off: Int, len: Int) = {
+    datastore ! WriteData(id, position, ByteString.fromArray(b, off, len))
+    position += len
+  }
+
+  def write(b: Int) = {
+    datastore ! WriteData(id, position, ByteString(b))
+    position += 1
+  }
 }
