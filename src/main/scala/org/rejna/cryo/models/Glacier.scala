@@ -90,6 +90,12 @@ class Glacier(config: Settings) extends Actor {
       manager ! AddJob(job)
 
     case UploadData(id) =>
+       glacier.uploadArchive(new UploadArchiveRequest()
+      //.withArchiveDescription(description)
+      .withVaultName(config.vaultName)
+      .withChecksum(checksum)
+      .withBody(input)
+      .withContentLength(input.available)).getArchiveId
       implicit val timeout = Timeout(10 seconds)
       (datastore ? GetDataStatus(id))
         .map {

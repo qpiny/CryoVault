@@ -1,4 +1,4 @@
-package org.yeeha.indicasec.util
+package org.rejna.util
 
 import collection.mutable.MapBuilder
 import collection.generic.CanBuildFrom

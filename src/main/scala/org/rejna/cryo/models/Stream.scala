@@ -3,6 +3,7 @@ package org.rejna.cryo.models
 import scala.concurrent.duration._
 import scala.concurrent.{ Await, ExecutionContext }
 import scala.annotation.tailrec
+import scala.language.postfixOps
 
 import java.io.InputStream
 import java.nio.ByteBuffer
@@ -85,24 +86,5 @@ class StreamDestinationActor(id: String, datastore: ActorRef)(implicit execution
     }
   }
   
-      override def skip(n: Long): Long = {
-        val n = math.min(available, n)
-  //      iterator.drop(nSkip)
-  //      nSkip
-  //    }
-  //    override def available = streamSize.toInt - position
-  //    override def close = {}
-  //    override def read = {
-  //      val b = buffer.getByte
-  //      position += 1
-  //      b
-  //    }
-  //    override def read(data: Array[Byte]) = 0
-  //    override def read(data: Array[Byte], offset: Int, length: Int) = 0
-  //  }
-
-  //  def receive = {
-  //    case DataRead(id, position, data) =>
-  //      buffer ++= data
-  //  }
+  //override def skip(n: Long): Long = {
 }
