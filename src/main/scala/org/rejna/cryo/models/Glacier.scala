@@ -21,7 +21,6 @@ import org.joda.time.DateTime
 case object RefreshJobList
 case object RefreshInventory
 case class InventoryRequested(job: InventoryJob)
-case class InventoryResponse(inventory: InventoryMessage)
 case class JobOutputRequest(jobId: String)
 case class DownloadArchiveRequest(archiveId: String)
 case class DownloadArchiveRequested(job: ArchiveJob)
@@ -29,32 +28,30 @@ case class UploadData(id: String)
 
 class Glacier(config: Settings) extends Actor {
 
-  var glacier: AmazonGlacierClient
-  var sqs: AmazonSQSClient
-  var sns: AmazonSNSClient
-  var snsTopicARN: String
+  val glacier = new AmazonGlacierClient(config.awsCredentials, config.awsConfig)
+  //__hackAddProxyAuthPref(glacier)
+  glacier.setEndpoint("glacier." + config.region + ".amazonaws.com/")
+  //val sqs = new AmazonSQSClient(config.awsCredentials, config.awsConfig)
+  //__hackAddProxyAuthPref(sqs)
+  //sqs.setEndpoint("sqs." + config.region + ".amazonaws.com")
+  //var sns = new AmazonSNSClient(config.awsCredentials, config.awsConfig)
+  //__hackAddProxyAuthPref(sns)
+  //sns.setEndpoint("sns." + config.region + ".amazonaws.com")
+  //var snsTopicARN: String
   val datastore = context.actorFor("/user/datastore")
   val manager = context.actorFor("/user/manager")
   val inventory = context.actorFor("/user/inventory")
   implicit val executionContext = context.system.dispatcher
+  val snsTopicARN = "XXXX" // FIXME
 
   def preStart = {
-    glacier = new AmazonGlacierClient(config.awsCredentials, config.awsConfig)
-    //__hackAddProxyAuthPref(glacier)
-    glacier.setEndpoint("glacier." + config.region + ".amazonaws.com/")
-    sqs = new AmazonSQSClient(config.awsCredentials, config.awsConfig)
-    //__hackAddProxyAuthPref(sqs)
-    sqs.setEndpoint("sqs." + config.region + ".amazonaws.com")
-    sns = new AmazonSNSClient(config.awsCredentials, config.awsConfig)
-    //__hackAddProxyAuthPref(sns)
-    sns.setEndpoint("sns." + config.region + ".amazonaws.com")
-
     CryoEventBus.subscribe(self, "/user/manager#jobs")
   }
 
   def receive: Receive = {
     case AttributeListChange(path, addedJobs, removedJobs) if path == "/user/manager#jobs" =>
       for ((jobId, attr) <- addedJobs.asInstanceOf[List[(String, Job)]]) {
+        // TODO do it asynchronously
         val dataId = attr match {
           case a: ArchiveJob => a.archiveId
           case i: InventoryJob => "inventory"
@@ -104,10 +101,9 @@ class Glacier(config: Settings) extends Actor {
 
     case UploadData(id) =>
       implicit val timeout = Timeout(10 seconds)
-      implicit val system = context.system
       (datastore ? GetDataStatus(id))
         .map {
-          case DataStatus(status, size, checksum) if status == EntryStatus.Created =>
+          case DataStatus(_, status, size, checksum) if status == EntryStatus.Created =>
             if (size < config.multipartThreshold) {
               glacier.uploadArchive(new UploadArchiveRequest()
                 //.withArchiveDescription(description)

@@ -18,77 +18,79 @@ import java.util.UUID
 
 import org.joda.time.{ DateTime, Interval }
 
-case class LoadInventoryFromFile(file: Path)
-case class LoadInventoryFromMessage(message: InventoryMessage)
-case object CreateArchive
-case class ArchiveCreated(id: String)
+sealed abstract class InventoryRequest
+sealed abstract class InventoryResponse
+sealed class InventoryError(message: String, cause: Option[Throwable]) extends Exception(message, cause.get)
+
+case object CreateArchive extends InventoryRequest
+case class ArchiveCreated(id: String) extends InventoryResponse
 
 case class InventoryMessage(data: String) // TODO
 
 class Inventory extends Actor with LoggingClass {
+  implicit val contextExecutor = context.system.dispatcher
+  implicit val timeout = Timeout(10 seconds)
+  
   val glacier = context.actorFor("/user/glacier")
   val datastore = context.actorFor("/user/datastore")
-
   val attributeBuilder = new AttributeBuilder("/cryo/inventory")
+  val inventoryDataId = "inventory"
+  
   val dateAttribute = attributeBuilder("date", DateTime.now)
   def date = dateAttribute()
   private def date_= = dateAttribute() = _
 
-  val snapshots = attributeBuilder.map("snapshots", Map[String, Snapshot]())
+  //val snapshots = attributeBuilder.map("snapshots", Map[String, Snapshot]())
   val archiveIds = Buffer.empty[String]
 
-  implicit val timeout = Timeout(10 seconds)
+  
   def preStart = {
     CryoEventBus.subscribe(self, "/cryo/datastore")
-    datastore ! GetDataStatus("inventory")
+    datastore ! GetDataStatus(inventoryDataId)
   }
 
   def receive = {
-    case DataStatus(status, size) =>
-      status match {
-        case EntryStatus.Creating => // wait
-        case EntryStatus.Created =>
-          datastore ! ReadData("inventory", 0, size)
-        case EntryStatus.NonExistent =>
-          glacier ! RefreshInventory
-      }
+    case DataStatus(id, status, size, checksum) =>
+      if (id == inventoryDataId && status == EntryStatus.Created)
+        datastore ! ReadData(inventoryDataId, 0, size.toInt)
 
     case DataRead(id, position, buffer) =>
-      // TODO check id and position
+      if (id == "inventory") {
       val message = InventoryMessage(buffer.asByteBuffer.asCharBuffer.toString)
-//      date = message.date
-//      val (s, a) = message.archives.partition(_.archiveType == Index)
-//      snapshots ++= s.map { a => a.id -> new RemoteSnapshot(a) }
-//      archives ++= a.map { a => a.id -> a }
-
+    //      date = message.date
+    //      val (s, a) = message.archives.partition(_.archiveType == Index)
+    //      snapshots ++= s.map { a => a.id -> new RemoteSnapshot(a) }
+    //      archives ++= a.map { a => a.id -> a }
+      }
     case AttributeChange(path, attribute) =>
-      val pathRegex = "/cryo/datastore/([^/]*)#(.*)".r
       path match {
-        case pathRegex("inventory", "status") => 
-	      CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
-	      if (attribute.now == EntryStatus.Created) {
-	        datastore ! GetDataStatus("inventory")
-	      }
-        case pathRegex(id, attr) =>
+        case AttributePath("datastore", inventoryDataId, "status") =>
+          CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
+          if (attribute.now == EntryStatus.Created) {
+            datastore ! GetDataStatus(inventoryDataId)
+          }
+        case AttributePath("datastore", id, attr) =>
           if (archiveIds.contains(id))
             CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", attribute))
-            // idem for snapshots ?
+        // idem for snapshots ?
       }
     case CreateArchive =>
-      val id = UUID.randomUUID().toString
-      datastore ! CreateData(id, 0)
-      sender ! ArchiveCreated(id)
-      
-//    case MigrateArchive(archive, newId, size, hash) =>
-//      // TODO create an actor which manage store (all archive files)
-//      Files.move(archive.file, Config.getFile(archive.archiveType, newId))
-//      val r = new RemoteArchive(archive.archiveType, archive.date, newId, size, hash)
-//      archives -= archive.id
-//      archives += newId -> r
-//
-//    case MigrateSnapshot(snapshot, archive) =>
-//      var r = new RemoteSnapshot(archive.date, archive.id, archive.size, archive.hash)
-//      snapshots -= snapshot.id
-//      snapshots += r.id -> r
+      val requester = sender
+      (datastore ? CreateData).map {
+        case DataCreated(id) => requester ! ArchiveCreated(id)
+        case e: DataStoreError => requester ! new InventoryError("", Some(e))
+      }
+
+    //    case MigrateArchive(archive, newId, size, hash) =>
+    //      // TODO create an actor which manage store (all archive files)
+    //      Files.move(archive.file, Config.getFile(archive.archiveType, newId))
+    //      val r = new RemoteArchive(archive.archiveType, archive.date, newId, size, hash)
+    //      archives -= archive.id
+    //      archives += newId -> r
+    //
+    //    case MigrateSnapshot(snapshot, archive) =>
+    //      var r = new RemoteSnapshot(archive.date, archive.id, archive.size, archive.hash)
+    //      snapshots -= snapshot.id
+    //      snapshots += r.id -> r
   }
 }

@@ -1,0 +1,102 @@
+package org.rejna.cryo.models
+
+import scala.concurrent.duration._
+import scala.language.postfixOps
+import scala.collection.JavaConversions.{ asScalaBuffer, mapAsJavaMap }
+
+import akka.actor.Actor
+
+import net.liftweb.json.Serialization
+
+import com.amazonaws.services.sqs.AmazonSQSClient
+import com.amazonaws.services.sqs.model._
+import com.amazonaws.services.sns.AmazonSNSClient
+import com.amazonaws.services.sns.model._
+
+object GetNotification
+
+abstract class Notification(config: Settings) extends Actor with LoggingClass {
+  val sns = new AmazonSNSClient(config.awsCredentials, config.awsConfig)
+  //__hackAddProxyAuthPref(sns)
+  sns.setEndpoint("sns." + config.region + ".amazonaws.com")
+  val notificationArn = getOrCreateQueue
+
+  private def getOrCreateQueue: String = {
+    if (!sns.listTopics.getTopics.exists(_.getTopicArn == config.snsTopicARN)) {
+      log.warn(s"Notification topic ${config.snsTopicARN} doesn't exist")
+      log.warn("Setting up notification topic")
+      val arn = sns.createTopic(new CreateTopicRequest(config.snsTopicName)).getTopicArn
+      if (arn != config.snsTopicARN) {
+        log.warn(s"cryo.sns-topic-arn in config is not correct (${config.snsTopicARN} should be ${arn})")
+      }
+      arn
+    } else
+      config.snsTopicARN
+  }
+}
+
+class QueueNotification(config: Settings) extends Notification(config) {
+  val sqs = new AmazonSQSClient(config.awsCredentials, config.awsConfig)
+  //__hackAddProxyAuthPref(sqs)
+  sqs.setEndpoint("sqs." + config.region + ".amazonaws.com")
+  val (queueUrl, queueArn) = getOrCreateQueue
+
+  private def getOrCreateQueue: (String, String) = {
+    sqs.listQueues(new ListQueuesRequest(config.sqsQueueName)).getQueueUrls.headOption match {
+      case None =>
+        log.warn(s"Notification queue ${config.sqsQueueName} doesn't exist")
+        log.warn("Setting up notification queue")
+
+        val url = sqs.createQueue(
+          new CreateQueueRequest(config.sqsQueueName)
+            .withAttributes(Map( // TODO put attributes in config
+              "DelaySeconds" -> "0",
+              "MaximumMessageSize" -> "65536",
+              "MessageRetentionPeriod" -> (4 days).toSeconds.toString,
+              //"Policy" -> ??
+              "ReceiveMessageWaitTimeSeconds" -> "0",
+              "VisibilityTimeout" -> "30"))).getQueueUrl()
+
+        var arn = sqs.getQueueAttributes(new GetQueueAttributesRequest(url)
+          .withAttributeNames("QueueArn"))
+          .getAttributes.get("QueueArn")
+        if (arn != config.sqsQueueARN) {
+          log.warn(s"cryo.sqs-queue-arn in config is not correct (${config.sqsQueueARN} should be ${arn})")
+        }
+        (url, arn)
+      case Some(url) =>
+        (url, config.sqsQueueName)
+    }
+  }
+
+  def preStart = {
+    context.system.scheduler.schedule(0 second, config.queueRequestInterval, self, GetNotification)(context.system.dispatcher)
+  }
+
+  def receive = {
+    case GetNotification =>
+      for (message <- sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages) {
+        message.getAttributes().get("Type") match {
+          case "Notification" =>
+            Serialization.read[Job](message.getBody)
+          case otherType =>
+            log.warn(s"Receive message from notification queue with type ${otherType}, ignore it")
+        } 
+      }
+      
+  }
+}
+
+/*
+{
+  "Type" : "Notification",
+  "MessageId" : "ac1ae29d-d193-553b-9a97-a88dc9ea701e",
+  "TopicArn" : "arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic",
+  "Message" : "{\"Action\":\"InventoryRetrieval\",\"ArchiveId\":null,\"ArchiveSHA256TreeHash\":null,\"ArchiveSizeInBytes\":null,\"Completed\":true,\"CompletionDate\":\"2013-05-17T11:36:25.669Z\",\"CreationDate\":\"2013-05-17T07:36:17.140Z\",\"InventorySizeInBytes\":1159,\"JobDescription\":null,\"JobId\":\"Vg6tHfPPIo7HrsY15dMwi-E0dGmHFM8qAwvjtYP8jfbkHYuoXjB-tvH9f6oI0U8B_zwhpZ8eEFv0b3Yzp6cYX-OeMNex\",\"RetrievalByteRange\":null,\"SHA256TreeHash\":null,\"SNSTopic\":\"arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic\",\"StatusCode\":\"Succeeded\",\"StatusMessage\":\"Succeeded\",\"VaultARN\":\"arn:aws:glacier:eu-west-1:235715319590:vaults/cryo\"}",
+  "Timestamp" : "2013-05-17T11:36:25.752Z",
+  "SignatureVersion" : "1",
+  "Signature" : "Kss0qWBDaYq7ANfFmweyWnzqo/dTaq4Ql3jKK7Lm/4fsfbv0OaFFnG5yNGaswxBVK90vDxiwLc9w2TF7OaEgqRHcjD2GCx4YFqdatY2Px8WziBm5dpLhWcuvqJzxxbpV5SH7qhqaZUrESi5IJxnNfLLWUYtlVhzlCdpQr8Kf3Ds=",
+  "SigningCertURL" : "https://sns.eu-west-1.amazonaws.com/SimpleNotificationService-f3ecfb7224c7233fe7bb5f59f96de52f.pem",
+  "UnsubscribeURL" : "https://sns.eu-west-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic:65e5dbb6-ee7c-484c-8a40-d0641c4ace49"
+}
+*/

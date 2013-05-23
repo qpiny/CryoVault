@@ -29,9 +29,6 @@ class Settings {
   val inventoryFile = FileSystems.getDefault.getPath(config.getString("cryo.inventory-file"))
   val baseDirectory = FileSystems.getDefault.getPath(config.getString("cryo.base-directory"))
 
-  def getFile(archiveType: ArchiveType, id: String) =
-    workingDirectory.resolve(archiveType + "_" + id + ".glacier")
-
   def blockSizeFor(fileSize: Long) = {
     if (fileSize < (1 mebi)) 1 kibi
     else if (fileSize < (512 mebi)) 512 kibi
@@ -39,8 +36,6 @@ class Settings {
     else if (fileSize < (512 gibi)) 512 mebi
     else 1 gibi
   }
-  
-  val queueRequestInterval = config.getMilliseconds("cryo.queue-request-interval").toInt milliseconds
 
   val cipher = Cipher.getInstance(config.getString("cryo.cipher"));
   val key = {
@@ -60,7 +55,8 @@ class Settings {
   val sqsQueueName = config.getString("glacier.sqs-queue-name")
   val snsTopicName = config.getString("glacier.sns-topic-name")
   val sqsQueueARN = config.getString("glacier.sqs-queue-arn")
-  val sqsTopicARN = config.getString("glacier.sqs-topic-arn")
+  val snsTopicARN = config.getString("glacier.sns-topic-arn")
+  val queueRequestInterval = config.getMilliseconds("cryo.queue-request-interval").toInt milliseconds
   val vaultName = config.getString("glacier.vault-name")
 
   val awsConfig = (new ClientConfiguration)

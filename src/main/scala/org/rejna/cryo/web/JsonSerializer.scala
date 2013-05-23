@@ -6,21 +6,21 @@ import net.liftweb.json._
 
 import org.rejna.cryo.models._
 
-object JsonSerializer extends Serializer[Snapshot] {
+object JsonSerializer extends Serializer[Int] {
   import net.liftweb.json.JsonDSL._
-  val SnapshotClass = classOf[Snapshot]
+  val SnapshotClass = classOf[Int]
 
-  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), Snapshot] = {
+  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), Int] = {
     case (TypeInfo(SnapshotClass, _), json) => sys.error("plop")
   }
 
   def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
-    case s: Snapshot =>
-      ("date" -> s.date.getMillis) ~
-        ("id" -> s.id) ~
-        ("size" -> s.size) ~
-        ("status" -> s.state.toString) ~
-        ("fileSelection" -> s.fileFilters.map { case (file, filter) => (file, filter.toString) })
+//    case s: Snapshot =>
+//      ("date" -> s.date.getMillis) ~
+//        ("id" -> s.id) ~
+//        ("size" -> s.size) ~
+//        ("status" -> s.state.toString) ~
+//        ("fileSelection" -> s.fileFilters.map { case (file, filter) => (file, filter.toString) })
     case (k, v) =>
       (k.toString -> Extraction.decompose(v))
     case fe: FileElement =>

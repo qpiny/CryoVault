@@ -8,10 +8,9 @@ import sbinary.Operations._
 
 import org.joda.time.DateTime
 
-import ArchiveType._
 
 class ByteBufferOutput(fc: FileChannel) extends Output {
-  val buffer = ByteBuffer.allocateDirect(Config.bufferSize)
+  val buffer = ByteBuffer.allocateDirect(config.bufferSize)
   def writeByte(value: Byte) = try {
     buffer.put(value)
   } catch {

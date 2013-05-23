@@ -6,6 +6,14 @@ import com.amazonaws.services.glacier.model.GlacierJobDescription
 
 import org.joda.time.DateTime
 
+object JobStatus {
+  def apply(name: String, message: String) = name match {
+    case "InProgress" => Some(InProgress(message))
+    case "Succeeded" => Some(Succeeded(message))
+    case "Failed" => Some(Failed(message))
+    case _ => None
+  }
+}
 sealed class JobStatus(message: String)
 case class InProgress(message: String) extends JobStatus(message)
 case class Succeeded(message: String) extends JobStatus(message)

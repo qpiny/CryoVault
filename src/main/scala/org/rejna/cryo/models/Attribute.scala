@@ -2,10 +2,13 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.{ Buffer, ListBuffer, Map, HashMap, Set }
 import scala.collection.immutable.{ Map => IMap }
+import scala.util.matching.Regex
 
 import akka.actor.ActorRef
 
 import net.liftweb.json._
+
+object AttributePath extends Regex("/cryo/([^/]*)/([^/]*)#(.*)", "service", "object", "attribute")
 
 class AttributeBuilder(path: String*) {
   var paths = List(path: _*)
