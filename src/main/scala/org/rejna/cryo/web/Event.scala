@@ -3,14 +3,14 @@ package org.rejna.cryo.web
 import java.nio.file.Path
 import scala.concurrent.duration._
 import net.liftweb.json._
-import org.rejna.cryo.models.{ Archive, ArchiveType, CryoStatus, Snapshot, Event, FileFilter }
+import org.rejna.cryo.models.{ Event, FileFilter }
 
 abstract class RequestEvent extends Event { val path = "<null>" }
 abstract class ResponseEvent(val path: String) extends Event
 
 case class GetArchiveList() extends RequestEvent
-case class ArchiveList(archives: List[Archive]) extends ResponseEvent("<null>")
-case class SnapshotList(snapshots: List[Snapshot]) extends ResponseEvent("<null>")
+case class ArchiveList(archives: List[String]) extends ResponseEvent("<null>")
+case class SnapshotList(snapshots: List[String]) extends ResponseEvent("<null>")
 
 case class GetSnapshotList() extends RequestEvent
 case class Subscribe(subscription: String) extends RequestEvent
@@ -21,7 +21,7 @@ case class CreateSnapshot() extends RequestEvent
 case class UploadSnapshot(snapshotId: String) extends RequestEvent
 case class AddFile(snapshotId: String, file: String) extends RequestEvent
 case class SnapshotCreated(id: String) extends ResponseEvent("<null>")
-case class ArchiveCreation(file: Path, archiveType: ArchiveType.ArchiveType, id: String, state: CryoStatus.CryoStatus) extends ResponseEvent(id)
+//case class ArchiveCreation(file: Path, archiveType: ArchiveType.ArchiveType, id: String, state: CryoStatus.CryoStatus) extends ResponseEvent(id)
 case class RefreshInventory(maxAge: Duration = 24 hours) extends RequestEvent
 
 case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent

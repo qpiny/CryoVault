@@ -26,7 +26,7 @@ sealed abstract class Job(
   val status: JobStatus,
   val completedDate: Option[DateTime])
 
-case class InventoryJob(
+class InventoryJob(
   id: String,
   description: String,
   creationDate: DateTime,
@@ -34,7 +34,7 @@ case class InventoryJob(
   completedDate: Option[DateTime]) extends Job(id, description, creationDate, status, completedDate) {
 }
 
-case class ArchiveJob(
+class ArchiveJob(
   id: String,
   description: String,
   creationDate: DateTime,
@@ -52,7 +52,7 @@ object Job {
   def apply(j: GlacierJobDescription): Job = {
     j.getAction match {
       case "ArchiveRetrieval" =>
-        ArchiveJob(
+        new ArchiveJob(
           j.getJobId,
           j.getJobDescription,
           DateUtil.fromISOString(j.getCreationDate),
@@ -60,7 +60,7 @@ object Job {
           Option(DateUtil.fromISOString(j.getCompletionDate)),
           j.getArchiveId)
       case "InventoryRetrieval" =>
-        InventoryJob(
+        new InventoryJob(
           j.getJobId,
           j.getJobDescription,
           DateUtil.fromISOString(j.getCreationDate),
@@ -73,13 +73,12 @@ case class AddJob(job: Job)
 case class RemoveJob(jobId: String)
 case class JobList(jobs: List[Job])
 
-class Manager extends Actor {
+class Manager(cryoctx: CryoContext) extends Actor {
   val attributeBuilder = new AttributeBuilder("/user/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
-  val cryo = context.actorFor("/user/cryo")
 
-  def preStart = {
-    cryo ! RefreshJobList
+  override def preStart = {
+    cryoctx.cryo ! RefreshJobList
   }
 
   def receive = {

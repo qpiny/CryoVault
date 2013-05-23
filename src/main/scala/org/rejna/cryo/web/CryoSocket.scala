@@ -9,7 +9,7 @@ import akka.actor.Actor
 
 import java.nio.file.{ Path, Files, FileSystems, AccessDeniedException }
 
-import org.rejna.cryo.models.{ Cryo, ArchiveType, LocalSnapshot, RemoteSnapshot, Settings, CryoEventBus }
+import org.rejna.cryo.models._
 import akka.event.EventBus
 import akka.event.SubchannelClassification
 import akka.util.Subclassification
@@ -34,7 +34,7 @@ object EventTypeHints extends TypeHints {
       classOf[ArchiveList] ::
       classOf[SnapshotList] ::
       classOf[AddFile] ::
-      classOf[ArchiveCreation] ::
+      //classOf[ArchiveCreation] ::
       classOf[SnapshotFiles] ::
       classOf[AttributeChange[_]] ::
       classOf[AttributeListChange[_]] ::
@@ -69,71 +69,71 @@ class CryoSocket extends Actor with LoggingClass {
       val event = Serialization.read[RequestEvent](m)
       event match {
         case Subscribe(subscription) =>
-          CryoSocketBus.subscribe(wsFrame, subscription)
+          CryoEventBus.subscribe(self, subscription)
         case Unsubscribe(subscription) =>
-          CryoSocketBus.unsubscribe(wsFrame, subscription)
+          CryoEventBus.unsubscribe(self, subscription)
         case AddIgnoreSubscription(subscription) =>
-          CryoSocketBus.addIgnoreSubscription(wsFrame, subscription)
+          CryoEventBus.addIgnoreSubscription(self, subscription)
         case RemoveIgnoreSubscription(subscription) =>
 
-        case CreateSnapshot() =>
-          log.info("Creating new snapshot")
-          val snapshot = Cryo.newArchive(ArchiveType.Index)
-          wsFrame.write(SnapshotCreated(snapshot.id))
-        case GetArchiveList() =>
-          wsFrame.write(ArchiveList(Cryo.inventory.archives.values.toList))
-        case GetSnapshotList() =>
-          wsFrame.write(SnapshotList(Cryo.inventory.snapshots.values.toList))
-        case RefreshInventory(maxAge) =>
-          Cryo.inventory.update(maxAge)
-        case GetSnapshotFiles(snapshotId, directory) => {
-          val snapshot = Cryo.inventory.snapshots(snapshotId)
-          val files = snapshot match {
-            case ls: LocalSnapshot => ls.files()
-            case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
-          }
-          val dir = Config.baseDirectory.resolve(directory)
-          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters).toList))
-        }
-        case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
-          val snapshot = Cryo.inventory.snapshots(snapshotId)
-          snapshot match {
-            case ls: LocalSnapshot =>
-              if (filter == "")
-                ls.fileFilters -= directory
-              else
-                FileFilterParser.parse(filter).fold(
-                  message => log.error("UpdateSnapshotFileFilter has failed : " + message),
-                  filter => ls.fileFilters(directory) = filter)
-            case _ => log.error("UpdateSnapshotFileFilter: File filters in remote snapshot are immutable")
-          }
-        case UploadSnapshot(snapshotId) =>
-          val snapshot = Cryo.inventory.snapshots(snapshotId)
-          snapshot match {
-            case ls: LocalSnapshot => ls.create
-            case _ => log.error("UploadSnapshot: Remote snapshot can't be updaloaded")
-          }
-        case msg => log.warn("Unknown message has been received : " + msg)
+//        case CreateSnapshot() =>
+//          log.info("Creating new snapshot")
+//          val snapshot = Cryo.newArchive(ArchiveType.Index)
+//          wsFrame.write(SnapshotCreated(snapshot.id))
+//        case GetArchiveList() =>
+//          wsFrame.write(ArchiveList(Cryo.inventory.archives.values.toList))
+//        case GetSnapshotList() =>
+//          wsFrame.write(SnapshotList(Cryo.inventory.snapshots.values.toList))
+//        case RefreshInventory(maxAge) =>
+//          Cryo.inventory.update(maxAge)
+//        case GetSnapshotFiles(snapshotId, directory) => {
+//          val snapshot = Cryo.inventory.snapshots(snapshotId)
+//          val files = snapshot match {
+//            case ls: LocalSnapshot => ls.files()
+//            case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
+//          }
+//          val dir = Config.baseDirectory.resolve(directory)
+//          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters).toList))
+//        }
+//        case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
+//          val snapshot = Cryo.inventory.snapshots(snapshotId)
+//          snapshot match {
+//            case ls: LocalSnapshot =>
+//              if (filter == "")
+//                ls.fileFilters -= directory
+//              else
+//                FileFilterParser.parse(filter).fold(
+//                  message => log.error("UpdateSnapshotFileFilter has failed : " + message),
+//                  filter => ls.fileFilters(directory) = filter)
+//            case _ => log.error("UpdateSnapshotFileFilter: File filters in remote snapshot are immutable")
+//          }
+//        case UploadSnapshot(snapshotId) =>
+//          val snapshot = Cryo.inventory.snapshots(snapshotId)
+//          snapshot match {
+//            case ls: LocalSnapshot => ls.create
+//            case _ => log.error("UploadSnapshot: Remote snapshot can't be updaloaded")
+//          }
+//        case msg => log.warn("Unknown message has been received : " + msg)
       }
 
   }
 
-  def getDirectoryContent(directory: Path, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, FileFilter]): Iterable[FileElement] = {
-    try {
-      val dirContent = Files.newDirectoryStream(directory)
-
-      for (f <- dirContent) yield {
-        val filePath = Config.baseDirectory.relativize(f)
-        val fileSize = for (
-          fs <- fileSelection;
-          fp = FileSystems.getDefault.getPath(fs);
-          if fp.startsWith(filePath)
-        ) yield Files.size(Config.baseDirectory.resolve(fp))
-
-        new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
-      }
-    } catch {
-      case e: AccessDeniedException => Some(new FileElement(directory.resolve("_Access_denied_"), 0, 0, None))
-    }
-  }
+//  def getDirectoryContent(directory: Path, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, FileFilter]): Iterable[FileElement] = {
+//    try {
+//      val dirContent = Files.newDirectoryStream(directory)
+//
+//      for (f <- dirContent) yield {
+//        val filePath = Config.baseDirectory.relativize(f)
+//        val fileSize = for (
+//          fs <- fileSelection;
+//          fp = FileSystems.getDefault.getPath(fs);
+//          if fp.startsWith(filePath)
+//        ) yield Files.size(Config.baseDirectory.resolve(fp))
+//
+//        new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
+//      }
+//    } catch {
+//      case e: AccessDeniedException => Some(new FileElement(directory.resolve("_Access_denied_"), 0, 0, None))
+//    }
+//  }
 }

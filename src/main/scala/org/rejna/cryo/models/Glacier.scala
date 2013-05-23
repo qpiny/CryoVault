@@ -26,25 +26,22 @@ case class DownloadArchiveRequest(archiveId: String)
 case class DownloadArchiveRequested(job: ArchiveJob)
 case class UploadData(id: String)
 
-class Glacier(config: Settings) extends Actor {
+class Glacier(cryoctx: CryoContext) extends Actor {
 
-  val glacier = new AmazonGlacierClient(config.awsCredentials, config.awsConfig)
+  val glacier = new AmazonGlacierClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   //__hackAddProxyAuthPref(glacier)
-  glacier.setEndpoint("glacier." + config.region + ".amazonaws.com/")
-  //val sqs = new AmazonSQSClient(config.awsCredentials, config.awsConfig)
+  glacier.setEndpoint("glacier." + cryoctx.region + ".amazonaws.com/")
+  //val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   //__hackAddProxyAuthPref(sqs)
-  //sqs.setEndpoint("sqs." + config.region + ".amazonaws.com")
-  //var sns = new AmazonSNSClient(config.awsCredentials, config.awsConfig)
+  //sqs.setEndpoint("sqs." + cryoctx.region + ".amazonaws.com")
+  //var sns = new AmazonSNSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   //__hackAddProxyAuthPref(sns)
-  //sns.setEndpoint("sns." + config.region + ".amazonaws.com")
+  //sns.setEndpoint("sns." + cryoctx.region + ".amazonaws.com")
   //var snsTopicARN: String
-  val datastore = context.actorFor("/user/datastore")
-  val manager = context.actorFor("/user/manager")
-  val inventory = context.actorFor("/user/inventory")
   implicit val executionContext = context.system.dispatcher
   val snsTopicARN = "XXXX" // FIXME
 
-  def preStart = {
+  override def preStart = {
     CryoEventBus.subscribe(self, "/user/manager#jobs")
   }
 
@@ -58,9 +55,9 @@ class Glacier(config: Settings) extends Actor {
         }
         val input = glacier.getJobOutput(new GetJobOutputRequest()
           .withJobId(jobId)
-          .withVaultName(config.vaultName)).getBody
-        val output = new DataStoreOutputStream(dataId)
-        val buffer = Array.ofDim[Byte](config.bufferSize.intValue)
+          .withVaultName(cryoctx.vaultName)).getBody
+        val output = new DataStoreOutputStream(cryoctx, dataId)
+        val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
         Iterator.continually(input.read(buffer))
           .takeWhile(_ != -1)
           .foreach { output.write(buffer, 0, _) }
@@ -68,70 +65,69 @@ class Glacier(config: Settings) extends Actor {
 
     case RefreshJobList =>
       val jobList = glacier.listJobs(new ListJobsRequest()
-        .withVaultName(config.vaultName))
+        .withVaultName(cryoctx.vaultName))
         .getJobList
         .map(Job(_))
         .toList
-      manager ! JobList(jobList)
+      cryoctx.manager ! JobList(jobList)
 
     case RefreshInventory =>
       val jobId = glacier.initiateJob(new InitiateJobRequest()
-        .withVaultName(config.vaultName)
+        .withVaultName(cryoctx.vaultName)
         .withJobParameters(
           new JobParameters()
             .withType("inventory-retrieval")
             .withSNSTopic(snsTopicARN))).getJobId
 
-      val job = InventoryJob(jobId, "", new DateTime, InProgress(""), None)
-      manager ! AddJob(job)
+      val job = new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
+      cryoctx.manager ! AddJob(job)
 
     case JobOutputRequest(jobId) =>
 
     case DownloadArchiveRequest(archiveId) =>
       val jobId = glacier.initiateJob(new InitiateJobRequest()
-        .withVaultName(config.vaultName)
+        .withVaultName(cryoctx.vaultName)
         .withJobParameters(
           new JobParameters()
             .withArchiveId(archiveId)
             .withType("archive-retrieval")
             .withSNSTopic(snsTopicARN))).getJobId
 
-      val job = ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
-      manager ! AddJob(job)
+      val job = new ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
+      cryoctx.manager ! AddJob(job)
 
     case UploadData(id) =>
       implicit val timeout = Timeout(10 seconds)
-      (datastore ? GetDataStatus(id))
+      (cryoctx.datastore ? GetDataStatus(id))
         .map {
           case DataStatus(_, status, size, checksum) if status == EntryStatus.Created =>
-            if (size < config.multipartThreshold) {
+            if (size < cryoctx.multipartThreshold) {
               glacier.uploadArchive(new UploadArchiveRequest()
                 //.withArchiveDescription(description)
-                .withVaultName(config.vaultName)
+                .withVaultName(cryoctx.vaultName)
                 .withChecksum(checksum)
-                .withBody(new DataStoreInputStream(id, size, 0))
+                .withBody(new DataStoreInputStream(cryoctx, id, size, 0))
                 .withContentLength(size)).getArchiveId
             } else {
               val uploadId = glacier.initiateMultipartUpload(new InitiateMultipartUploadRequest()
                 //.withArchiveDescription(description)
-                .withVaultName(config.vaultName)
-                .withPartSize(config.partSize.toString)).getUploadId
-              for (partStart <- (0L to size by config.partSize)) {
-                val length = (size - partStart).min(config.partSize)
+                .withVaultName(cryoctx.vaultName)
+                .withPartSize(cryoctx.partSize.toString)).getUploadId
+              for (partStart <- (0L to size by cryoctx.partSize)) {
+                val length = (size - partStart).min(cryoctx.partSize)
                 glacier.uploadMultipartPart(new UploadMultipartPartRequest()
                   .withChecksum(checksum)
-                  .withBody(new DataStoreInputStream(id, length, partStart))
+                  .withBody(new DataStoreInputStream(cryoctx, id, length, partStart))
                   .withRange(s"${partStart}-${partStart + length}")
                   .withUploadId(uploadId)
-                  .withVaultName(config.vaultName))
+                  .withVaultName(cryoctx.vaultName))
               }
               glacier.completeMultipartUpload(new CompleteMultipartUploadRequest()
                 .withArchiveSize(size.toString)
-                .withVaultName(config.vaultName)
+                .withVaultName(cryoctx.vaultName)
                 .withChecksum(checksum)
                 .withUploadId(uploadId)).getArchiveId
             }
         }
   }
 }
-

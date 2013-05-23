@@ -10,7 +10,7 @@ import org.joda.time.DateTime
 
 
 class ByteBufferOutput(fc: FileChannel) extends Output {
-  val buffer = ByteBuffer.allocateDirect(config.bufferSize)
+  val buffer = ByteBuffer.allocateDirect(1024) // FIXME config.bufferSize)
   def writeByte(value: Byte) = try {
     buffer.put(value)
   } catch {
@@ -63,24 +63,13 @@ object CryoBinary extends DefaultProtocol {
     }
   }
   implicit val DateTimeFormat = wrap[DateTime, Long](_.getMillis, new DateTime(_))
-  implicit val ArchiveTypeFormat = wrap[ArchiveType, Int](_.id, ArchiveType.apply(_))
   implicit val HashFormat = wrap[Hash, Array[Byte]](_.value, new Hash(_))
   implicit val FileFilterFormat = wrap[FileFilter, String](_.toString, FileFilterParser.parse(_) match {
     case Right(ff) => ff
     case Left(message) => throw ParseError(message)
   })
 
-  implicit def RemoteArchiveFormat = asProduct5[RemoteArchive, ArchiveType, DateTime, String, Long, Hash](
-    (t, d, i, s, h) => new RemoteArchive(t, d, i, s, h))(
-      ra => (ra.archiveType, ra.date, ra.id, ra.size, ra.hash))
-
-  implicit def BlockLocationFormat = asProduct4(
-    (hash: Hash, archiveId: String, offset: Long, size: Int) => BlockLocation(hash, Cryo.inventory.archives(archiveId), offset, size))(
-      (bl: BlockLocation) => (bl.hash, bl.archive.id, bl.offset, bl.size))
-
-  implicit def SnapshotFormat = wrap[Snapshot, RemoteArchive](s => s match {
-    case ls: LocalSnapshot => ls.remoteSnapshot.getOrElse { sys.error("Local snapshot is not serializable") }
-    case rs: RemoteSnapshot => rs
-    case _ => sys.error("Invalid snapshot class")
-  }, _.asInstanceOf[Snapshot])
+//  implicit def BlockLocationFormat = asProduct4(
+//    (hash: Hash, archiveId: String, offset: Long, size: Int) => BlockLocation(hash, Cryo.inventory.archives(archiveId), offset, size))(
+//      (bl: BlockLocation) => (bl.hash, bl.archive.id, bl.offset, bl.size))
 }

@@ -25,15 +25,6 @@ import sbinary.Operations._
 
 import org.joda.time.DateTime
 
-//trait Snapshot { //self: Archive =>
-//  val date: DateTime
-//  def size: Long
-//  val id: String
-//  def state: CryoStatus
-//  val attributeBuilder: AttributeBuilder
-//  val fileFilters: scala.collection.mutable.Map[String, FileFilter]
-//}
-
 class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
   def this(path: String) = this(FileSystems.getDefault.getPath(path))
 
@@ -51,10 +42,18 @@ class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] 
   }
 }
 
-class LocalSnapshot(id: String)(implicit config: Config) extends Actor with LoggingClass {
+sealed abstract class SnapshotRequest
+sealed abstract class SnapshotResponse
+sealed class SnapshotError(message: String, cause: Option[Throwable]) extends Exception(message, cause.get)
+
+case class UpdateFilter(file: String, filter: FileFilter) extends SnapshotRequest
+case object FilterUpdated extends SnapshotResponse
+//case class ArchiveCreated(id: String) extends SnapshotResponse
+//case object CreateSnapshot extends SnapshotRequest
+//case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
+
+class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with LoggingClass {
   val attributeBuilder = new AttributeBuilder(s"/cryo/snapshot/${id}")
-  val baseDirectory = FileSystems.getDefault.getPath(config.getString("cryo.baseDirectory"))
-  val datastore = context.actorFor("/user/datastore")
 
   val sizeAttribute = attributeBuilder("size", 0L)
   def size = sizeAttribute()
@@ -85,7 +84,7 @@ class LocalSnapshot(id: String)(implicit config: Config) extends Actor with Logg
       new TraversePath(path).foreach {
         case (f, attrs) =>
           if (attrs.isRegularFile && filter.accept(path)) {
-            files = LinkedList(baseDirectory.relativize(f).toString) append files
+            files = LinkedList(cryoctx.baseDirectory.relativize(f).toString) append files
             size += attrs.size
           }
       }
@@ -93,55 +92,82 @@ class LocalSnapshot(id: String)(implicit config: Config) extends Actor with Logg
     (files, size)
   }
 
-  private def splitFile(f: String) = new Traversable[Block] {
-    def foreach[U](func: Block => U) = {
-      val input = FileChannel.open(baseDirectory.resolve(f), READ)
-      try {
-        val buffer = ByteBuffer.allocate(1024) //FIXME blockSizeFor(Files.size(file)))
-        Iterator.continually { buffer.clear; input.read(buffer) }
-          .takeWhile(_ != -1)
-          .filter(_ > 0)
-          .foreach(size => { buffer.flip; func(Block(buffer)) })
-      } finally {
-        input.close
-      }
-    }
-  }
+//  private def splitFile(f: String) = new Traversable[Block] {
+//    def foreach[U](func: Block => U) = {
+//      val input = FileChannel.open(baseDirectory.resolve(f), READ)
+//      try {
+//        val buffer = ByteBuffer.allocate(1024) //FIXME blockSizeFor(Files.size(file)))
+//        Iterator.continually { buffer.clear; input.read(buffer) }
+//          .takeWhile(_ != -1)
+//          .filter(_ > 0)
+//          .foreach(size => { buffer.flip; func(Block(buffer)) })
+//      } finally {
+//        input.close
+//      }
+//    }
+//  }
 
-  def create = {
-    // serialize index: [File -> [Hash]] ++ [Hash -> BlockLocation] ++ [File -> Filter]
-    implicit val timeout = Timeout(10 seconds)
-    implicit val cxt = context.system.dispatcher
-    try {
-      var currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
-      var currentArchiveSize = 0L
-      //TODO format[Int].writes(output, files().length)
-      for (f <- files()) {
-        log.info(s"add file ${f} in archive")
-        // TODO format[String].writes(output, f)
-        for (block <- splitFile(f)) {
-          if (currentArchiveSize > 10*1024*1024) { //TODO Config.archiveSize) {
-            // TODO upload archive currentArchiveId.map(glacier
-            currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
-          }
-          val bl = Catalog.getOrUpdate(block, currentArchive.writeBlock(block))
-          format[Boolean].writes(output, true)
-          format[Hash].writes(output, block.hash)
-        }
-        format[Boolean].writes(output, false)
-      }
-      currentArchive.upload
+  //  def create = {
+  //    // serialize index: [File -> [Hash]] ++ [Hash -> BlockLocation] ++ [File -> Filter]
+  //    implicit val timeout = Timeout(10 seconds)
+  //    implicit val cxt = context.system.dispatcher
+  //    try {
+  //      var currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
+  //      var currentArchiveSize = 0L
+  //      //TODO format[Int].writes(output, files().length)
+  //      for (f <- files()) {
+  //        log.info(s"add file ${f} in archive")
+  //        // TODO format[String].writes(output, f)
+  //        for (block <- splitFile(f)) {
+  //          if (currentArchiveSize > 10*1024*1024) { //TODO Config.archiveSize) {
+  //            // TODO upload archive currentArchiveId.map(glacier
+  //            currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
+  //          }
+  //          val bl = Catalog.getOrUpdate(block, currentArchive.writeBlock(block))
+  //          format[Boolean].writes(output, true)
+  //          format[Hash].writes(output, block.hash)
+  //        }
+  //        format[Boolean].writes(output, false)
+  //      }
+  //      currentArchive.upload
+  //
+  //      // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
+  //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
+  //    } finally {
+  //      output.close
+  //    }
+  //    // upload
+  //    remoteSnapshot = Some(Cryo.migrate(this, upload))
+  //  }
 
-      // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
-      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
-    } finally {
-      output.close
-    }
-    // upload
-    remoteSnapshot = Some(Cryo.migrate(this, upload))
+  def receive = {
+    case UpdateFilter(file, filter) =>
+      fileFilters += file -> filter
+      sender ! FilterUpdated
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/******************************************************************************************************************************
 class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends RemoteArchive(Index, date, id, size, hash) with Snapshot {
   def this(ra: RemoteArchive) = this(ra.date, ra.id, ra.size, ra.hash)
 
@@ -223,4 +249,4 @@ class RemoteFile(val snapshotId: String, val file: Path, val blockHash: Hash*) {
       for (a <- remoteArchives) a.download
     }
   }
-}
+}*/

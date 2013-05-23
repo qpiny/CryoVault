@@ -6,7 +6,7 @@ import scala.collection.JavaConversions.{ asScalaBuffer, mapAsJavaMap }
 
 import akka.actor.Actor
 
-import net.liftweb.json.Serialization
+import net.liftweb.json.{ Serialization, NoTypeHints }
 
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sqs.model._
@@ -15,40 +15,41 @@ import com.amazonaws.services.sns.model._
 
 object GetNotification
 
-abstract class Notification(config: Settings) extends Actor with LoggingClass {
-  val sns = new AmazonSNSClient(config.awsCredentials, config.awsConfig)
+abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClass {
+  val sns = new AmazonSNSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   //__hackAddProxyAuthPref(sns)
-  sns.setEndpoint("sns." + config.region + ".amazonaws.com")
+  sns.setEndpoint("sns." + cryoctx.region + ".amazonaws.com")
   val notificationArn = getOrCreateQueue
 
   private def getOrCreateQueue: String = {
-    if (!sns.listTopics.getTopics.exists(_.getTopicArn == config.snsTopicARN)) {
-      log.warn(s"Notification topic ${config.snsTopicARN} doesn't exist")
+    if (!sns.listTopics.getTopics.exists(_.getTopicArn == cryoctx.snsTopicARN)) {
+      log.warn(s"Notification topic ${cryoctx.snsTopicARN} doesn't exist")
       log.warn("Setting up notification topic")
-      val arn = sns.createTopic(new CreateTopicRequest(config.snsTopicName)).getTopicArn
-      if (arn != config.snsTopicARN) {
-        log.warn(s"cryo.sns-topic-arn in config is not correct (${config.snsTopicARN} should be ${arn})")
+      val arn = sns.createTopic(new CreateTopicRequest(cryoctx.snsTopicName)).getTopicArn
+      if (arn != cryoctx.snsTopicARN) {
+        log.warn(s"cryo.sns-topic-arn in config is not correct (${cryoctx.snsTopicARN} should be ${arn})")
       }
       arn
     } else
-      config.snsTopicARN
+      cryoctx.snsTopicARN
   }
 }
 
-class QueueNotification(config: Settings) extends Notification(config) {
-  val sqs = new AmazonSQSClient(config.awsCredentials, config.awsConfig)
+class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
+  implicit val formats = Serialization.formats(NoTypeHints) + JsonSerialization
+  val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   //__hackAddProxyAuthPref(sqs)
-  sqs.setEndpoint("sqs." + config.region + ".amazonaws.com")
+  sqs.setEndpoint("sqs." + cryoctx.region + ".amazonaws.com")
   val (queueUrl, queueArn) = getOrCreateQueue
 
   private def getOrCreateQueue: (String, String) = {
-    sqs.listQueues(new ListQueuesRequest(config.sqsQueueName)).getQueueUrls.headOption match {
+    sqs.listQueues(new ListQueuesRequest(cryoctx.sqsQueueName)).getQueueUrls.headOption match {
       case None =>
-        log.warn(s"Notification queue ${config.sqsQueueName} doesn't exist")
+        log.warn(s"Notification queue ${cryoctx.sqsQueueName} doesn't exist")
         log.warn("Setting up notification queue")
 
         val url = sqs.createQueue(
-          new CreateQueueRequest(config.sqsQueueName)
+          new CreateQueueRequest(cryoctx.sqsQueueName)
             .withAttributes(Map( // TODO put attributes in config
               "DelaySeconds" -> "0",
               "MaximumMessageSize" -> "65536",
@@ -60,17 +61,17 @@ class QueueNotification(config: Settings) extends Notification(config) {
         var arn = sqs.getQueueAttributes(new GetQueueAttributesRequest(url)
           .withAttributeNames("QueueArn"))
           .getAttributes.get("QueueArn")
-        if (arn != config.sqsQueueARN) {
-          log.warn(s"cryo.sqs-queue-arn in config is not correct (${config.sqsQueueARN} should be ${arn})")
+        if (arn != cryoctx.sqsQueueARN) {
+          log.warn(s"cryo.sqs-queue-arn in config is not correct (${cryoctx.sqsQueueARN} should be ${arn})")
         }
         (url, arn)
       case Some(url) =>
-        (url, config.sqsQueueName)
+        (url, cryoctx.sqsQueueName)
     }
   }
 
-  def preStart = {
-    context.system.scheduler.schedule(0 second, config.queueRequestInterval, self, GetNotification)(context.system.dispatcher)
+  override def preStart = {
+    context.system.scheduler.schedule(0 second, cryoctx.queueRequestInterval, self, GetNotification)(context.system.dispatcher)
   }
 
   def receive = {
@@ -78,12 +79,11 @@ class QueueNotification(config: Settings) extends Notification(config) {
       for (message <- sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages) {
         message.getAttributes().get("Type") match {
           case "Notification" =>
-            Serialization.read[Job](message.getBody)
+            cryoctx.manager ! AddJob(Serialization.read[Job](message.getBody))
           case otherType =>
             log.warn(s"Receive message from notification queue with type ${otherType}, ignore it")
         } 
       }
-      
   }
 }
 

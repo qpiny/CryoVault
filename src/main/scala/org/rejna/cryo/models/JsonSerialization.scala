@@ -15,7 +15,7 @@ object JsonSerialization extends Serializer[Job] {
         .getOrElse { throw MappingException(s"Invalid status: ${statusCode}", null) }
       json \ "Action" match {
         case JString("InventoryRetrieval") =>
-          InventoryJob(
+          new InventoryJob(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extract[String],
             DateUtil.fromISOString((json \ "CreationDate").extract[String]),
@@ -23,14 +23,15 @@ object JsonSerialization extends Serializer[Job] {
             (json \ "CompletionDate").extractOpt[String].map(DateUtil.fromISOString))
         case JString("ArchiveRetrieval") =>
           val statusCode = (json \ "StatusCode").extract[String]
-          ArchiveJob(
+          new ArchiveJob(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extract[String],
             DateUtil.fromISOString((json \ "CreationDate").extract[String]),
             jobStatus,
             (json \ "CompletionDate").extractOpt[String].map(DateUtil.fromISOString),
             (json \ "ArchiveId").extract[String])
-
+        case o =>
+          throw new MappingException(s"Job deserialization fails: unknown type: ${o}", null)
       }
   }
 

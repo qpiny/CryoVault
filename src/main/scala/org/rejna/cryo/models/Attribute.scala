@@ -10,6 +10,9 @@ import net.liftweb.json._
 
 object AttributePath extends Regex("/cryo/([^/]*)/([^/]*)#(.*)", "service", "object", "attribute")
 
+case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event
+case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event
+
 class AttributeBuilder(path: String*) {
   var paths = List(path: _*)
 

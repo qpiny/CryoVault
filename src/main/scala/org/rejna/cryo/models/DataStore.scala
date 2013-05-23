@@ -14,7 +14,7 @@ import akka.util.{ ByteString, ByteIterator, Timeout }
 import java.io.{ InputStream, OutputStream, IOException }
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
-import java.nio.file.{ FileSystems, Files }
+import java.nio.file.Files
 import java.nio.file.StandardOpenOption._
 import java.util.UUID
 import java.security.MessageDigest
@@ -51,16 +51,15 @@ object EntryStatus extends Enumeration {
   type EntryStatus = Value
   val Creating, Loading, Created = Value
 }
-class DataStore(config: Config) extends Actor with LoggingClass {
+class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
   import EntryStatus._
 
   val attributeBuilder = new AttributeBuilder("/cryo/datastore")
   val data = HashMap.empty[String, DataEntry]
-  val storeDirectory = FileSystems.getDefault.getPath(config.getString("cryo.store-directory"))
 
   // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)
   abstract class DataEntry(val id: String) extends LoggingClass {
-    val file = storeDirectory.resolve(id)
+    val file = cryoctx.baseDirectory.resolve(id)
 
     val statusAttribute: Attribute[EntryStatus]
     def size = sizeAttribute()
@@ -79,7 +78,7 @@ class DataStore(config: Config) extends Actor with LoggingClass {
     val MB = 1024 * 1024
     if (size > 0 && getFileSize != size)
       throw OpenError(s"Data ${id}(Creating) already exists but the expected size doesn't match")
-    val channel = FileChannel.open(storeDirectory.resolve(id), WRITE, APPEND, CREATE)
+    val channel = FileChannel.open(file, WRITE, APPEND, CREATE)
     if (size == 0)
       channel.truncate(0)
     var blockSize = 0
@@ -119,7 +118,7 @@ class DataStore(config: Config) extends Actor with LoggingClass {
       new DataEntryCreated(id, statusAttribute, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
     }
   }
-  class DataEntryCreated(id: String, statusAttribute: Attribute[EntryStatus], sizeAttribute: Attribute[Long], val checksum: String) extends DataEntry(id) {
+  class DataEntryCreated(id: String, val statusAttribute: Attribute[EntryStatus], val sizeAttribute: Attribute[Long], val checksum: String) extends DataEntry(id) {
     status = Created
 
     val channel = FileChannel.open(file, READ)
@@ -235,10 +234,9 @@ class DataStore(config: Config) extends Actor with LoggingClass {
   }
 }
 
-class DataStoreInputStream(id: String, val size: Long = 0, var position: Long = 0)(implicit system: ActorRefFactory) extends InputStream {
-  implicit val contextExecutor = system.dispatcher
+class DataStoreInputStream(cryoctx: CryoContext, id: String, val size: Long = 0, var position: Long = 0) extends InputStream {
+  implicit val contextExecutor = cryoctx.system.dispatcher
   implicit val timeout = Timeout(10 seconds)
-  val datastore = system.actorFor("/user/datastore")
 
   private var buffer: ByteIterator = ByteIterator.ByteArrayIterator.empty
   private var limit = position
@@ -247,7 +245,7 @@ class DataStoreInputStream(id: String, val size: Long = 0, var position: Long = 
   private def requestMoreData(): Int = {
     if (limit < lastPosition) {
       val n = Math.min(1024, (lastPosition - limit))
-      Await.result((datastore ? ReadData(id, position, n.toInt))
+      Await.result((cryoctx.datastore ? ReadData(id, position, n.toInt))
         .map {
           case DataRead(_, _, data) =>
             buffer ++= data
@@ -263,7 +261,6 @@ class DataStoreInputStream(id: String, val size: Long = 0, var position: Long = 
 
   override def available = buffer.size
 
-  @tailrec
   override def read: Int = {
     if (buffer.hasNext) {
       position += 1
@@ -289,37 +286,36 @@ class DataStoreInputStream(id: String, val size: Long = 0, var position: Long = 
   //override def skip(n: Long): Long = {
 }
 
-class DataStoreOutputStream(id: String)(implicit val system: ActorRefFactory) extends OutputStream {
-  implicit val contextExecutor = system.dispatcher
+class DataStoreOutputStream(cryoctx: CryoContext, id: String) extends OutputStream {
+  implicit val contextExecutor = cryoctx.system.dispatcher
   implicit val timeout = Timeout(10 seconds)
-  val datastore = system.actorFor("/user/datastore")
 
   private var position = 0
   private var error: Option[DataStoreError] = None
 
-  def close = {
+  override def close = {
     error.map(e => throw new IOException("DataStoreOutputStream error", e))
   }
 
-  def flush = {}
+  override def flush = {}
 
-  def write(b: Array[Byte]) = {
+  override def write(b: Array[Byte]) = {
     error.map(e => throw new IOException("DataStoreOutputStream error", e))
-    (datastore ? WriteData(id, position, ByteString(b)))
+    (cryoctx.datastore ? WriteData(id, position, ByteString(b)))
       .map { case e: DataStoreError => error = Some(e) }
     position += b.length
   }
 
-  def write(b: Array[Byte], off: Int, len: Int) = {
+  override def write(b: Array[Byte], off: Int, len: Int) = {
     error.map(e => throw new IOException("DataStoreOutputStream error", e))
-    (datastore ? WriteData(id, position, ByteString.fromArray(b, off, len)))
+    (cryoctx.datastore ? WriteData(id, position, ByteString.fromArray(b, off, len)))
       .map { case e: DataStoreError => error = Some(e) }
     position += len
   }
 
-  def write(b: Int) = {
+  override def write(b: Int) = {
     error.map(e => throw new IOException("DataStoreOutputStream error", e))
-    (datastore ? WriteData(id, position, ByteString(b)))
+    (cryoctx.datastore ? WriteData(id, position, ByteString(b)))
       .map { case e: DataStoreError => error = Some(e) }
     position += 1
   }

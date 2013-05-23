@@ -4,10 +4,12 @@ import scala.collection.mutable.HashMap
 import scala.util.matching.Regex
 
 import akka.actor.ActorRef
-import akka.event.EventBus
+import akka.event.{ EventBus, SubchannelClassification }
 import akka.util.Subclassification
 
-object CryoEventBus extends EventBus {
+abstract class Event { val path: String }
+
+object CryoEventBus extends EventBus with SubchannelClassification {
   type Event = org.rejna.cryo.models.Event
   type Classifier = String
   type Subscriber = ActorRef

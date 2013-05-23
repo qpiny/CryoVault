@@ -18,6 +18,7 @@ object FileFilterParser extends JavaTokenParsers {
   def and = "and(" ~> filter ~ "," ~ filter <~ ")" ^^ { case filter1 ~ "," ~ filter2 => And(filter1, filter2) }
   def not = "not(" ~> filter <~ ")" ^^ Not
   def all = "all" ^^ (x => All)
+  def none = "none" ^^ (x => NoOne)
 
   def filter: Parser[FileFilter] =
     (extension
@@ -26,7 +27,8 @@ object FileFilterParser extends JavaTokenParsers {
       | or
       | and
       | not
-      | all)
+      | all
+      | none)
 
   def parse(s: String): Either[String, FileFilter] = parseAll(filter, s) match {
     case Success(result, input) => Right(result)
@@ -72,4 +74,9 @@ case class Not(ff: FileFilter) extends FileFilter {
 case object All extends FileFilter {
   def accept(file: Path) = true
   override def toString = "all"
+}
+
+case object NoOne extends FileFilter {
+  def accept(file: Path) = false
+  override def toString = "none"
 }
