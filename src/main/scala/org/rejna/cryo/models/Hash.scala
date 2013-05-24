@@ -24,7 +24,7 @@ class Hash(val value: Array[Byte], vers: Option[Int] = None) {
 //  }
 }
 
-//object Hash {
+object Hash {
 //  def apply(file: Path) = {
 //    val md = MessageDigest.getInstance(Config.hashAlgorithm)
 //
@@ -41,9 +41,9 @@ class Hash(val value: Array[Byte], vers: Option[Int] = None) {
 //    new Hash(md.digest)
 //  }
 //
-//  def apply(data: Array[Byte]) = {
-//    new Hash(MessageDigest.getInstance(Config.hashAlgorithm).digest(data))
-//  }
+  def apply(data: Array[Byte])(implicit cryoctx: CryoContext) = {
+    new Hash(MessageDigest.getInstance(cryoctx.hashAlgorithm).digest(data))
+  }
 //
 //  def apply(hex: String) = {
 //    val hl = hex.toList
@@ -52,4 +52,4 @@ class Hash(val value: Array[Byte], vers: Option[Int] = None) {
 //  }
 //
 //  def unapply(h: Hash): Option[Array[Byte]] = Some(h.value)
-//}
+}

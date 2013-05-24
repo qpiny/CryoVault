@@ -13,7 +13,7 @@ case object InvalidStateException extends Exception
 //case class BlockLocation(val hash: Hash, val archiveId: String, val offset: Long, val size: Int) {
 //  def read = {
 //    ByteBuffer.allocate(size)
-//    val channel = FileChannel.open(arc.file, Set(CREATE, TRUNCATE_EXISTING, WRITE)) //, READ)
+//    val channel = FileChannel.open(arc.file, CREATE, TRUNCATE_EXISTING, WRITE) //, READ)
 //    try {
 //      val buffer = ByteBuffer.allocate(size)
 //      channel.read(buffer, offset)
@@ -23,16 +23,16 @@ case object InvalidStateException extends Exception
 //    }
 //  }
 //}
-//
-//case class Block(val data: Array[Byte]) {
-//  lazy val hash = Hash(data)
-//  lazy val size = data.size
-//}
-//
-//object Block {
-//  def apply(buffer: ByteBuffer) = {
-//    val data = Array.ofDim[Byte](buffer.remaining)
-//    buffer.get(data)
-//    new Block(data)
-//  }
-//}
+
+case class Block(val data: Array[Byte])(implicit cryoctx: CryoContext) {
+  lazy val hash = Hash(data)
+  lazy val size = data.size
+}
+
+object Block {
+  def apply(buffer: ByteBuffer)(implicit cryoctx: CryoContext) = {
+    val data = Array.ofDim[Byte](buffer.remaining)
+    buffer.get(data)
+    new Block(data)
+  }
+}

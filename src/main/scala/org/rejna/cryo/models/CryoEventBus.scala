@@ -7,7 +7,12 @@ import akka.actor.ActorRef
 import akka.event.{ EventBus, SubchannelClassification }
 import akka.util.Subclassification
 
-abstract class Event { val path: String }
+trait CryoMessage
+
+abstract class Event extends CryoMessage { val path: String }
+abstract class Request extends CryoMessage
+abstract class Response extends CryoMessage
+class CryoError(message: String, cause: Throwable = null) extends Exception(message, cause) with CryoMessage
 
 object CryoEventBus extends EventBus with SubchannelClassification {
   type Event = org.rejna.cryo.models.Event

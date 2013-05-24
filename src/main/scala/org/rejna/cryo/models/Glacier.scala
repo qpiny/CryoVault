@@ -18,13 +18,17 @@ import com.amazonaws.services.sns.AmazonSNSClient
 
 import org.joda.time.DateTime
 
-case object RefreshJobList
-case object RefreshInventory
-case class InventoryRequested(job: InventoryJob)
-case class JobOutputRequest(jobId: String)
-case class DownloadArchiveRequest(archiveId: String)
-case class DownloadArchiveRequested(job: ArchiveJob)
-case class UploadData(id: String)
+class CryoRequest extends Request
+class CryoResponse extends Response
+
+case object RefreshJobList extends CryoRequest
+case object RefreshInventory extends CryoRequest
+case class RefreshInventoryRequested(job: InventoryJob) extends CryoResponse
+//case class JobOutputRequest(jobId: String)
+case class DownloadArchive(archiveId: String) extends CryoRequest
+case class DownloadArchiveRequested(job: ArchiveJob) extends CryoResponse
+case class UploadData(id: String) extends CryoRequest
+case class DataUploaded(id: String) extends CryoResponse
 
 class Glacier(cryoctx: CryoContext) extends Actor {
 
@@ -82,9 +86,9 @@ class Glacier(cryoctx: CryoContext) extends Actor {
       val job = new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
       cryoctx.manager ! AddJob(job)
 
-    case JobOutputRequest(jobId) =>
+    //case JobOutputRequest(jobId) =>
 
-    case DownloadArchiveRequest(archiveId) =>
+    case DownloadArchive(archiveId) =>
       val jobId = glacier.initiateJob(new InitiateJobRequest()
         .withVaultName(cryoctx.vaultName)
         .withJobParameters(
@@ -98,9 +102,10 @@ class Glacier(cryoctx: CryoContext) extends Actor {
 
     case UploadData(id) =>
       implicit val timeout = Timeout(10 seconds)
+      val requester = sender
       (cryoctx.datastore ? GetDataStatus(id))
         .map {
-          case DataStatus(_, status, size, checksum) if status == EntryStatus.Created =>
+          case DataStatus(_, _, status, size, checksum) if status == EntryStatus.Created =>
             if (size < cryoctx.multipartThreshold) {
               glacier.uploadArchive(new UploadArchiveRequest()
                 //.withArchiveDescription(description)
@@ -128,6 +133,7 @@ class Glacier(cryoctx: CryoContext) extends Actor {
                 .withChecksum(checksum)
                 .withUploadId(uploadId)).getArchiveId
             }
+            requester ! DataUploaded(id)
         }
   }
 }

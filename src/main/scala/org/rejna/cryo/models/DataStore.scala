@@ -20,14 +20,14 @@ import java.util.UUID
 import java.security.MessageDigest
 
 import com.typesafe.config.Config
-
+import org.joda.time.DateTime
 import com.amazonaws.services.glacier.TreeHashGenerator
 
 import org.rejna.util.MultiRange
 
-sealed abstract class DataStoreRequest
-sealed abstract class DataStoreResponse
-sealed abstract class DataStoreError(message: String, cause: Option[Throwable]) extends Exception(message, cause.get)
+sealed abstract class DataStoreRequest extends Request
+sealed abstract class DataStoreResponse extends Response { val id: String }
+sealed abstract class DataStoreError(message: String, cause: Throwable) extends CryoError(message, cause)
 
 case class CreateData(idOption: Option[String], size: Long = 0L) extends DataStoreRequest
 case class DataCreated(id: String) extends DataStoreResponse
@@ -39,13 +39,13 @@ case class DataRead(id: String, position: Long, buffer: ByteString) extends Data
 case class CloseData(id: String) extends DataStoreRequest
 case class DataClosed(id: String, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DataStoreResponse
 case class GetDataStatus(id: String) extends DataStoreRequest
-case class DataStatus(id: String, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DataStoreResponse
+case class DataStatus(id: String, creationDate: DateTime, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DataStoreResponse
 
-case class OpenError(message: String, cause: Option[Throwable] = None) extends DataStoreError(message, cause)
-case class WriteError(message: String, cause: Option[Throwable] = None) extends DataStoreError(message, cause)
-case class ReadError(message: String, cause: Option[Throwable] = None) extends DataStoreError(message, cause)
-case class DataNotFoundError(message: String, cause: Option[Throwable] = None) extends DataStoreError(message, cause)
-case class InvalidDataStatus(message: String, cause: Option[Throwable] = None) extends DataStoreError(message, cause)
+case class OpenError(message: String, cause: Throwable = null) extends DataStoreError(message, cause)
+case class WriteError(message: String, cause: Throwable = null) extends DataStoreError(message, cause)
+case class ReadError(message: String, cause: Throwable = null) extends DataStoreError(message, cause)
+case class DataNotFoundError(id: String, message: String, cause: Throwable = null) extends DataStoreError(message, cause)
+case class InvalidDataStatus(message: String, cause: Throwable = null) extends DataStoreError(message, cause)
 
 object EntryStatus extends Enumeration {
   type EntryStatus = Value
@@ -58,7 +58,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
   val data = HashMap.empty[String, DataEntry]
 
   // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)
-  abstract class DataEntry(val id: String) extends LoggingClass {
+  abstract class DataEntry(val id: String, val creationDate: DateTime) extends LoggingClass {
     val file = cryoctx.baseDirectory.resolve(id)
 
     val statusAttribute: Attribute[EntryStatus]
@@ -70,7 +70,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
     def status_= = statusAttribute() = _
   }
 
-  class DataEntryCreating(id: String, initSize: Long, entryAttributeBuilder: AttributeBuilder) extends DataEntry(id) {
+  class DataEntryCreating(id: String, initSize: Long, entryAttributeBuilder: AttributeBuilder) extends DataEntry(id, new DateTime) {
     val statusAttribute = entryAttributeBuilder("status", Creating)
     val sizeAttribute = entryAttributeBuilder("size", initSize)
 
@@ -115,10 +115,10 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
 
     def close: DataEntryCreated = {
       channel.close
-      new DataEntryCreated(id, statusAttribute, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
+      new DataEntryCreated(id, creationDate, statusAttribute, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
     }
   }
-  class DataEntryCreated(id: String, val statusAttribute: Attribute[EntryStatus], val sizeAttribute: Attribute[Long], val checksum: String) extends DataEntry(id) {
+  class DataEntryCreated(id: String, creationDate: DateTime, val statusAttribute: Attribute[EntryStatus], val sizeAttribute: Attribute[Long], val checksum: String) extends DataEntry(id, creationDate) {
     status = Created
 
     val channel = FileChannel.open(file, READ)
@@ -133,7 +133,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
     def close = channel.close
   }
 
-  class DataEntryLoading(id: String, initSize: Long, checksum: String, entryAttributeBuilder: AttributeBuilder) extends DataEntry(id) {
+  class DataEntryLoading(id: String, creationDate: DateTime, initSize: Long, checksum: String, entryAttributeBuilder: AttributeBuilder) extends DataEntry(id, creationDate) {
     val statusAttribute = entryAttributeBuilder("status", Loading)
     val sizeAttribute = entryAttributeBuilder("size", initSize)
     val channel = FileChannel.open(file, WRITE, CREATE)
@@ -151,7 +151,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
 
     def close: DataEntryCreated = {
       channel.close
-      new DataEntryCreated(id, statusAttribute, sizeAttribute, checksum)
+      new DataEntryCreated(id, creationDate, statusAttribute, sizeAttribute, checksum)
     }
   }
 
@@ -168,7 +168,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
         sender ! DataCreated(id)
       } catch {
         case dse: DataStoreError => sender ! dse
-        case e: Exception => sender ! OpenError(e.getMessage, Some(e))
+        case e: Exception => sender ! OpenError(e.getMessage, e)
       }
 
     case WriteData(id, position, buffer) =>
@@ -179,23 +179,23 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
           case de: DataEntryCreating if position == -1 =>
             sender ! DataWritten(id, position, de.write(buffer))
           case null =>
-            sender ! DataNotFoundError(s"Data ${id} not found")
+            sender ! DataNotFoundError(id, s"Data ${id} not found")
           case de: DataEntry =>
             sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for write")
         }
       } catch {
         case dse: DataStoreError => sender ! dse
-        case e: Exception => sender ! WriteError(e.getMessage, Some(e))
+        case e: Exception => sender ! WriteError(e.getMessage, e)
       }
 
     case GetDataStatus(id) =>
       data.get(id).get match {
         case null =>
-          sender ! DataNotFoundError(s"Data ${id} not found")
+          sender ! DataNotFoundError(id, s"Data ${id} not found")
         case de: DataEntryCreated =>
-          sender ! DataStatus(id, de.status, de.size, de.checksum)
+          sender ! DataStatus(id, de.creationDate, de.status, de.size, de.checksum)
         case de: DataEntry =>
-          sender ! DataStatus(id, de.status, de.size, "")
+          sender ! DataStatus(id, de.creationDate, de.status, de.size, "")
       }
 
     case ReadData(id, position, length) =>
@@ -204,13 +204,13 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
           case de: DataEntryCreated =>
             sender ! DataRead(id, position, de.read(position, length))
           case null =>
-            sender ! DataNotFoundError(s"Data ${id} not found")
+            sender ! DataNotFoundError(id, s"Data ${id} not found")
           case de: DataEntry =>
             sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for read")
         }
       } catch {
         case dse: DataStoreError => sender ! dse
-        case e: Exception => sender ! ReadError(e.getMessage, Some(e))
+        case e: Exception => sender ! ReadError(e.getMessage, e)
       }
 
     case CloseData(id) =>
@@ -225,11 +225,11 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
             data += id -> newde
             sender ! DataClosed(id, newde.status, newde.size, newde.checksum)
           case null =>
-            sender ! DataNotFoundError(s"Data ${id} not found")
+            sender ! DataNotFoundError(id, s"Data ${id} not found")
         }
       } catch {
         case dse: DataStoreError => sender ! dse
-        case e: Exception => sender ! ReadError(e.getMessage, Some(e))
+        case e: Exception => sender ! ReadError(e.getMessage, e)
       }
   }
 }

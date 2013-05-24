@@ -23,9 +23,10 @@ class CryoContext(val system: ActorRefFactory, val config: Config) {
   val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
   val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
   val manager = system.actorOf(Props(classOf[Manager], this), "manager")
+  val catalog = system.actorOf(Props(classOf[Catalog], this), "catalog")
   
   
-  val hashAlgorithm = config.getString("cryo.hash-algorithm")
+  val hashAlgorithm = config.getString("cryo.hash-algorithm") // TODO use MessageDigest.getInstance
   val bufferSize = config.getBytes("cryo.buffer-size").toInt
 
   val multipartThreshold = config.getBytes("cryo.multipart-threshold")

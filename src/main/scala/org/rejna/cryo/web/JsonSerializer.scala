@@ -23,29 +23,29 @@ object JsonSerializer extends Serializer[Int] {
 //        ("fileSelection" -> s.fileFilters.map { case (file, filter) => (file, filter.toString) })
     case (k, v) =>
       (k.toString -> Extraction.decompose(v))
-    case fe: FileElement =>
-      ("file" -> fe.file.getFileName.toString) ~
-        ("isDirectory" -> Files.isDirectory(fe.file)) ~
-        ("count" -> fe.count) ~
-        ("size" -> fe.size) ~
-        ("filter" -> fe.filter.toString)
-    case ac: AttributeChange[_] =>
-      ("type" -> "AttributeChange") ~
-        ("path" -> ac.path) ~
-        ("before" -> Extraction.decompose(ac.attribute.previous)) ~
-        ("after" -> Extraction.decompose(ac.attribute.now))
-    case alc: AttributeListChange[_] =>
-      ("type" -> "AttributeListChange") ~
-        ("path" -> alc.path) ~
-        ("addedValues" -> Extraction.decompose(alc.addedValues)) ~
-        ("removedValues" -> Extraction.decompose(alc.removedValues))
-    case l: Log =>
-      ("type" -> "Log") ~
-        ("path" -> l.path) ~
-        ("level" -> l.level.toString) ~
-        ("marker" -> l.marker) ~
-        ("message" -> l.message)
-    case ff: FileFilter =>
-      ff.toString
+//    case fe: FileElement =>
+//      ("file" -> fe.file.getFileName.toString) ~
+//        ("isDirectory" -> Files.isDirectory(fe.file)) ~
+//        ("count" -> fe.count) ~
+//        ("size" -> fe.size) ~
+//        ("filter" -> fe.filter.toString)
+//    case ac: AttributeChange[_] =>
+//      ("type" -> "AttributeChange") ~
+//        ("path" -> ac.path) ~
+//        ("before" -> Extraction.decompose(ac.attribute.previous)) ~
+//        ("after" -> Extraction.decompose(ac.attribute.now))
+//    case alc: AttributeListChange[_] =>
+//      ("type" -> "AttributeListChange") ~
+//        ("path" -> alc.path) ~
+//        ("addedValues" -> Extraction.decompose(alc.addedValues)) ~
+//        ("removedValues" -> Extraction.decompose(alc.removedValues))
+//    case l: Log =>
+//      ("type" -> "Log") ~
+//        ("path" -> l.path) ~
+//        ("level" -> l.level.toString) ~
+//        ("marker" -> l.marker) ~
+//        ("message" -> l.message)
+//    case ff: FileFilter =>
+//      ff.toString
   }
 }

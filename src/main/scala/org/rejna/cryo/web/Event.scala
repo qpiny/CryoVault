@@ -3,31 +3,33 @@ package org.rejna.cryo.web
 import java.nio.file.Path
 import scala.concurrent.duration._
 import net.liftweb.json._
-import org.rejna.cryo.models.{ Event, FileFilter }
+import org.joda.time.DateTime
+import org.rejna.cryo.models._
 
-abstract class RequestEvent extends Event { val path = "<null>" }
-abstract class ResponseEvent(val path: String) extends Event
+//case class GetArchiveList() extends RequestEvent
+//case class ArchiveList(archives: List[String]) extends ResponseEvent("<null>")
+//case class SnapshotList(snapshots: List[String]) extends ResponseEvent("<null>")
+//
+//case class GetSnapshotList() extends RequestEvent
+case class Subscribe(subscription: String) extends Request
+case class Unsubscribe(subscription: String) extends Request
+case class AddIgnoreSubscription(subscription: String) extends Request
+case class RemoveIgnoreSubscription(subscription: String) extends Request
 
-case class GetArchiveList() extends RequestEvent
-case class ArchiveList(archives: List[String]) extends ResponseEvent("<null>")
-case class SnapshotList(snapshots: List[String]) extends ResponseEvent("<null>")
-
-case class GetSnapshotList() extends RequestEvent
-case class Subscribe(subscription: String) extends RequestEvent
-case class Unsubscribe(subscription: String) extends RequestEvent
-case class AddIgnoreSubscription(subscription: String) extends RequestEvent
-case class RemoveIgnoreSubscription(subscription: String) extends RequestEvent
-case class CreateSnapshot() extends RequestEvent
-case class UploadSnapshot(snapshotId: String) extends RequestEvent
-case class AddFile(snapshotId: String, file: String) extends RequestEvent
-case class SnapshotCreated(id: String) extends ResponseEvent("<null>")
-//case class ArchiveCreation(file: Path, archiveType: ArchiveType.ArchiveType, id: String, state: CryoStatus.CryoStatus) extends ResponseEvent(id)
-case class RefreshInventory(maxAge: Duration = 24 hours) extends RequestEvent
-
-case class GetSnapshotFiles(snapshotId: String, directory: String) extends RequestEvent
-case class FileElement(file: Path, count: Int, size: Long, filter: Option[FileFilter])
-case class SnapshotFiles(snapshotId: String, directory: String, files: Iterable[FileElement]) extends ResponseEvent("<null>")
-case class UpdateSnapshotFileFilter(snapshotId: String, directory: String, filter: String) extends RequestEvent
+case class SnapshotList(status: List[DataStatus]) extends Response
+case class ArchiveList(status: List[DataStatus]) extends Response
+//case class Archive(id: String, creationDate: DateTime, )
+//case class CreateSnapshot() extends RequestEvent
+//case class UploadSnapshot(snapshotId: String) extends RequestEvent
+//case class AddFile(snapshotId: String, file: String) extends RequestEvent
+//case class SnapshotCreated(id: String) extends ResponseEvent("<null>")
+////case class ArchiveCreation(file: Path, archiveType: ArchiveType.ArchiveType, id: String, state: CryoStatus.CryoStatus) extends ResponseEvent(id)
+//case class RefreshInventory(maxAge: Duration = 24 hours) extends RequestEvent
+//
+//case class GetSnapshotFiles(snapshotId: String, directory: String) extends Request
+//case class FileElement(file: Path, count: Int, size: Long, filter: Option[FileFilter])
+//case class SnapshotFiles(snapshotId: String, directory: String, files: Iterable[FileElement]) extends ResponseEvent("<null>")
+//case class UpdateSnapshotFileFilter(snapshotId: String, directory: String, filter: String) extends RequestEvent
 /*
 case class InventoryRequest() extends RequestEvent {
   def toJson = Json.toJson(Map("type" -> "inventory"))
