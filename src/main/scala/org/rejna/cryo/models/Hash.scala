@@ -7,21 +7,21 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption._
 import java.nio.channels.FileChannel
 
-class Hash(val value: Array[Byte], vers: Option[Int] = None) {
-  private var _version = vers
 
-  def version = _version
 
-  def version_=(v: Int) = _version match { // version can be set only once
-    case None => _version = Some(v)
-    case _: Any => // ignore XXX add log ?
-  }
+class Hash(val value: Array[Byte]) {
   override def toString = value.map("%02X" format _).mkString
+  // TODO equals HashVersion
+}
 
-//  override def equals(a: Any) = a match {
-//    case Hash(v) => v.sameElements(value)
-//    case _ => false
-//  }
+class HashVersion(value: Array[Byte], val version: Int) extends Hash(value) {
+  lazy val hash = new Hash(value)
+  override def toString = s"${super.toString}-${version}"
+  // TODO equals Hash
+}
+
+object HashVersion {
+  def apply(value: Array[Byte], version: Int) = new HashVersion(value, version)
 }
 
 object Hash {

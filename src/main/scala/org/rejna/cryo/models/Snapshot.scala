@@ -5,6 +5,7 @@ import scala.collection.JavaConversions._
 import scala.concurrent.{ ExecutionContext, Await, Future }
 import scala.concurrent.duration._
 import scala.language.{ implicitConversions, postfixOps }
+import scala.util.{ Try, Success, Failure }
 
 import java.io.{ FileOutputStream, FileInputStream, IOException }
 import java.util.UUID
@@ -51,6 +52,7 @@ case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) ex
 case class SnapshotGetFiles(id: String, directory: String) extends SnapshotRequest
 case object FilterUpdated extends SnapshotResponse
 case class SnapshotUpload(id: String) extends SnapshotRequest
+case class SnapshotUploaded(id: String) extends SnapshotResponse
 
 //case class ArchiveCreated(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
@@ -145,56 +147,37 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
   //    remoteSnapshot = Some(Cryo.migrate(this, upload))
   //  }
 
+  case class UploaderState(out: ByteStringBuilder, aid: String, len: Int)
   class ArchiveUploader(implicit val timeout: Timeout, val executionContext: ExecutionContext) {
-    implicit val byteOrder = ByteOrder.BIG_ENDIAN
-
-    case class BSSerializer(bsBuilder: ByteStringBuilder) {
-      def putString(s: String): ByteStringBuilder = {
-        val bs = ByteString(s, "UTF-8")
-        bsBuilder.putInt(bs.length)
-        bsBuilder ++= bs
-      }
-      def putBlockLocation(bl: BlockLocation): ByteStringBuilder = {
-        putHash(bl.hash)
-        putString(bl.archiveId)
-        bsBuilder.putLong(bl.offset)
-        bsBuilder.putInt(bl.size)
-        bsBuilder
-      }
-      def putHash(hash: Hash): ByteStringBuilder = {
-        bsBuilder.putBytes(hash.value)
-        bsBuilder.putInt(hash.version.getOrElse(0))
-      }
-      def putBoolean(b: Boolean): ByteStringBuilder = {
-        if (b) bsBuilder.putByte(1)
-        else bsBuilder.putByte(0)
-      }
-    }
-
-    implicit def bs2bss(bsBuilder: ByteStringBuilder) = BSSerializer(bsBuilder)
-
-    case class Current(out: ByteStringBuilder, aid: String, len: Int)
-    var current = (cryoctx.datastore ? CreateArchive) map {
-      case ArchiveCreated(aid) => Current(new ByteStringBuilder, aid, 0)
+    import ByteStringSerializer._
+    var state: Future[UploaderState] = (cryoctx.datastore ? CreateArchive) map {
+      case ArchiveCreated(aid) => UploaderState(new ByteStringBuilder, aid, 0)
       case e: CryoError => throw e
       case o: Any => throw new CryoError(s"Unexpected message: ${o}")
     }
 
-    def addFile(filename: String) = {
-      current = current.map {
-        case Current(out, aid, len) =>
+    def addFile(filename: String, blocks: TraversableOnce[Block]) = {
+      state = state.map {
+        case UploaderState(out, aid, len) =>
           out.putString(filename)
-          Current(out, aid, len)
+          UploaderState(out, aid, len)
+      }
+      for (b <- blocks)
+        writeBlock(b)
+      state = state.map {
+        case UploaderState(out, aid, len) =>
+          out.putBoolean(false)
+          UploaderState(out, aid, len)
       }
     }
 
-    private def nextArchiveIfNeeded: Future[Current] = {
-      current flatMap {
-        case c @ Current(out, aid, len) =>
+    private def nextArchiveIfNeeded: Future[UploaderState] = {
+      state.flatMap {
+        case us @ UploaderState(out, aid, len) =>
           if (len > cryoctx.archiveSize) {
             (cryoctx.cryo ? UploadData(aid)) flatMap {
               case DataUploaded => (cryoctx.datastore ? CreateArchive) map {
-                case ArchiveCreated(newId) => Current(out, newId, 0)
+                case ArchiveCreated(newId) => UploaderState(out, newId, 0)
                 case e: CryoError => throw e
                 case o: Any => throw new CryoError(s"Unexpected message: ${o}")
               }
@@ -202,33 +185,34 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
               case o: Any => throw new CryoError(s"Unexpected message: ${o}")
             }
           } else
-            Future(c)
+            Future(us)
       }
     }
 
-    private def writeInArchive(block: Block): Future[Current] = {
+    private def writeInArchive(block: Block): Future[UploaderState] = {
       nextArchiveIfNeeded flatMap {
-        case c @ Current(out, aid, len) =>
+        case UploaderState(out, aid, len) =>
           (cryoctx.datastore ? WriteData(aid, ByteString(block.data))).map {
             case DataWritten(_, position, length) =>
-              out.putBlockLocation(BlockLocation(block.hash, aid, position, length.toInt))
-              Current(out, aid, len + length.toInt)
+              out.putBoolean(true)
+              out.putHash(block.hash)
+              UploaderState(out, aid, len + length.toInt)
             case e: CryoError => throw e
             case o: Any => throw new CryoError(s"Unexpected message: ${o}")
           }
       }
     }
 
-    def writeBlock(block: Block) = {
-      current = current flatMap {
-        case Current(out, aid, len) =>
-          (cryoctx.catalog ? GetBlockLocation(block.hash)) flatMap {
+    private def writeBlock(block: Block) = {
+      state = state flatMap {
+        case UploaderState(out, aid, len) =>
+          (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
             case BlockLocationNotFound =>
               writeInArchive(block)
             case bl: BlockLocation =>
               out.putBoolean(true)
-              out.putHash(bl.hash)
-              Future(Current(out, aid, len + block.size))
+              out.putHash(bl.hashVersion)
+              Future(UploaderState(out, aid, len + block.size))
             case e: CryoError => throw e
             case o: Any => throw new CryoError(s"Unexpected message: ${o}")
           }
@@ -236,8 +220,8 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
     }
 
     def upload: Future[ByteString] = {
-      current flatMap {
-        case Current(out, aid, len) =>
+      state flatMap {
+        case UploaderState(out, aid, len) =>
           (cryoctx.cryo ? UploadData(aid)) map {
             case DataUploaded => out.result
             case e: CryoError => throw e
@@ -245,45 +229,10 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
           }
       }
     }
-  }
-
-  def create = {
-    implicit val timeout = Timeout(10 seconds)
-    implicit val executionContext = context.system.dispatcher
-
-    var archiveUploader = new ArchiveUploader
-
-    for (f <- files()) {
-      archiveUploader.addFile(f)
-      for (block <- splitFile(f)) {
-        archiveUploader.writeBlock(block)
-      }
+    
+    def flatMap(f: UploaderState => Future[UploaderState]): Unit = {
+      state = state.flatMap(f)
     }
-    //val output = new DataStoreOutputStream(cryoctx, id)
-    //    try {
-    //      //cryoctx.datastore ! WriteData(id, new ByteStringBuilder().result)
-    //      //format[Int].writes(output, files().length)
-    //      for (f <- files()) {
-    //        log.info(s"add file ${f} in archive")
-    //        archiveUploader.addFile(f)
-    //        for (block <- splitFile(f)) {
-    //          
-    //          if (currentArchiveSize > cryoctx.archiveSize)
-    //            archiveUploader.upload
-    //          val bl = Catalog.getOrUpdate(block, currentArchive.writeBlock(block))
-    //          format[Boolean].writes(output, true)
-    //          format[Hash].writes(output, block.hash)
-    //        }
-    //        format[Boolean].writes(output, false)
-    //      }
-    //      currentArchive.upload
-    //
-    //      // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
-    //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
-    //    } finally {
-    //      output.close
-    //    }
-
   }
 
   def receive = {
@@ -292,12 +241,42 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
       sender ! FilterUpdated
     case SnapshotGetFiles(id, directory) => // TODO
     case SnapshotUpload(id) =>
-      context.become(uploading)
+      implicit val timeout = Timeout(10 seconds)
+      implicit val executionContext = context.system.dispatcher
+      val requester = sender
+      var archiveUploader = new ArchiveUploader
+      for (f <- files()) {
+        archiveUploader.addFile(f, splitFile(f))
+      }
+      archiveUploader.flatMap {
+        case UploaderState(out, aid, len) =>
+          (cryoctx.hashcatalog ? GetCatalogContent) map {
+            case CatalogContent(catalog) =>
+              //out.putCatalog(catalog)
+              UploaderState(out, aid, len)
+          }
+          
+      }
+      // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
+      //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
+      archiveUploader.upload.map {
+        case bs: ByteString =>
+          cryoctx.datastore ? WriteData(id, bs) map {
+            case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
+              case DataUploaded(sid) => requester ! SnapshotUploaded(sid)
+              case e: CryoError => throw e
+              case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+            }
+            case e: CryoError => throw e
+            case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+          }
+      }.onFailure {
+        case e: CryoError => requester ! e
+        case o: Any => requester ! new CryoError(s"Unexpected message: ${o}")
+      }
+    //}
+    //case Failure(e) => requester ! new CryoError(s"Unexpected error", e)
 
-  }
-
-  def uploading: Receive = {
-    case _ =>
   }
 }
 

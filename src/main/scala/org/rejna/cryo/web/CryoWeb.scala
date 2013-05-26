@@ -46,6 +46,7 @@ object CryoWeb extends App with LoggingClass {
   })
 
   def unregisterWebSocket(event: WebSocketHandshakeEvent) = {
+    log.info("Unregister websocket connection")
     wsHandlers.get(event.channel) match {
       case Some(aref) =>
         aref ! PoisonPill
@@ -55,11 +56,13 @@ object CryoWeb extends App with LoggingClass {
     }
   }
   def registerWebSocket(event: WebSocketHandshakeEvent) = {
-    event.authorize(onComplete = Some(unregisterWebSocket))
-    wsHandlers += event.channel -> system.actorOf(Props(classOf[CryoSocket], event.channel))
+    log.info("Register a new websocket connection")
+    event.authorize()//onComplete = Some(unregisterWebSocket))
+    wsHandlers += event.channel -> system.actorOf(Props(classOf[CryoSocket], cryoctx, event.channel))
   }
 
   override def main(args: Array[String]) = {
+    super.main(args)
     val webServer = new WebServer(WebServerConfig(), routes, system)
     Runtime.getRuntime.addShutdownHook(new Thread {
       override def run { webServer.stop() }
