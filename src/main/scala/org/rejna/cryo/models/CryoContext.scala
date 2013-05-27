@@ -17,15 +17,7 @@ import com.amazonaws.{ ClientConfiguration, Protocol }
 
 class CryoContext(val system: ActorRefFactory, val config: Config) {
   import org.rejna.util.IsoUnit._
-  
-  val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
-  val datastore = system.actorOf(Props(classOf[DataStore], this), "datastore")
-  val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
-  val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
-  val manager = system.actorOf(Props(classOf[Manager], this), "manager")
-  val hashcatalog = system.actorOf(Props(classOf[HashCatalog], this), "catalog")
-  
-  
+
   val hashAlgorithm = config.getString("cryo.hash-algorithm") // TODO use MessageDigest.getInstance
   val bufferSize = config.getBytes("cryo.buffer-size").toInt
 
@@ -85,4 +77,11 @@ class CryoContext(val system: ActorRefFactory, val config: Config) {
 
   if (config.getBoolean("aws.disable-cert-checking"))
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
+
+  val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
+  val datastore = system.actorOf(Props(classOf[DataStore], this), "datastore")
+  val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
+  val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
+  val manager = system.actorOf(Props(classOf[Manager], this), "manager")
+  val hashcatalog = system.actorOf(Props(classOf[HashCatalog], this), "catalog")
 }

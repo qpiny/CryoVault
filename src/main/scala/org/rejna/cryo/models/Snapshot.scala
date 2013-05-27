@@ -235,7 +235,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
     }
   }
 
-  def receive = {
+  def receive = CryoReceive {
     case SnapshotUpdateFilter(id, file, filter) =>
       fileFilters += file -> filter
       sender ! FilterUpdated

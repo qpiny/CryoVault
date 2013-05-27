@@ -4,13 +4,16 @@ import scala.util.matching.Regex
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.collection.JavaConversions._
+import scala.collection.mutable.ListBuffer
 import scala.language.{ implicitConversions, postfixOps }
 
-import akka.actor.Actor
+import akka.actor.{ Actor, OneForOneStrategy }
+import akka.actor.SupervisorStrategy._
 import akka.pattern.ask
 import akka.util.Timeout
 
 import java.nio.file.{ Path, Files, FileSystems, AccessDeniedException }
+import java.nio.channels.ClosedChannelException
 
 import org.rejna.cryo.models._
 import akka.event.EventBus
@@ -26,22 +29,23 @@ object EventTypeHints extends TypeHints {
   val hints =
     //    classOf[UploadSnapshot] ::
     //      classOf[UpdateSnapshotFileFilter] ::
-    //      classOf[Unsubscribe] ::
-    //      classOf[Subscribe] ::
-    //      classOf[RemoveIgnoreSubscription] ::
-    //      classOf[RefreshInventory] ::
-    //      classOf[GetSnapshotList] ::
-    //      classOf[GetSnapshotFiles] ::
-    //      classOf[GetArchiveList] ::
-    //      classOf[CreateSnapshot] ::
-    //      classOf[SnapshotCreated] ::
-    //      classOf[AddIgnoreSubscription] ::
-    //      classOf[ArchiveList] ::
-    //      classOf[SnapshotList] ::
-    //      classOf[AddFile] ::
-    //      //classOf[ArchiveCreation] ::
-    //      classOf[SnapshotFiles] ::
-    classOf[AttributeChange[_]] ::
+    classOf[Unsubscribe] ::
+      classOf[Subscribe] ::
+      classOf[RemoveIgnoreSubscription] ::
+      classOf[RefreshInventory] ::
+      classOf[GetSnapshotList] ::
+      //      classOf[GetSnapshotFiles] ::
+      //      classOf[GetArchiveList] ::
+      classOf[CreateSnapshot] ::
+      classOf[SnapshotCreated] ::
+      classOf[SnapshotCreated] ::
+      classOf[AddIgnoreSubscription] ::
+      //      classOf[ArchiveList] ::
+      classOf[SnapshotList] ::
+      //      classOf[AddFile] ::
+      //      //classOf[ArchiveCreation] ::
+      //      classOf[SnapshotFiles] ::
+      classOf[AttributeChange[_]] ::
       classOf[AttributeListChange[_]] ::
       Nil
 
@@ -69,7 +73,14 @@ class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with Logg
   import EventSerialization._
   implicit val timeout = Timeout(10 seconds)
   implicit val executionContext = context.system.dispatcher
+  val ignore = ListBuffer[Regex]()
 
+  override val supervisorStrategy = OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
+    case _: ClosedChannelException =>
+      CryoWeb.unregisterWebSocket(channel)
+      Stop
+    case _: Exception => Resume
+  }
   def receive = {
     case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
@@ -82,8 +93,9 @@ class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with Logg
 
         // TODO manager ignore subscription in this actor
         case AddIgnoreSubscription(subscription) =>
-          CryoEventBus.addIgnoreSubscription(self, subscription)
+          ignore += subscription.r
         case RemoveIgnoreSubscription(subscription) =>
+          ignore -= subscription.r
 
         case sr: SnapshotRequest =>
           cryoctx.inventory ! sr
@@ -93,14 +105,15 @@ class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with Logg
       }
     case ArchiveIdList(archiveIds) =>
       Future.sequence(archiveIds.map {
-        id => (cryoctx.datastore ? GetDataStatus(id)).map {
-          case ds: DataStatus => Some(ds)
-          case _: Any => None
-        }
+        id =>
+          (cryoctx.datastore ? GetDataStatus(id)).map {
+            case ds: DataStatus => Some(ds)
+            case _: Any => None
+          }
       }).onSuccess {
         case msgList => channel.send(ArchiveList(msgList.flatten))
       }
-     case SnapshotIdList(snapshots) =>
+    case SnapshotIdList(snapshots) =>
       Future.sequence(snapshots.map {
         case (id, _) => (cryoctx.datastore ? GetDataStatus(id)).map {
           case ds: DataStatus => Some(ds)
@@ -109,6 +122,7 @@ class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with Logg
       }).onSuccess {
         case msgList => channel.send(SnapshotList(msgList.flatten.toList))
       }
+    case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore
     case msg: CryoMessage =>
       channel.send(msg)
 

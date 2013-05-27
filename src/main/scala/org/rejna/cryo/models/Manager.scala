@@ -81,7 +81,7 @@ class Manager(cryoctx: CryoContext) extends Actor {
     cryoctx.cryo ! RefreshJobList
   }
 
-  def receive = {
+  def receive = CryoReceive {
     case AddJob(job) =>
       jobs += job.id -> job
 

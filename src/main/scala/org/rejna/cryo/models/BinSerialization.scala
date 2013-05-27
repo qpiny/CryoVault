@@ -1,5 +1,7 @@
 package org.rejna.cryo.models
 
+import scala.language.implicitConversions
+
 import akka.util.{ ByteString, ByteStringBuilder }
 
 import java.nio.{ ByteBuffer, BufferOverflowException, ByteOrder }

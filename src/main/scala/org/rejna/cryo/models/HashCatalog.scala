@@ -36,7 +36,7 @@ class HashCatalog(cryoctx: CryoContext) extends Actor {
   private val content = HashMap.empty[HashVersion, BlockLocation]
   private val hashVersions = HashMap.empty[Hash, List[HashVersion]]
 
-  def receive = {
+  def receive = CryoReceive {
     case GetCatalogContent => sender ! CatalogContent(content.toMap)
     case GetHashBlockLocation(hash) =>
       content.get(hash) match {

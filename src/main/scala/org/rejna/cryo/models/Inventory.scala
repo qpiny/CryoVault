@@ -22,13 +22,13 @@ sealed abstract class InventoryRequest extends Request
 sealed abstract class InventoryResponse extends Response
 sealed class InventoryError(message: String, cause: Throwable) extends CryoError(message, cause)
 
-case object CreateArchive extends InventoryRequest
+case class CreateArchive() extends InventoryRequest
 case class ArchiveCreated(id: String) extends InventoryResponse
-case object CreateSnapshot extends InventoryRequest
+case class CreateSnapshot() extends InventoryRequest
 case class SnapshotCreated(id: String, aref: ActorRef) extends InventoryResponse
-case object GetArchiveList extends InventoryRequest
+case class GetArchiveList() extends InventoryRequest
 case class ArchiveIdList(archiveIds: List[String]) extends InventoryResponse
-case object GetSnapshotList extends InventoryRequest
+case class GetSnapshotList() extends InventoryRequest
 case class SnapshotIdList(snapshots: Map[String, ActorRef]) extends InventoryResponse
 case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 
@@ -53,7 +53,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
     cryoctx.datastore ! GetDataStatus(inventoryDataId)
   }
 
-  def receive = {
+  def receive = CryoReceive {
     case DataStatus(id, creationDate, status, size, checksum) =>
       if (id == inventoryDataId && status == EntryStatus.Created)
         cryoctx.datastore ! ReadData(inventoryDataId, 0, size.toInt)

@@ -13,11 +13,19 @@ import com.amazonaws.services.sqs.model._
 import com.amazonaws.services.sns.AmazonSNSClient
 import com.amazonaws.services.sns.model._
 
-object GetNotification
+sealed abstract class NotificationRequest extends Request
+sealed abstract class NotificationResponse extends Response
+sealed class NotificationError(message: String, cause: Throwable) extends CryoError(message, cause)
+
+
+case class GetNotification() extends NotificationRequest
+case class GetNotificationARN() extends NotificationRequest
+case class NotificationARN(arn: String) extends NotificationResponse
 
 abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClass {
   val sns = new AmazonSNSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
-  //__hackAddProxyAuthPref(sns)
+  if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
+    HttpClientProxyHack(sns)
   sns.setEndpoint("sns." + cryoctx.region + ".amazonaws.com")
   val notificationArn = getOrCreateQueue
 
@@ -38,7 +46,8 @@ abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClas
 class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   implicit val formats = Serialization.formats(NoTypeHints) + JsonSerialization
   val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
-  //__hackAddProxyAuthPref(sqs)
+  if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
+    HttpClientProxyHack(sqs)
   sqs.setEndpoint("sqs." + cryoctx.region + ".amazonaws.com")
   val (queueUrl, queueArn) = getOrCreateQueue
 
@@ -74,7 +83,7 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
     context.system.scheduler.schedule(0 second, cryoctx.queueRequestInterval, self, GetNotification)(context.system.dispatcher)
   }
 
-  def receive = {
+  def receive = CryoReceive {
     case GetNotification =>
       for (message <- sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages) {
         message.getAttributes().get("Type") match {
@@ -82,7 +91,7 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
             cryoctx.manager ! AddJob(Serialization.read[Job](message.getBody))
           case otherType =>
             log.warn(s"Receive message from notification queue with type ${otherType}, ignore it")
-        } 
+        }
       }
   }
 }

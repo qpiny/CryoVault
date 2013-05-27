@@ -10,6 +10,7 @@ import scala.language.postfixOps
 import akka.actor.{ Actor, ActorRefFactory }
 import akka.pattern.ask
 import akka.util.{ ByteString, ByteIterator, Timeout }
+import akka.event.LoggingReceive
 
 import java.io.{ InputStream, OutputStream, IOException }
 import java.nio.ByteBuffer
@@ -58,7 +59,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
   val data = HashMap.empty[String, DataEntry]
 
   // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)
-  abstract class DataEntry(val id: String, val creationDate: DateTime) extends LoggingClass {
+  sealed abstract class DataEntry(val id: String, val creationDate: DateTime) extends LoggingClass {
     val file = cryoctx.baseDirectory.resolve(id)
 
     val statusAttribute: Attribute[EntryStatus]
@@ -155,7 +156,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
     }
   }
 
-  def receive: Receive = {
+  def receive: Receive = LoggingReceive {
     case CreateData(idOption, size) =>
       try {
         val id = idOption.getOrElse {
@@ -173,14 +174,14 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
 
     case WriteData(id, position, buffer) =>
       try {
-        data.get(id).get match {
-          case de: DataEntryLoading if position >= 0 =>
+        data.get(id) match {
+          case Some(de: DataEntryLoading) if position >= 0 =>
             sender ! DataWritten(id, position, de.write(position, buffer))
-          case de: DataEntryCreating if position == -1 =>
+          case Some(de: DataEntryCreating) if position == -1 =>
             sender ! DataWritten(id, position, de.write(buffer))
-          case null =>
+          case None =>
             sender ! DataNotFoundError(id, s"Data ${id} not found")
-          case de: DataEntry =>
+          case Some(de: DataEntry) =>
             sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for write")
         }
       } catch {
@@ -189,23 +190,23 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
       }
 
     case GetDataStatus(id) =>
-      data.get(id).get match {
-        case null =>
+      data.get(id) match {
+        case None =>
           sender ! DataNotFoundError(id, s"Data ${id} not found")
-        case de: DataEntryCreated =>
+        case Some(de: DataEntryCreated) =>
           sender ! DataStatus(id, de.creationDate, de.status, de.size, de.checksum)
-        case de: DataEntry =>
+        case Some(de: DataEntry) =>
           sender ! DataStatus(id, de.creationDate, de.status, de.size, "")
       }
 
     case ReadData(id, position, length) =>
       try {
-        data.get(id).get match {
-          case de: DataEntryCreated =>
+        data.get(id) match {
+          case Some(de: DataEntryCreated) =>
             sender ! DataRead(id, position, de.read(position, length))
-          case null =>
+          case None =>
             sender ! DataNotFoundError(id, s"Data ${id} not found")
-          case de: DataEntry =>
+          case Some(de: DataEntry) =>
             sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for read")
         }
       } catch {
@@ -215,16 +216,18 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
 
     case CloseData(id) =>
       try {
-        data.get(id).get match {
-          case de: DataEntryCreating =>
+        data.get(id) match {
+          case Some(de: DataEntryCreating) =>
             val newde = de.close
             data += id -> newde
             sender ! DataClosed(id, newde.status, newde.size, newde.checksum)
-          case de: DataEntryLoading =>
+          case Some(de: DataEntryLoading) =>
             val newde = de.close
             data += id -> newde
             sender ! DataClosed(id, newde.status, newde.size, newde.checksum)
-          case null =>
+          case Some(de: DataEntryCreated) =>
+            sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for close")
+          case None =>
             sender ! DataNotFoundError(id, s"Data ${id} not found")
         }
       } catch {
