@@ -50,7 +50,7 @@ sealed class SnapshotError(message: String, cause: Option[Throwable]) extends Cr
 
 case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) extends SnapshotRequest
 case class SnapshotGetFiles(id: String, directory: String) extends SnapshotRequest
-case object FilterUpdated extends SnapshotResponse
+case class FilterUpdated() extends SnapshotResponse
 case class SnapshotUpload(id: String) extends SnapshotRequest
 case class SnapshotUploaded(id: String) extends SnapshotResponse
 
@@ -176,7 +176,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
         case us @ UploaderState(out, aid, len) =>
           if (len > cryoctx.archiveSize) {
             (cryoctx.cryo ? UploadData(aid)) flatMap {
-              case DataUploaded => (cryoctx.datastore ? CreateArchive) map {
+              case DataUploaded(_) => (cryoctx.datastore ? CreateArchive) map {
                 case ArchiveCreated(newId) => UploaderState(out, newId, 0)
                 case e: CryoError => throw e
                 case o: Any => throw new CryoError(s"Unexpected message: ${o}")
@@ -207,7 +207,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
       state = state flatMap {
         case UploaderState(out, aid, len) =>
           (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
-            case BlockLocationNotFound =>
+            case BlockLocationNotFound(_) =>
               writeInArchive(block)
             case bl: BlockLocation =>
               out.putBoolean(true)
@@ -223,7 +223,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
       state flatMap {
         case UploaderState(out, aid, len) =>
           (cryoctx.cryo ? UploadData(aid)) map {
-            case DataUploaded => out.result
+            case DataUploaded(_) => out.result
             case e: CryoError => throw e
             case o: Any => throw new CryoError(s"Unexpected message: ${o}")
           }

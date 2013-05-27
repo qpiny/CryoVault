@@ -78,7 +78,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
             CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", attribute))
         // idem for snapshots ?
       }
-    case CreateArchive =>
+    case m: CreateArchive =>
       val requester = sender
       (cryoctx.datastore ? CreateData).map {
         case DataCreated(id) =>
@@ -88,7 +88,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
           requester ! new InventoryError("Error while creating a new archive", e)
       }
 
-    case CreateSnapshot =>
+    case m: CreateSnapshot =>
       val requester = sender
       (cryoctx.datastore ? CreateData).map {
         case DataCreated(id) =>
@@ -99,10 +99,10 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
         case e: DataStoreError =>
           requester ! new InventoryError("Error while creating a new snapshot", e)
       }
-    case GetArchiveList =>
+    case m: GetArchiveList =>
       sender ! ArchiveIdList(archiveIds.toList)
     
-    case GetSnapshotList =>
+    case m: GetSnapshotList =>
       sender ! SnapshotIdList(snapshots.toMap)
       
     case sr: SnapshotRequest =>

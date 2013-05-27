@@ -30,7 +30,7 @@ trait LoggingClass {
   lazy implicit val log = Log.getLogger(this.getClass)
 }
 
-class CryoReceive(r: Actor.Receive)(implicit context: ActorContext, log: Logger) extends Actor.Receive {
+class CryoReceive(r: Actor.Receive)(implicit context: ActorContext, log: org.slf4j.Logger) extends Actor.Receive {
   def isDefinedAt(o: Any): Boolean = {
     val handled = r.isDefinedAt(o)
     if (handled)
@@ -41,8 +41,10 @@ class CryoReceive(r: Actor.Receive)(implicit context: ActorContext, log: Logger)
   }
   def apply(o: Any): Unit = {
     val sender = context.sender
-    try { r(o) }
-    catch {
+    try {
+      r(o)
+      log.debug(s"Message ${o} has been successfully handled")
+    } catch {
       case t: Throwable =>
         val e = CryoError(t)
         sender ! e
@@ -51,9 +53,9 @@ class CryoReceive(r: Actor.Receive)(implicit context: ActorContext, log: Logger)
   }
 }
 object CryoReceive {
-  def apply(r: Actor.Receive)(implicit context: ActorContext): Actor.Receive = r match {
+  def apply(r: Actor.Receive)(implicit context: ActorContext, log: org.slf4j.Logger): Actor.Receive = r match {
     case _: CryoReceive => r
-    case _: Any => CryoReceive(r)
+    case _: Any => new CryoReceive(r)
   }
 }
 

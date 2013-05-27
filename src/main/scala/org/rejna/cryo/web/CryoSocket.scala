@@ -85,13 +85,12 @@ class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with Logg
     case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
       val event = Serialization.read[Request](m)
+      log.info("Receive from websocket : " + event)
       event match {
         case Subscribe(subscription) =>
           CryoEventBus.subscribe(self, subscription)
         case Unsubscribe(subscription) =>
           CryoEventBus.unsubscribe(self, subscription)
-
-        // TODO manager ignore subscription in this actor
         case AddIgnoreSubscription(subscription) =>
           ignore += subscription.r
         case RemoveIgnoreSubscription(subscription) =>

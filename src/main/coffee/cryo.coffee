@@ -180,23 +180,29 @@ class Snapshot
 		undefined
 
 
-# Operation using websocket
+# Operations using websocket
 @subscribe = (subscription) =>
+	@log("<< Subscribe(#{subscription})")
 	@socket.send('Subscribe', { subscription: subscription })
 	
 @unsubscribe = (subscription) =>
+	@log("<< Unsubscribe(#{subscription})")
 	@socket.send('Unsubscribe', { subscription: subscription })
 
 @addIgnoreSubscription = (subscription) =>
+	@log("<< AddIgnoreSubscription(#{subscription})")
 	@socket.send('AddIgnoreSubscription', { subscription: subscription })
 	
 @removeIgnoreSubscription = (subscription) =>
+	@log("<< RemoveIgnoreSubscription(#{subscription})")
 	@socket.send('RemoveIgnoreSubscription', { subscription: subscription })
 
 @newSnapshot = =>
+	@log("<< CreateSnapshot")
 	@socket.send('CreateSnapshot')
 
 @getSnapshotList = =>
+	@log("GetSnapshotList")
 	@socket.send('GetSnapshotList')
 
 @getSnapshotFiles = (snapshotId, directory) =>
@@ -210,6 +216,7 @@ class Snapshot
 	@socket.send('UploadSnapshot', { snapshotId: snapshotId })
 
 @refreshInventory = =>
+	@log("RefreshInventory")
 	@socket.send('RefreshInventory', { age: 0 })
 	
 $ =>

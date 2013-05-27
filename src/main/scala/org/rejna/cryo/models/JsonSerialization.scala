@@ -30,7 +30,7 @@ object JsonSerialization extends Serializer[Job] {
             jobStatus,
             (json \ "CompletionDate").extractOpt[String].map(DateUtil.fromISOString),
             (json \ "ArchiveId").extract[String])
-        case o =>
+        case o: Any =>
           throw new MappingException(s"Job deserialization fails: unknown type: ${o}", null)
       }
   }

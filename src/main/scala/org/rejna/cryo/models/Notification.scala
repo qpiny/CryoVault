@@ -80,11 +80,11 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   }
 
   override def preStart = {
-    context.system.scheduler.schedule(0 second, cryoctx.queueRequestInterval, self, GetNotification)(context.system.dispatcher)
+    context.system.scheduler.schedule(0 second, cryoctx.queueRequestInterval, self, GetNotification())(context.system.dispatcher)
   }
 
   def receive = CryoReceive {
-    case GetNotification =>
+    case GetNotification() =>
       for (message <- sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages) {
         message.getAttributes().get("Type") match {
           case "Notification" =>
@@ -93,6 +93,8 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
             log.warn(s"Receive message from notification queue with type ${otherType}, ignore it")
         }
       }
+    case GetNotificationARN() =>
+      sender ! NotificationARN(notificationArn)
   }
 }
 

@@ -31,7 +31,7 @@ object CryoWeb extends App with LoggingClass {
         staticHandler ! new StaticResourceRequest(request, "webapp/glacier.html")
       case GET(Path(path)) =>
         staticHandler ! new StaticResourceRequest(request, "webapp" + path)
-      case _ => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
+      case _: Any => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
     }
 
     case WebSocketHandshake(wsHandshake) => wsHandshake match {

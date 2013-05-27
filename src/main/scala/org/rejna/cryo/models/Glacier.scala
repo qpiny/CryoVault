@@ -32,7 +32,7 @@ case class DownloadArchiveRequested(job: ArchiveJob) extends CryoResponse
 case class UploadData(id: String) extends CryoRequest
 case class DataUploaded(id: String) extends CryoResponse
 
-class Glacier(cryoctx: CryoContext) extends Actor {
+class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
 
   val glacier = new AmazonGlacierClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
@@ -40,7 +40,7 @@ class Glacier(cryoctx: CryoContext) extends Actor {
   glacier.setEndpoint("glacier." + cryoctx.region + ".amazonaws.com/")
   implicit val executionContext = context.system.dispatcher
   implicit val timeout = Timeout(10 seconds)
-  val futureSnsTopicARN = (cryoctx.notification ? GetNotificationARN) map {
+  val futureSnsTopicARN = (cryoctx.notification ? GetNotificationARN()) map {
     case NotificationARN(arn) => arn
     case e: Any => throw CryoError(e)
   }
@@ -71,7 +71,7 @@ class Glacier(cryoctx: CryoContext) extends Actor {
         }
       }
 
-    case RefreshJobList =>
+    case RefreshJobList() =>
       val jobList = glacier.listJobs(new ListJobsRequest()
         .withVaultName(cryoctx.vaultName))
         .getJobList
@@ -79,7 +79,7 @@ class Glacier(cryoctx: CryoContext) extends Actor {
         .toList
       cryoctx.manager ! JobList(jobList)
 
-    case RefreshInventory =>
+    case m: RefreshInventory =>
       val jobId = glacier.initiateJob(new InitiateJobRequest()
         .withVaultName(cryoctx.vaultName)
         .withJobParameters(

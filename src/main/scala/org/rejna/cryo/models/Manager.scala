@@ -73,12 +73,12 @@ case class AddJob(job: Job)
 case class RemoveJob(jobId: String)
 case class JobList(jobs: List[Job])
 
-class Manager(cryoctx: CryoContext) extends Actor {
+class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
   val attributeBuilder = new AttributeBuilder("/user/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
 
   override def preStart = {
-    cryoctx.cryo ! RefreshJobList
+    cryoctx.cryo ! RefreshJobList()
   }
 
   def receive = CryoReceive {

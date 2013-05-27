@@ -28,16 +28,16 @@ case class BlockLocationAdded(added: List[BlockLocation], failed: List[BlockLoca
 case class BlockLocationNotFound(hashVersion: HashVersion) extends HashCatalogError("Blocklocation was not found")
 case class HashCollision(message: String) extends HashCatalogError("Blocklocation was not found")
 
-case object GetCatalogContent extends HashCatalogRequest
+case class GetCatalogContent() extends HashCatalogRequest
 case class CatalogContent(catalog: Map[HashVersion, BlockLocation]) extends HashCatalogResponse
 
-class HashCatalog(cryoctx: CryoContext) extends Actor {
+class HashCatalog(cryoctx: CryoContext) extends Actor with LoggingClass {
   implicit val executionContext = context.system.dispatcher
   private val content = HashMap.empty[HashVersion, BlockLocation]
   private val hashVersions = HashMap.empty[Hash, List[HashVersion]]
 
   def receive = CryoReceive {
-    case GetCatalogContent => sender ! CatalogContent(content.toMap)
+    case m: GetCatalogContent => sender ! CatalogContent(content.toMap)
     case GetHashBlockLocation(hash) =>
       content.get(hash) match {
         case None => sender ! BlockLocationNotFound(hash)
