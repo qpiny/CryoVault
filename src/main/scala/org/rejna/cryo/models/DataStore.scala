@@ -55,8 +55,8 @@ object EntryStatus extends Enumeration {
 class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
   import EntryStatus._
 
-  val attributeBuilder = new AttributeBuilder("/cryo/datastore")
-  val data = HashMap.empty[String, DataEntry]
+  val attributeBuilder = AttributeBuilder("/cryo/datastore")
+  val data = attributeBuilder.map("repository", Map.empty[String, DataEntry])
 
   // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)
   sealed abstract class DataEntry(val id: String, val creationDate: DateTime) extends LoggingClass {

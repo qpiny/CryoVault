@@ -1,31 +1,25 @@
 package org.rejna.cryo.models
 
-import scala.collection.mutable.{ Buffer, ListBuffer, Map, HashMap, Set }
+import scala.collection.mutable.{ Buffer, Map }
 import scala.collection.immutable.{ Map => IMap }
 import scala.util.matching.Regex
-
-import akka.actor.ActorRef
-
-import net.liftweb.json._
 
 object AttributePath extends Regex("/cryo/([^/]*)/([^/]*)#(.*)", "service", "object", "attribute")
 
 case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event
 case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event
 
-class AttributeBuilder(path: String*) {
-  var paths = List(path: _*)
-
+class AttributeBuilder(path: List[String]) extends LoggingClass {
   object callback extends AttributeChangeCallback {
     override def onChange[A](attribute: ReadAttribute[A]) = {
-      println("attribute[%s#%s] change: %s -> %s".format(paths.mkString("(", ",", ")"), attribute.name, attribute.previous, attribute.now))
-      for (p <- paths) CryoEventBus.publish(AttributeChange(p + '#' + attribute.name, attribute))
+      log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), attribute.name, attribute.previous, attribute.now))
+      for (p <- path) CryoEventBus.publish(AttributeChange(p + '#' + attribute.name, attribute))
     }
   }
   object listCallback extends AttributeListCallback {
     override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit = {
-      println("attribute[%s#%s] add: %s remove: %s".format(paths.mkString("(", ",", ")"), attribute.name, addedValues.take(10), removedValues.take(10)))
-      for (p <- paths) CryoEventBus.publish(AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
+      log.debug("attribute[%s#%s] add: %s remove: %s".format(path.mkString("(", ",", ")"), attribute.name, addedValues.take(10), removedValues.take(10)))
+      for (p <- path) CryoEventBus.publish(AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
     }
   }
 
@@ -41,9 +35,12 @@ class AttributeBuilder(path: String*) {
 
   def map[A, B](name: String, body: () => IMap[A, B]) = new MetaMapAttribute(name, body) <+> listCallback
 
-  def /(subpath: String) = new AttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
+  def /(subpath: String) = AttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
 
-  def withAlias(path: String) = new AttributeBuilder(path :: paths: _*)
+  def withAlias(alias: String) = AttributeBuilder(alias :: path: _*)
+}
+object AttributeBuilder {
+  def apply(path: String*) = new AttributeBuilder(path.toList)
 }
 
 trait AttributeChangeCallback {
@@ -128,9 +125,11 @@ class Attribute[A](val name: String, initValue: A) extends ReadAttribute[A] { se
   private var _previous = initValue
 
   def update(newValue: A) = {
+    //println(s"===update(${_now} => ${newValue})")
     if (_now != newValue) {
       _previous = now
       _now = newValue
+      //println("===update: execute callbacks")
       for (c <- callbacks) c.onChange(this)
     }
   }
@@ -156,8 +155,11 @@ trait ListCallback[A, B <: ReadAttribute[List[A]]] { self: B =>
 
   addCallback(new AttributeChangeCallback {
     override def onChange[B](attribute: ReadAttribute[B]): Unit = {
+      //println(s"===onChangeCallback===(${previous}) => (${now})")
       val add = now diff previous
       val remove = previous diff now
+      //println(s"===onChangeCallback=add(${add})")
+      //println(s"===onChangeCallback=remove(${remove})")
       for (c <- listCallbacks)
         c.onListChange(self, add, remove)
     }
@@ -234,12 +236,25 @@ class MapAttribute[A, B](name: String, initValue: IMap[A, B])
   with ListCallback[(A, B), MapAttribute[A, B]] { self =>
 
   def +=(kv: (A, B)) = {
-    update(now.flatMap(a => if (a._1 == kv._1) None else Some(a)) :+ kv)
+    update(_addTo(now, kv))
+    this
+  }
+  
+  private def _addTo(map: List[(A, B)], kv: (A, B)): List[(A, B)] = {
+    val r = map.filterNot(_._1 == kv._1) :+ kv
+    //println(s"===map.addTo(${map}, ${kv})===>${r}")
+    r
+  }
+  
+  override def ++=(kvs: TraversableOnce[(A, B)]) = {
+    //println(s"===map==>${now}")
+    update(kvs.foldLeft(now) { case (map, element) => _addTo(map, element)})
+    //println(s"===map.++=(${kvs})===>${now}")
     this
   }
 
   def -=(k: A) = {
-    update(now.flatMap(kv => if (kv._1 == k) None else Some(kv)))
+    update(now.filterNot(_._1 == k))
     this
   }
 

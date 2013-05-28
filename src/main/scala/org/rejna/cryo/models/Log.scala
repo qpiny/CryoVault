@@ -34,9 +34,9 @@ class CryoReceive(r: Actor.Receive)(implicit context: ActorContext, log: org.slf
   def isDefinedAt(o: Any): Boolean = {
     val handled = r.isDefinedAt(o)
     if (handled)
-      log.info(s"Receive handled message ${o}")
+      log.debug(s"Receive handled message ${o}")
     else
-      log.debug(s"Receive unhandled message ${o}")
+      log.info(s"Receive unhandled message ${o}")
     handled
   }
   def apply(o: Any): Unit = {
@@ -61,8 +61,11 @@ object CryoReceive {
 
 object LogDispatcher extends TurboFilter {
   override def decide(marker: Marker, logger: Logger, level: Level, format: String, params: Array[AnyRef], t: Throwable) = {
-    val message = MessageFormatter.arrayFormat(format, params).getMessage
-    CryoEventBus.publish(Log(level, if (marker == null) "" else marker.toString, message))
+    val message =
+      (if (format != null) MessageFormatter.arrayFormat(format, params).getMessage else "") +
+        (if (t != null) t.getMessage else "")
+    if (message != "")
+      CryoEventBus.publish(Log(level, if (marker == null) "" else marker.toString, message))
     FilterReply.NEUTRAL
   }
 }

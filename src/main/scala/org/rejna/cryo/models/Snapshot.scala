@@ -60,7 +60,7 @@ case class SnapshotUploaded(id: String) extends SnapshotResponse
 
 class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with LoggingClass {
   implicit val ctx = cryoctx
-  val attributeBuilder = new AttributeBuilder(s"/cryo/snapshot/${id}")
+  val attributeBuilder = AttributeBuilder(s"/cryo/snapshot/${id}")
 
   val sizeAttribute = attributeBuilder("size", 0L)
   def size = sizeAttribute()

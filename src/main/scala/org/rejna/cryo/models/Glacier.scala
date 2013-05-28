@@ -47,11 +47,11 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
   lazy val snsTopicARN = Await.result(futureSnsTopicARN, 10 seconds)
 
   override def preStart = {
-    CryoEventBus.subscribe(self, "/user/manager#jobs")
+    CryoEventBus.subscribe(self, "/cryo/manager#jobs")
   }
 
   def receive: Receive = CryoReceive {
-    case AttributeListChange(path, addedJobs, removedJobs) if path == "/user/manager#jobs" =>
+    case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
       for ((jobId, attr) <- addedJobs.asInstanceOf[List[(String, Job)]]) {
         // TODO do it asynchronously
         val dataId = attr match {
@@ -77,9 +77,9 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
         .getJobList
         .map(Job(_))
         .toList
-      cryoctx.manager ! JobList(jobList)
+      cryoctx.manager ! UpdateJobList(jobList)
 
-    case m: RefreshInventory =>
+    case RefreshInventory() =>
       val jobId = glacier.initiateJob(new InitiateJobRequest()
         .withVaultName(cryoctx.vaultName)
         .withJobParameters(
@@ -88,7 +88,7 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
             .withSNSTopic(snsTopicARN))).getJobId
 
       val job = new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
-      cryoctx.manager ! AddJob(job)
+      cryoctx.manager ! AddJobs(job)
 
     //case JobOutputRequest(jobId) =>
 
@@ -102,7 +102,7 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
             .withSNSTopic(snsTopicARN))).getJobId
 
       val job = new ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
-      cryoctx.manager ! AddJob(job)
+      cryoctx.manager ! AddJobs(job)
 
     case UploadData(id) =>
       implicit val timeout = Timeout(10 seconds)

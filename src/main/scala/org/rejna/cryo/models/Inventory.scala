@@ -38,7 +38,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
   implicit val contextExecutor = context.system.dispatcher
   implicit val timeout = Timeout(10 seconds)
 
-  val attributeBuilder = new AttributeBuilder("/cryo/inventory")
+  val attributeBuilder = AttributeBuilder("/cryo/inventory")
   val inventoryDataId = "inventory"
 
   val dateAttribute = attributeBuilder("date", DateTime.now)
@@ -49,7 +49,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
   val archiveIds = attributeBuilder.list("archives", List[String]())
 
   override def preStart = {
-    CryoEventBus.subscribe(self, "/cryo/datastore")
+    CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
     cryoctx.datastore ! GetDataStatus(inventoryDataId)
   }
 
@@ -57,7 +57,15 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
     case DataStatus(id, creationDate, status, size, checksum) =>
       if (id == inventoryDataId && status == EntryStatus.Created)
         cryoctx.datastore ! ReadData(inventoryDataId, 0, size.toInt)
-
+        
+    case DataNotFoundError(id, _, _) =>
+      if (id == inventoryDataId) {
+        (cryoctx.manager ? GetJobList()) map {
+          case JobList(jl) =>
+            if (!jl.exists(_.isInstanceOf[InventoryJob]))
+              cryoctx.cryo ! RefreshInventory()
+        }
+      }
     case DataRead(id, position, buffer) =>
       if (id == "inventory") {
         val message = InventoryMessage(buffer.asByteBuffer.asCharBuffer.toString)
@@ -68,7 +76,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
       }
     case AttributeChange(path, attribute) =>
       path match {
-        case AttributePath("datastore", inventoryDataId, "status") =>
+        case AttributePath("datastore", `inventoryDataId`, "status") =>
           CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
           if (attribute.now == EntryStatus.Created) {
             cryoctx.datastore ! GetDataStatus(inventoryDataId)
@@ -78,7 +86,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
             CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", attribute))
         // idem for snapshots ?
       }
-    case m: CreateArchive =>
+    case CreateArchive() =>
       val requester = sender
       (cryoctx.datastore ? CreateData).map {
         case DataCreated(id) =>
@@ -88,7 +96,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
           requester ! new InventoryError("Error while creating a new archive", e)
       }
 
-    case m: CreateSnapshot =>
+    case CreateSnapshot() =>
       val requester = sender
       (cryoctx.datastore ? CreateData).map {
         case DataCreated(id) =>
@@ -99,17 +107,17 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
         case e: DataStoreError =>
           requester ! new InventoryError("Error while creating a new snapshot", e)
       }
-    case m: GetArchiveList =>
+    case GetArchiveList() =>
       sender ! ArchiveIdList(archiveIds.toList)
-    
-    case m: GetSnapshotList =>
+
+    case GetSnapshotList() =>
       sender ! SnapshotIdList(snapshots.toMap)
-      
+
     case sr: SnapshotRequest =>
-       snapshots.get(sr.id) match {
-         case None => sender ! SnapshotNotFound(sr.id, s"Snapshot ${sr.id} was not found")
-         case Some(aref) => aref.forward(sr)
-       }
+      snapshots.get(sr.id) match {
+        case None => sender ! SnapshotNotFound(sr.id, s"Snapshot ${sr.id} was not found")
+        case Some(aref) => aref.forward(sr)
+      }
     //    case MigrateArchive(archive, newId, size, hash) =>
     //      // TODO create an actor which manage store (all archive files)
     //      Files.move(archive.file, Config.getFile(archive.archiveType, newId))

@@ -2,7 +2,11 @@ package org.rejna.cryo.models
 
 import net.liftweb.json._
 
-object JsonSerialization extends Serializer[Job] {
+object JsonSerialization {
+  val format = Serialization.formats(NoTypeHints) + JsonJobSerialization + JsonNotificationSerialization
+}
+
+object JsonJobSerialization extends Serializer[Job] with LoggingClass {
   import net.liftweb.json.JsonDSL._
   val JobClass = classOf[Job]
 
@@ -55,7 +59,48 @@ object JsonSerialization extends Serializer[Job] {
 
   }
 }
+object JsonNotificationSerialization extends Serializer[NotificationMessage] with LoggingClass {
+  import net.liftweb.json.JsonDSL._
+  val JobClass = classOf[Job]
+  val NotificationClass = classOf[NotificationMessage]
+
+  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), NotificationMessage] = {
+    case (TypeInfo(NotificationClass, _), json) =>
+      NotificationMessage(
+          (json \ "Type").extract[String],
+          (json \ "MessageId").extract[String],
+          (json \ "TopicArn").extract[String],
+          (json \ "Message").extract[String],
+          DateUtil.fromISOString((json \ "Timestamp").extract[String]))
+  }
   
+  def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {
+    def isDefinedAt(a: Any) = false
+    def apply(a: Any) = JNull
+  }
+}
+  
+
+
+
+/*
+
+JObject(
+	List(
+		Type -> JString(Notification),
+ 		MessageId -> 7cdb74ca-f8ce-50ce-83d3-3ed45891c9a9
+ 		TopicArn,JString(arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic))
+		Message,JString({"Action":"InventoryRetrieval","ArchiveId":null,"ArchiveSHA256TreeHash":null,"ArchiveSizeInBytes":null,"Completed":true,"CompletionDate":"2013-05-28T12:07:59.605Z","CreationDate":"2013-05-28T08:07:56.017Z","InventorySizeInBytes":1159,"JobDescription":null,"JobId":"-rativfxujww0Jr16Fvcw5_CVOzTBYVWKYe0lEG8_iFNHBR1h_YlHxY2L9crvld6G-9Myi8SylCmBcSr6gUOzShS7T4m","RetrievalByteRange":null,"SHA256TreeHash":null,"SNSTopic":"arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic","StatusCode":"Succeeded","StatusMessage":"Succeeded","VaultARN":"arn:aws:glacier:eu-west-1:235715319590:vaults/cryo"})), JField(Timestamp,JString(2013-05-28T12:07:59.662Z)), JField(SignatureVersion,JString(1)),
+		Signature,JString(T3qjai/8h50w9xKxxO9AVMDsnKXvAz4SdJBxA2LG7/jdLPOc6qAT//EFuQsz643gslZ4Kf/chwstEi8WWC1XimKC3VprB3NVQoeYhUaaI+kBnjJpICPUV2zGDXfOaJVu8vyAnnk9Yh2cxuDeAKEQEVpiszwVG/5v5nQyTVSO7M0=)),
+		JField(SigningCertURL,JString(https://sns.eu-west-1.amazonaws.com/SimpleNotificationService-f3ecfb7224c7233fe7bb5f59f96de52f.pem)), 
+		JField(UnsubscribeURL,JString(https://sns.eu-west-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:eu-west-1:235715319590:GlacierNotificationTopic:bef0e987-6ee7-4a93-a4e5-75791eb786d5))
+	)
+)
+
+
+
+
+ */
   /*
   		"\"Action\":\"InventoryRetrieval\",
   		"\"ArchiveId\":null" +

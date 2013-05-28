@@ -1,5 +1,7 @@
 package org.rejna.cryo.models
 
+import scala.concurrent.Promise
+
 import akka.actor.Actor
 
 import com.amazonaws.services.glacier.model.GlacierJobDescription
@@ -19,28 +21,28 @@ case class InProgress(message: String) extends JobStatus(message)
 case class Succeeded(message: String) extends JobStatus(message)
 case class Failed(message: String) extends JobStatus(message)
 
-sealed abstract class Job(
-  val id: String,
-  val description: String,
-  val creationDate: DateTime,
-  val status: JobStatus,
-  val completedDate: Option[DateTime])
+sealed abstract class Job {
+  val id: String
+  val description: String
+  val creationDate: DateTime
+  val status: JobStatus
+  val completedDate: Option[DateTime]
+}
 
-class InventoryJob(
+case class InventoryJob(
   id: String,
   description: String,
   creationDate: DateTime,
   status: JobStatus,
-  completedDate: Option[DateTime]) extends Job(id, description, creationDate, status, completedDate) {
-}
+  completedDate: Option[DateTime]) extends Job
 
-class ArchiveJob(
+case class ArchiveJob(
   id: String,
   description: String,
   creationDate: DateTime,
   status: JobStatus,
   completedDate: Option[DateTime],
-  val archiveId: String) extends Job(id, description, creationDate, status, completedDate)
+  val archiveId: String) extends Job
 
 object Job {
   def getStatus(status: String, message: String) = status match {
@@ -65,32 +67,58 @@ object Job {
           j.getJobDescription,
           DateUtil.fromISOString(j.getCreationDate),
           getStatus(j.getStatusCode, j.getStatusMessage),
-          Option(DateUtil.fromISOString(j.getCompletionDate)))
+          Option(j.getCompletionDate).map(DateUtil.fromISOString))
     }
   }
 }
-case class AddJob(job: Job)
-case class RemoveJob(jobId: String)
-case class JobList(jobs: List[Job])
+
+sealed abstract class ManagerRequest extends Request
+sealed abstract class ManagerResponse extends Response
+sealed class ManagerError(message: String, cause: Throwable) extends CryoError(message, cause)
+
+case class AddJobs(jobs: List[Job]) extends ManagerRequest
+object AddJobs { def apply(jobs: Job*): AddJobs = AddJobs(jobs.toList) }
+case class JobsAdded(jobs: List[Job]) extends ManagerResponse
+case class RemoveJobs(jobIds: List[String]) extends ManagerRequest
+object RemoveJobs { def apply(jobIds: String*): RemoveJobs = RemoveJobs(jobIds.toList) }
+case class JobsRemoved(jobIds: List[String]) extends ManagerResponse
+case class UpdateJobList(jobs: List[Job]) extends ManagerRequest
+case class JobListUpdated(jobs: List[Job]) extends ManagerResponse
+case class GetJobList() extends ManagerRequest
+case class JobList(jobs: List[Job]) extends ManagerResponse
 
 class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
-  val attributeBuilder = new AttributeBuilder("/user/manager")
+  val attributeBuilder = AttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
+  val jobUpdated = Promise[Unit]()
 
   override def preStart = {
     cryoctx.cryo ! RefreshJobList()
   }
 
   def receive = CryoReceive {
-    case AddJob(job) =>
-      jobs += job.id -> job
+    case AddJobs(addedJobs) =>
+      jobs ++= addedJobs.map(j => j.id -> j)
+      sender ! JobsAdded(addedJobs)
 
-    case RemoveJob(jobId) =>
-      jobs -= jobId
+    case RemoveJobs(jobIds) =>
+      jobs --= jobIds
+      sender ! JobsRemoved(jobIds)
 
-    case JobList(jl) =>
-      for (job <- jl)
-        jobs += job.id -> job
-    // TODO remove obsolete jobs
+    case UpdateJobList(jl) =>
+      jobs ++= jl.map(j => j.id -> j)
+      // TODO remove obsolete jobs ?
+      if (!jobUpdated.isCompleted)
+        jobUpdated.success()
+      sender ! JobListUpdated(jl)
+
+    case GetJobList() =>
+      if (jobUpdated.isCompleted) {
+    	  sender ! JobList(jobs.values.toList)
+      } else {
+        implicit val executionContext = context.system.dispatcher
+        val requester = sender
+        jobUpdated.future.onSuccess { case _ => requester ! JobList(jobs.values.toList) }
+      }
   }
 }

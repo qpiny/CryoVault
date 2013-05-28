@@ -8,6 +8,8 @@ import akka.actor.Actor
 
 import net.liftweb.json.{ Serialization, NoTypeHints }
 
+import org.joda.time.DateTime
+
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sqs.model._
 import com.amazonaws.services.sns.AmazonSNSClient
@@ -21,6 +23,17 @@ sealed class NotificationError(message: String, cause: Throwable) extends CryoEr
 case class GetNotification() extends NotificationRequest
 case class GetNotificationARN() extends NotificationRequest
 case class NotificationARN(arn: String) extends NotificationResponse
+
+case class NotificationMessage(
+    notificationType: String,
+    messageId: String,
+    topicArn: String,
+    message: String,
+    timestamp: DateTime)
+    // SignatureVersion(1)
+    // Signature(Kss0qWBDa...)
+    // SigningCertURL(https://sns.eu-west-1.amaz...)
+    // UnsubscribeURLhttps://sns.eu-west-1.amaz...)
 
 abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClass {
   val sns = new AmazonSNSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
@@ -44,7 +57,7 @@ abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClas
 }
 
 class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
-  implicit val formats = Serialization.formats(NoTypeHints) + JsonSerialization
+  implicit val formats = JsonSerialization.format
   val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(sqs)
@@ -85,14 +98,15 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
 
   def receive = CryoReceive {
     case GetNotification() =>
-      for (message <- sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages) {
-        message.getAttributes().get("Type") match {
-          case "Notification" =>
-            cryoctx.manager ! AddJob(Serialization.read[Job](message.getBody))
-          case otherType =>
-            log.warn(s"Receive message from notification queue with type ${otherType}, ignore it")
-        }
+      val jobs = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages map {
+        case message =>
+	        val body = message.getBody
+	        log.debug("Receive notification message :" + message)
+	        val notificationMessage = Serialization.read[NotificationMessage](body)
+	        Serialization.read[Job](notificationMessage.message)
       }
+      cryoctx.manager ! AddJobs(jobs.toList)
+
     case GetNotificationARN() =>
       sender ! NotificationARN(notificationArn)
   }

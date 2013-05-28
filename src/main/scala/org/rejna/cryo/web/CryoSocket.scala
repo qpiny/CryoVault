@@ -113,6 +113,7 @@ class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with Logg
         case msgList => channel.send(ArchiveList(msgList.flatten))
       }
     case SnapshotIdList(snapshots) =>
+      log.debug(s"SnapshotIdList => ${snapshots} snapshot(s) found")
       Future.sequence(snapshots.map {
         case (id, _) => (cryoctx.datastore ? GetDataStatus(id)).map {
           case ds: DataStatus => Some(ds)

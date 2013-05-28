@@ -227,6 +227,7 @@ $ =>
 			@subscribe('/cryo#archives')
 			@subscribe('/cryo/Data')
 			@subscribe('/cryo/inventory')
+			@subscribe('/cryo/manager')
 			@subscribe('/log')
 			@addIgnoreSubscription('#files$')
 			@getSnapshotList()
@@ -398,5 +399,5 @@ $ =>
 		@_ui_snapshotFiles.deselect_all()
 	)
 	
-	@_ui_inventoryRefresh.bind('click', => @refreshInventory)
+	@_ui_inventoryRefresh.bind('click', @refreshInventory)
 	undefined
