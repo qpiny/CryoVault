@@ -98,7 +98,9 @@ class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
 
   def receive = CryoReceive {
     case AddJobs(addedJobs) =>
-      jobs ++= addedJobs.map(j => j.id -> j)
+      val v = addedJobs.map(j => j.id -> j)
+      jobs ++= v
+      log.error("current jobs:" + jobs)
       sender ! JobsAdded(addedJobs)
 
     case RemoveJobs(jobIds) =>

@@ -52,23 +52,29 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
 
   def receive: Receive = CryoReceive {
     case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
-      for ((jobId, attr) <- addedJobs.asInstanceOf[List[(String, Job)]]) {
-        // TODO do it asynchronously
-        val dataId = attr match {
-          case a: ArchiveJob => a.archiveId
-          case i: InventoryJob => "inventory"
-        }
-        for (
-          input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
-            .withJobId(jobId)
-            .withVaultName(cryoctx.vaultName)).getBody);
-          output <- managed(new DataStoreOutputStream(cryoctx, dataId))
-        ) {
-          val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
-          Iterator.continually(input.read(buffer))
-            .takeWhile(_ != -1)
-            .foreach { output.write(buffer, 0, _) }
-        }
+      addedJobs.asInstanceOf[List[(String, Job)]].toMap.filter(_._2.status.isInstanceOf[Succeeded]).map {
+        case (jobId, job) =>
+          val dataId = job match {
+            case a: ArchiveJob => a.archiveId
+            case i: InventoryJob => "inventory"
+          }
+          log.info(s"Job ${jobId} is completed, downloading data ${dataId}")
+          (cryoctx.datastore ? CreateData(Some(dataId))) map {
+            case DataCreated(dataId) =>
+              for (
+                input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
+                  .withJobId(jobId)
+                  .withVaultName(cryoctx.vaultName)).getBody);
+                output <- managed(new DataStoreOutputStream(cryoctx, dataId))
+              ) {
+                val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
+                Iterator.continually(input.read(buffer))
+                  .takeWhile(_ != -1)
+                  .foreach { output.write(buffer, 0, _) }
+              }
+            case o => log.error("Can't create datastore", CryoError(o))
+          }
+
       }
 
     case RefreshJobList() =>

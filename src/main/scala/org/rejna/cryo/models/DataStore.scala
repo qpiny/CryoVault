@@ -60,7 +60,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
 
   // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)
   sealed abstract class DataEntry(val id: String, val creationDate: DateTime) extends LoggingClass {
-    val file = cryoctx.baseDirectory.resolve(id)
+    val file = cryoctx.workingDirectory.resolve(id)
 
     val statusAttribute: Attribute[EntryStatus]
     def size = sizeAttribute()
@@ -168,8 +168,7 @@ class DataStore(cryoctx: CryoContext) extends Actor with LoggingClass {
         data += id -> new DataEntryCreating(id, size, attributeBuilder / id)
         sender ! DataCreated(id)
       } catch {
-        case dse: DataStoreError => sender ! dse
-        case e: Exception => sender ! OpenError(e.getMessage, e)
+        case t: Throwable => sender ! CryoError(t)
       }
 
     case WriteData(id, position, buffer) =>
