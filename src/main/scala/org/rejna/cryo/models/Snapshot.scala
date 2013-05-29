@@ -114,39 +114,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
     }
   }
 
-  //  def create = {
-  //    // serialize index: [File -> [Hash]] ++ [Hash -> BlockLocation] ++ [File -> Filter]
-  //    implicit val timeout = Timeout(10 seconds)
-  //    implicit val cxt = context.system.dispatcher
-  //    try {
-  //      var currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
-  //      var currentArchiveSize = 0L
-  //      //TODO format[Int].writes(output, files().length)
-  //      for (f <- files()) {
-  //        log.info(s"add file ${f} in archive")
-  //        // TODO format[String].writes(output, f)
-  //        for (block <- splitFile(f)) {
-  //          if (currentArchiveSize > 10*1024*1024) { //TODO Config.archiveSize) {
-  //            // TODO upload archive currentArchiveId.map(glacier
-  //            currentArchiveId = (datastore ? CreateArchive).mapTo[ArchiveCreated].map(_.id)
-  //          }
-  //          val bl = Catalog.getOrUpdate(block, currentArchive.writeBlock(block))
-  //          format[Boolean].writes(output, true)
-  //          format[Hash].writes(output, block.hash)
-  //        }
-  //        format[Boolean].writes(output, false)
-  //      }
-  //      currentArchive.upload
-  //
-  //      // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
-  //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
-  //    } finally {
-  //      output.close
-  //    }
-  //    // upload
-  //    remoteSnapshot = Some(Cryo.migrate(this, upload))
-  //  }
-
+  
   case class UploaderState(out: ByteStringBuilder, aid: String, len: Int)
   class ArchiveUploader(implicit val timeout: Timeout, val executionContext: ExecutionContext) {
     import ByteStringSerializer._
@@ -229,7 +197,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
           }
       }
     }
-    
+
     def flatMap(f: UploaderState => Future[UploaderState]): Unit = {
       state = state.flatMap(f)
     }
@@ -255,7 +223,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
               //out.putCatalog(catalog)
               UploaderState(out, aid, len)
           }
-          
+
       }
       // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
       //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
@@ -298,7 +266,11 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
 
 
 
-
+class RemoteSnapshot(cryoctx: CryoContext, id: String) extends Actor {
+  def receive = {
+    case _ => 
+  }
+}
 
 /******************************************************************************************************************************
 class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends RemoteArchive(Index, date, id, size, hash) with Snapshot {

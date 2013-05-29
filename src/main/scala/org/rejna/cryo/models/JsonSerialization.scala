@@ -1,13 +1,17 @@
 package org.rejna.cryo.models
 
 import net.liftweb.json._
+import net.liftweb.json.JsonDSL._
 
 object JsonSerialization {
-  val format = Serialization.formats(NoTypeHints) + JsonJobSerialization + JsonNotificationSerialization
+  val format = Serialization.formats(NoTypeHints) +
+    JsonJobSerialization +
+    JsonNotificationSerialization +
+    JsonInventoryEntrySerialization +
+    JsonInventorySerialization
 }
 
 object JsonJobSerialization extends Serializer[Job] with LoggingClass {
-  import net.liftweb.json.JsonDSL._
   val JobClass = classOf[Job]
 
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), Job] = {
@@ -60,27 +64,57 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
   }
 }
 object JsonNotificationSerialization extends Serializer[NotificationMessage] with LoggingClass {
-  import net.liftweb.json.JsonDSL._
-  val JobClass = classOf[Job]
   val NotificationClass = classOf[NotificationMessage]
 
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), NotificationMessage] = {
     case (TypeInfo(NotificationClass, _), json) =>
       NotificationMessage(
-          (json \ "Type").extract[String],
-          (json \ "MessageId").extract[String],
-          (json \ "TopicArn").extract[String],
-          (json \ "Message").extract[String],
-          DateUtil.fromISOString((json \ "Timestamp").extract[String]))
+        (json \ "Type").extract[String],
+        (json \ "MessageId").extract[String],
+        (json \ "TopicArn").extract[String],
+        (json \ "Message").extract[String],
+        DateUtil.fromISOString((json \ "Timestamp").extract[String]))
   }
-  
+
   def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {
     def isDefinedAt(a: Any) = false
     def apply(a: Any) = JNull
   }
 }
-  
 
+object JsonInventoryEntrySerialization extends Serializer[InventoryEntry] {
+  val InventoryEntryClass = classOf[InventoryEntry]
+
+  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), InventoryEntry] = {
+    case (TypeInfo(InventoryEntryClass, _), json) =>
+      InventoryEntry(
+        (json \ "ArchiveId").extract[String],
+        (json \ "ArchiveDescription").extract[String],
+        DateUtil.fromISOString((json \ "CreationDate").extract[String]),
+        (json \ "Size").extract[Long],
+        (json \ "SHA256TreeHash").extract[String])
+  }
+
+  def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {
+    def isDefinedAt(a: Any) = false
+    def apply(a: Any) = JNull
+  }
+}
+object JsonInventorySerialization extends Serializer[InventoryMessage] {
+  val InventoryClass = classOf[InventoryMessage]
+
+  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), InventoryMessage] = {
+    case (TypeInfo(InventoryClass, _), json) =>
+      InventoryMessage(
+        DateUtil.fromISOString((json \ "InventoryDate").extract[String]),
+        (json \ "ArchiveList").children.map(_.extract[InventoryEntry]))
+  }
+
+  def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {
+    def isDefinedAt(a: Any) = false
+    def apply(a: Any) = JNull
+  }
+}
 
 
 /*

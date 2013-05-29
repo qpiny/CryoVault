@@ -2,9 +2,11 @@ package org.rejna.cryo.models
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import scala.collection.JavaConversions.{ asScalaBuffer, mapAsJavaMap }
+import scala.collection.JavaConversions._ //{ asScalaBuffer, mapAsJavaMap }
 
 import akka.actor.Actor
+import akka.pattern.ask
+import akka.util.Timeout
 
 import net.liftweb.json.{ Serialization, NoTypeHints }
 
@@ -58,6 +60,9 @@ abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClas
 
 class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   implicit val formats = JsonSerialization.format
+  implicit val timeout = Timeout(10 seconds)
+  implicit val executionContext = context.system.dispatcher
+  
   val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(sqs)
@@ -103,9 +108,16 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
 	        val body = message.getBody
 	        log.debug("Receive notification message :" + message)
 	        val notificationMessage = Serialization.read[NotificationMessage](body)
-	        Serialization.read[Job](notificationMessage.message)
+	        Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
+      } toMap
+      
+      
+      cryoctx.manager ? AddJobs(jobs.keySet.toList) map {
+        case JobsAdded(addedJobs) =>
+          sqs.deleteMessageBatch(new DeleteMessageBatchRequest(
+              queueUrl,
+              addedJobs.map(j => new DeleteMessageBatchRequestEntry(j.id, jobs(j)))))
       }
-      cryoctx.manager ! AddJobs(jobs.toList)
 
     case GetNotificationARN() =>
       sender ! NotificationARN(notificationArn)

@@ -26,7 +26,6 @@ class CryoContext(val system: ActorRefFactory, val config: Config) {
   val archiveSize = config.getBytes("cryo.archive-size")
 
   val workingDirectory = FileSystems.getDefault.getPath(config.getString("cryo.working-directory"))
-  val inventoryFile = FileSystems.getDefault.getPath(config.getString("cryo.inventory-file"))
   val baseDirectory = FileSystems.getDefault.getPath(config.getString("cryo.base-directory"))
 
   def blockSizeFor(fileSize: Long) = {
@@ -78,11 +77,11 @@ class CryoContext(val system: ActorRefFactory, val config: Config) {
   if (config.getBoolean("aws.disable-cert-checking"))
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 
+  val deadLetterMonitor = system.actorOf(Props(classOf[DeadLetterMonitor], this), "deadletter")
   val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
   val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
-  val datastore = system.actorOf(Props(classOf[DataStore], this), "datastore")
+  val datastore = system.actorOf(Props(classOf[Datastore], this), "datastore")
   val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
-
   val manager = system.actorOf(Props(classOf[Manager], this), "manager")
   val hashcatalog = system.actorOf(Props(classOf[HashCatalog], this), "catalog")
 }

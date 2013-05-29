@@ -1,6 +1,7 @@
 package org.rejna.cryo.models
 
 import scala.concurrent.Promise
+import scala.collection.mutable.HashSet
 
 import akka.actor.Actor
 
@@ -16,10 +17,14 @@ object JobStatus {
     case _ => None
   }
 }
-sealed class JobStatus(message: String)
-case class InProgress(message: String) extends JobStatus(message)
-case class Succeeded(message: String) extends JobStatus(message)
-case class Failed(message: String) extends JobStatus(message)
+sealed class JobStatus(message: String) {
+  val isInProgress = false
+  val isSucceeded = false
+  val isFailed = false
+}
+case class InProgress(message: String) extends JobStatus(message) { override val isInProgress = true}
+case class Succeeded(message: String) extends JobStatus(message) { override val isSucceeded = true}
+case class Failed(message: String) extends JobStatus(message) { override val isFailed = true}
 
 sealed abstract class Job {
   val id: String
@@ -86,10 +91,14 @@ case class UpdateJobList(jobs: List[Job]) extends ManagerRequest
 case class JobListUpdated(jobs: List[Job]) extends ManagerResponse
 case class GetJobList() extends ManagerRequest
 case class JobList(jobs: List[Job]) extends ManagerResponse
+case class FinalizeJob(jobIds: List[String]) extends ManagerRequest
+object FinalizeJob { def apply(jobIds: String*): FinalizeJob = FinalizeJob(jobIds.toList) }
+case class JobFinalized(jobIds: List[String]) extends ManagerResponse
 
 class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
   val attributeBuilder = AttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
+  val finalizedJobs = HashSet.empty[String]
   val jobUpdated = Promise[Unit]()
 
   override def preStart = {
@@ -98,9 +107,7 @@ class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
 
   def receive = CryoReceive {
     case AddJobs(addedJobs) =>
-      val v = addedJobs.map(j => j.id -> j)
-      jobs ++= v
-      log.error("current jobs:" + jobs)
+      jobs ++= addedJobs.filterNot(j => finalizedJobs.contains(j.id)).map(j => j.id -> j)
       sender ! JobsAdded(addedJobs)
 
     case RemoveJobs(jobIds) =>
@@ -108,7 +115,7 @@ class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
       sender ! JobsRemoved(jobIds)
 
     case UpdateJobList(jl) =>
-      jobs ++= jl.map(j => j.id -> j)
+      jobs ++= jl.filterNot(j => finalizedJobs.contains(j.id)).map(j => j.id -> j)
       // TODO remove obsolete jobs ?
       if (!jobUpdated.isCompleted)
         jobUpdated.success()
@@ -122,5 +129,10 @@ class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
         val requester = sender
         jobUpdated.future.onSuccess { case _ => requester ! JobList(jobs.values.toList) }
       }
+      
+    case FinalizeJob(jobIds) =>
+      jobs --= jobIds
+      finalizedJobs ++= jobIds
+      sender ! JobFinalized(jobIds)
   }
 }

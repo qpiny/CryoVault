@@ -1,27 +1,30 @@
 package org.rejna.cryo.models
 
 import scala.io.Source
+import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.collection.mutable.Buffer
+import scala.collection.mutable.ListBuffer
+import scala.collection.JavaConversions._
 import scala.language.postfixOps
-
 import akka.actor.{ Actor, ActorRef, Props }
 import akka.pattern.ask
 import akka.util.Timeout
-
 import java.io.FileOutputStream
 import java.nio.file.{ Files, Path }
 import java.nio.file.StandardOpenOption._
 import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
 import java.util.UUID
-
 import org.joda.time.{ DateTime, Interval }
+import net.liftweb.json.Serialization
+import akka.dispatch.OnSuccess
 
 sealed abstract class InventoryRequest extends Request
 sealed abstract class InventoryResponse extends Response
 sealed class InventoryError(message: String, cause: Throwable) extends CryoError(message, cause)
 
+case class AddArchive(id: String)
+case class AddSnapshot(id: String)
 case class CreateArchive() extends InventoryRequest
 case class ArchiveCreated(id: String) extends InventoryResponse
 case class CreateSnapshot() extends InventoryRequest
@@ -32,7 +35,8 @@ case class GetSnapshotList() extends InventoryRequest
 case class SnapshotIdList(snapshots: Map[String, ActorRef]) extends InventoryResponse
 case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 
-case class InventoryMessage(data: String) // TODO
+case class InventoryEntry(id: String, description: String, creationDate: DateTime, size: Long, checksum: String)
+case class InventoryMessage(date: DateTime, entries: List[InventoryEntry])
 
 class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
   implicit val contextExecutor = context.system.dispatcher
@@ -54,10 +58,10 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
   }
 
   def receive = CryoReceive {
-    case DataStatus(id, creationDate, status, size, checksum) =>
+    case DataStatus(id, description, creationDate, status, size, checksum) =>
       if (id == inventoryDataId && status == EntryStatus.Created)
         cryoctx.datastore ! ReadData(inventoryDataId, 0, size.toInt)
-        
+
     case DataNotFoundError(id, _, _) =>
       if (id == inventoryDataId) {
         (cryoctx.manager ? GetJobList()) map {
@@ -68,12 +72,29 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
       }
     case DataRead(id, position, buffer) =>
       if (id == "inventory") {
-        val message = InventoryMessage(buffer.asByteBuffer.asCharBuffer.toString)
-        //      date = message.date
-        //      val (s, a) = message.archives.partition(_.archiveType == Index)
-        //      snapshots ++= s.map { a => a.id -> new RemoteSnapshot(a) }
-        //      archives ++= a.map { a => a.id -> a }
+        implicit val formats = JsonSerialization.format
+        val message = buffer.asByteBuffer.asCharBuffer.toString
+        val inventory = Serialization.read[InventoryMessage](message)
+        date = inventory.date
+
+        for (entry <- inventory.entries) {
+          (cryoctx.datastore ? DefineData(entry.id, entry.description, entry.creationDate, entry.size, entry.checksum)) map {
+            case DataDefined(_) =>
+              if (entry.description.startsWith("Data"))
+                cryoctx.inventory ! AddArchive(entry.id)
+              else
+                cryoctx.inventory ! AddSnapshot(entry.id)
+          }
+        }
       }
+
+    case AddArchive(id) =>
+      archiveIds += id
+
+    case AddSnapshot(id) =>
+      if (!snapshots.contains(id))
+        snapshots += id -> context.actorOf(Props(classOf[RemoteSnapshot], cryoctx))
+
     case AttributeChange(path, attribute) =>
       path match {
         case AttributePath("datastore", `inventoryDataId`, "status") =>
@@ -92,7 +113,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
         case DataCreated(id) =>
           archiveIds += id
           requester ! ArchiveCreated(id)
-        case e: DataStoreError =>
+        case e: DatastoreError =>
           requester ! new InventoryError("Error while creating a new archive", e)
       }
 
@@ -104,7 +125,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
           snapshots += id -> aref
           // TODO watch aref
           requester ! SnapshotCreated(id, aref)
-        case e: DataStoreError =>
+        case e: DatastoreError =>
           requester ! new InventoryError("Error while creating a new snapshot", e)
       }
     case GetArchiveList() =>

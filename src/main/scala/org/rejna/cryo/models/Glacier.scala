@@ -25,6 +25,7 @@ class CryoRequest extends Request
 class CryoResponse extends Response
 
 case class RefreshJobList() extends CryoRequest
+case class JobListRefreshed() extends CryoResponse
 case class RefreshInventory() extends CryoRequest
 case class RefreshInventoryRequested(job: InventoryJob) extends CryoResponse
 case class DownloadArchive(archiveId: String) extends CryoRequest
@@ -52,40 +53,64 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
 
   def receive: Receive = CryoReceive {
     case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
-      addedJobs.asInstanceOf[List[(String, Job)]].toMap.filter(_._2.status.isInstanceOf[Succeeded]).map {
-        case (jobId, job) =>
-          val dataId = job match {
-            case a: ArchiveJob => a.archiveId
-            case i: InventoryJob => "inventory"
-          }
-          log.info(s"Job ${jobId} is completed, downloading data ${dataId}")
-          (cryoctx.datastore ? CreateData(Some(dataId))) map {
+      val succeededJobs = addedJobs.asInstanceOf[List[(String, Job)]].flatMap {
+        case (_, a: ArchiveJob) if a.status.isSucceeded => Some(a.archiveId -> a)
+        case (_, i: InventoryJob) if i.status.isSucceeded => Some("inventory" -> i)
+        case _: Any => None
+      } toMap // remove duplicates
+
+      succeededJobs.map {
+        case (dataId, job) =>
+          log.info(s"Job ${job.id} is completed, downloading data ${dataId}")
+          (cryoctx.datastore ? GetDataStatus(dataId)) map {
+            case DataStatus(_, _, _, status, _, _) if status != EntryStatus.Creating => // TODO will be Loading when implemented
+            case DataNotFoundError(_, _, _) =>
+            case o: Any => throw new CryoError(s"Invalid data status ${o}")
+          } flatMap {
+            Unit => (cryoctx.datastore ? CreateData(Some(dataId), job.description))
+          } map {
             case DataCreated(dataId) =>
+              log.debug(s"Data ${dataId} created, starting download")
               for (
                 input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
-                  .withJobId(jobId)
+                  .withJobId(job.id)
                   .withVaultName(cryoctx.vaultName)).getBody);
-                output <- managed(new DataStoreOutputStream(cryoctx, dataId))
+                output <- managed(new DatastoreOutputStream(cryoctx, dataId))
               ) {
                 val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
                 Iterator.continually(input.read(buffer))
                   .takeWhile(_ != -1)
                   .foreach { output.write(buffer, 0, _) }
               }
-            case o => log.error("Can't create datastore", CryoError(o))
+            case o => throw CryoError(o)
+          } flatMap {
+            Unit => (cryoctx.datastore ? CloseData(dataId))
+          } map {
+            case DataClosed(id) =>
+            case o => throw CryoError(o)
+          } flatMap {
+            Unit => cryoctx.datastore ? FinalizeJob(job.id)
+          } map {
+            case JobFinalized => log.info(s"Data ${dataId} downloaded")
+          } onFailure {
+            case t => log.error(s"Download job ${job.id} data has failed", t)
           }
-
       }
 
     case RefreshJobList() =>
+      val requester = sender
       val jobList = glacier.listJobs(new ListJobsRequest()
         .withVaultName(cryoctx.vaultName))
         .getJobList
         .map(Job(_))
         .toList
-      cryoctx.manager ! UpdateJobList(jobList)
+      cryoctx.manager ? UpdateJobList(jobList) map {
+        case JobListUpdated(jobs) => requester ! JobListRefreshed()
+        case o: Any => requester ! CryoError(o)
+      }
 
     case RefreshInventory() =>
+      val requester = sender
       val jobId = glacier.initiateJob(new InitiateJobRequest()
         .withVaultName(cryoctx.vaultName)
         .withJobParameters(
@@ -94,11 +119,13 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
             .withSNSTopic(snsTopicARN))).getJobId
 
       val job = new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
-      cryoctx.manager ! AddJobs(job)
-
-    //case JobOutputRequest(jobId) =>
+      cryoctx.manager ? AddJobs(job) map {
+        case JobsAdded(_) => requester ! RefreshInventoryRequested(job)
+        case o: Any => requester ! CryoError(o)
+      }
 
     case DownloadArchive(archiveId) =>
+      val requester = sender
       val jobId = glacier.initiateJob(new InitiateJobRequest()
         .withVaultName(cryoctx.vaultName)
         .withJobParameters(
@@ -108,42 +135,44 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
             .withSNSTopic(snsTopicARN))).getJobId
 
       val job = new ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
-      cryoctx.manager ! AddJobs(job)
+      cryoctx.manager ? AddJobs(job) map {
+        case JobsAdded(_) => requester ! DownloadArchiveRequested(job)
+        case o: Any => requester ! CryoError(o)
+      }
 
     case UploadData(id) =>
-      implicit val timeout = Timeout(10 seconds)
       val requester = sender
-      (cryoctx.datastore ? GetDataStatus(id))
-        .map {
-          case DataStatus(_, _, status, size, checksum) if status == EntryStatus.Created =>
-            if (size < cryoctx.multipartThreshold) {
-              glacier.uploadArchive(new UploadArchiveRequest()
-                //.withArchiveDescription(description)
-                .withVaultName(cryoctx.vaultName)
+      (cryoctx.datastore ? GetDataStatus(id)) map {
+        case DataStatus(_, _, _, status, size, checksum) if status == EntryStatus.Created =>
+          if (size < cryoctx.multipartThreshold) {
+            glacier.uploadArchive(new UploadArchiveRequest()
+              //.withArchiveDescription(description)
+              .withVaultName(cryoctx.vaultName)
+              .withChecksum(checksum)
+              .withBody(new DatastoreInputStream(cryoctx, id, size, 0))
+              .withContentLength(size)).getArchiveId
+          } else {
+            val uploadId = glacier.initiateMultipartUpload(new InitiateMultipartUploadRequest()
+              //.withArchiveDescription(description)
+              .withVaultName(cryoctx.vaultName)
+              .withPartSize(cryoctx.partSize.toString)).getUploadId
+            for (partStart <- (0L to size by cryoctx.partSize)) {
+              val length = (size - partStart).min(cryoctx.partSize)
+              glacier.uploadMultipartPart(new UploadMultipartPartRequest()
                 .withChecksum(checksum)
-                .withBody(new DataStoreInputStream(cryoctx, id, size, 0))
-                .withContentLength(size)).getArchiveId
-            } else {
-              val uploadId = glacier.initiateMultipartUpload(new InitiateMultipartUploadRequest()
-                //.withArchiveDescription(description)
-                .withVaultName(cryoctx.vaultName)
-                .withPartSize(cryoctx.partSize.toString)).getUploadId
-              for (partStart <- (0L to size by cryoctx.partSize)) {
-                val length = (size - partStart).min(cryoctx.partSize)
-                glacier.uploadMultipartPart(new UploadMultipartPartRequest()
-                  .withChecksum(checksum)
-                  .withBody(new DataStoreInputStream(cryoctx, id, length, partStart))
-                  .withRange(s"${partStart}-${partStart + length}")
-                  .withUploadId(uploadId)
-                  .withVaultName(cryoctx.vaultName))
-              }
-              glacier.completeMultipartUpload(new CompleteMultipartUploadRequest()
-                .withArchiveSize(size.toString)
-                .withVaultName(cryoctx.vaultName)
-                .withChecksum(checksum)
-                .withUploadId(uploadId)).getArchiveId
+                .withBody(new DatastoreInputStream(cryoctx, id, length, partStart))
+                .withRange(s"${partStart}-${partStart + length}")
+                .withUploadId(uploadId)
+                .withVaultName(cryoctx.vaultName))
             }
-            requester ! DataUploaded(id)
-        }
+            glacier.completeMultipartUpload(new CompleteMultipartUploadRequest()
+              .withArchiveSize(size.toString)
+              .withVaultName(cryoctx.vaultName)
+              .withChecksum(checksum)
+              .withUploadId(uploadId)).getArchiveId
+          }
+          requester ! DataUploaded(id)
+        case o: Any => requester ! CryoError(o)
+      }
   }
 }

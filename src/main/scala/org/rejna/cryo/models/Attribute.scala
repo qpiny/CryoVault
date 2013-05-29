@@ -125,11 +125,9 @@ class Attribute[A](val name: String, initValue: A) extends ReadAttribute[A] { se
   private var _previous = initValue
 
   def update(newValue: A) = {
-    //println(s"===update(${_now} => ${newValue})")
     if (_now != newValue) {
       _previous = _now
       _now = newValue
-      //println("===update: execute callbacks")
       for (c <- callbacks) c.onChange(this)
     }
   }
@@ -155,11 +153,8 @@ trait ListCallback[A, B <: ReadAttribute[List[A]]] { self: B =>
 
   addCallback(new AttributeChangeCallback {
     override def onChange[B](attribute: ReadAttribute[B]): Unit = {
-      println(s"===onChangeCallback===(${previous}) => (${now})")
       val add = now diff previous
       val remove = previous diff now
-      println(s"===onChangeCallback=add(${add})")
-      println(s"===onChangeCallback=remove(${remove})")
       for (c <- listCallbacks)
         c.onListChange(self, add, remove)
     }
@@ -242,15 +237,12 @@ class MapAttribute[A, B](name: String, initValue: IMap[A, B])
   
   private def _addTo(map: List[(A, B)], kv: (A, B)): List[(A, B)] = {
     val r = map.filterNot(_._1 == kv._1) :+ kv
-    //println(s"===map.addTo(${map}, ${kv})===>${r}")
     r
   }
   
   override def ++=(kvs: TraversableOnce[(A, B)]) = {
-    println(s"===map==>${now}")
     val v = kvs.foldLeft(now) { case (map, element) => _addTo(map, element)}
     update(v)
-    println(s"===map.++=(${kvs})===>${now}")
     this
   }
 
