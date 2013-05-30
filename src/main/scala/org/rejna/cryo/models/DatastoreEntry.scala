@@ -29,7 +29,8 @@ sealed abstract class DataEntry(
   val cryoctx: CryoContext,
   val id: String,
   val description: String,
-  val creationDate: DateTime) {
+  val creationDate: DateTime,
+  val checksum: String) {
   val file = cryoctx.workingDirectory.resolve(id)
 
   val statusAttribute: Attribute[EntryStatus]
@@ -39,6 +40,37 @@ sealed abstract class DataEntry(
   val sizeAttribute: Attribute[Long]
   def status = statusAttribute()
   def status_= = statusAttribute() = _
+
+  def state = EntryState(status.toString, id, description, creationDate, size, checksum)
+  override def toString = state.toString
+}
+
+object DataEntry {
+  def apply(cryoctx: CryoContext, attributeBuilder: AttributeBuilder, state: EntryState) = {
+    val entryAttributeBuilder = attributeBuilder / state.id
+    state.status match {
+      //case Creating => // not supported
+      //case Loading => // not supported yet
+      case "Created" =>
+        new DataEntryCreated(
+          cryoctx,
+          state.id,
+          state.description,
+          state.creationDate,
+          entryAttributeBuilder("status", Created),
+          entryAttributeBuilder("size", state.size),
+          state.checksum)
+      case "Remote" =>
+        new DataEntryRemote(
+          cryoctx,
+          state.id,
+          state.description,
+          state.creationDate,
+          state.size,
+          state.checksum,
+          entryAttributeBuilder)
+    }
+  }
 }
 
 class DataEntryRemote(
@@ -47,8 +79,8 @@ class DataEntryRemote(
   description: String,
   creationDate: DateTime,
   initSize: Long,
-  val checksum: String,
-  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate) {
+  checksum: String,
+  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
 
   val statusAttribute = entryAttributeBuilder("status", Remote)
   val sizeAttribute = entryAttributeBuilder("size", initSize)
@@ -61,7 +93,7 @@ class DataEntryCreating(
   id: String,
   description: String,
   initSize: Long,
-  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, new DateTime) {
+  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, new DateTime, "") with LoggingClass {
 
   val statusAttribute = entryAttributeBuilder("status", Creating)
   val sizeAttribute = entryAttributeBuilder("size", initSize)
@@ -107,6 +139,7 @@ class DataEntryCreating(
 
   def close: DataEntryCreated = {
     channel.close
+    log.debug(s"Closing ${id} size = ${Files.size(file)}")
     if (blockSize > 0)
       checksums += digest.digest
     new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
@@ -114,36 +147,41 @@ class DataEntryCreating(
 }
 
 class DataEntryCreated(
-    cryoctx: CryoContext,
-    id: String,
-    description: String,
-    creationDate: DateTime,
-    val statusAttribute: Attribute[EntryStatus],
-    val sizeAttribute: Attribute[Long],
-    val checksum: String) extends DataEntry(cryoctx, id, description, creationDate) {
-  
+  cryoctx: CryoContext,
+  id: String,
+  description: String,
+  creationDate: DateTime,
+  val statusAttribute: Attribute[EntryStatus],
+  val sizeAttribute: Attribute[Long],
+  checksum: String) extends DataEntry(cryoctx, id, description, creationDate, checksum) with LoggingClass {
+
   status = Created
   val channel = FileChannel.open(file, READ)
 
   def read(position: Long, length: Int) = {
     val buffer = ByteBuffer.allocate(length)
     channel.position(position)
-    channel.read(buffer)
-    ByteString(buffer)
+    val n = channel.read(buffer)
+    log.debug(s"${n} bytes read (${length} requested) from ${id} at position ${position}")
+    log.debug(s"buffer = ${buffer}")
+    buffer.flip
+    val c = ByteString(buffer)
+    log.debug(s"buffer = ${c}")
+    c
   }
 
   def close = channel.close
 }
 
 class DataEntryLoading(
-    cryoctx: CryoContext,
-    id: String,
-    description: String,
-    creationDate: DateTime,
-    val expectedSize: Long,
-    checksum: String,
-    entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate) {
-  
+  cryoctx: CryoContext,
+  id: String,
+  description: String,
+  creationDate: DateTime,
+  val expectedSize: Long,
+  checksum: String,
+  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
+
   val statusAttribute = entryAttributeBuilder("status", Loading)
   val sizeAttribute = entryAttributeBuilder("size", 0L)
   val channel = FileChannel.open(file, WRITE, CREATE)
@@ -163,4 +201,14 @@ class DataEntryLoading(
     channel.close
     new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, checksum)
   }
+
+  override def state = EntryState(status.toString, id, description, creationDate, expectedSize, checksum, Some(range))
 }
+case class EntryState(
+  status: String,
+  id: String,
+  description: String,
+  creationDate: DateTime,
+  size: Long,
+  checksum: String,
+  range: Option[MultiRange[Long]] = None)

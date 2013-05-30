@@ -17,7 +17,7 @@ object CryoError {
   def apply(a: Any) = a match {
     case e: CryoError => e
     case e: Throwable => new CryoError("Unexpected error", e)
-    case e: Any => new CryoError(s"Unexoected message: ${e}")
+    case e: Any => new CryoError(s"Unexpected message: ${e}")
   }
 }
 

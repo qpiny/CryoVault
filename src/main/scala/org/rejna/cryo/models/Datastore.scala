@@ -9,9 +9,14 @@ import akka.pattern.ask
 import akka.util.{ ByteString, ByteIterator, Timeout }
 
 import java.io.{ InputStream, OutputStream, IOException }
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption._
+import java.nio.ByteBuffer
 import java.util.UUID
 
+import resource.managed
 import org.joda.time.DateTime
+import net.liftweb.json.Serialization
 
 sealed abstract class DatastoreRequest extends Request
 sealed abstract class DatastoreResponse extends Response { val id: String }
@@ -42,6 +47,33 @@ class Datastore(cryoctx: CryoContext) extends Actor with LoggingClass {
 
   val attributeBuilder = AttributeBuilder("/cryo/datastore")
   val data = attributeBuilder.map("repository", Map.empty[String, DataEntry])
+
+  override def postStop = {
+    // Serialize data
+    log.info("Write repository")
+    implicit val formats = JsonSerialization.format
+    for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
+      channel.truncate(0)
+      val repository = Serialization.write(data.map(_._2.state))
+      channel.write(ByteBuffer.wrap(repository.getBytes))
+    }
+  }
+
+  override def preStart = {
+    implicit val formats = JsonSerialization.format
+    try {
+      for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), READ))) {
+        val buffer = ByteBuffer.allocate(channel.size.toInt)
+        channel.read(buffer)
+        val entries = Serialization.read[List[EntryState]](buffer.asCharBuffer.toString) map {
+          case state => DataEntry(cryoctx, attributeBuilder, state)
+        }
+        data ++= entries.map(e => e.id -> e)
+      }
+    } catch {
+      case e: IOException => log.warn("Repository file not found")
+    }
+  }
 
   def receive: Receive = CryoReceive {
     case CreateData(idOption, description, size) =>
@@ -114,6 +146,7 @@ class Datastore(cryoctx: CryoContext) extends Actor with LoggingClass {
   }
 }
 
+@Deprecated
 class DatastoreInputStream(cryoctx: CryoContext, id: String, val size: Long = 0, var position: Long = 0) extends InputStream {
   implicit val contextExecutor = cryoctx.system.dispatcher
   implicit val timeout = Timeout(10 seconds)
@@ -166,6 +199,7 @@ class DatastoreInputStream(cryoctx: CryoContext, id: String, val size: Long = 0,
   //override def skip(n: Long): Long = {
 }
 
+@Deprecated
 class DatastoreOutputStream(cryoctx: CryoContext, id: String) extends OutputStream {
   implicit val contextExecutor = cryoctx.system.dispatcher
   implicit val timeout = Timeout(10 seconds)

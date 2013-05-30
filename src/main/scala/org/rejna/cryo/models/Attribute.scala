@@ -74,6 +74,8 @@ trait ReadAttribute[A] {
     }
     addCallback(ac)
   }
+  
+  override def toString = s"${name}(${now})"  
 }
 
 class MetaAttribute[A](val name: String, body: () => A) extends ReadAttribute[A] { self =>

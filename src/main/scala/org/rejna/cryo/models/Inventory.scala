@@ -73,7 +73,8 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
     case DataRead(id, position, buffer) =>
       if (id == "inventory") {
         implicit val formats = JsonSerialization.format
-        val message = buffer.asByteBuffer.asCharBuffer.toString
+        val message = buffer.decodeString("UTF-8")
+        log.debug(s"read buffer = ${message}")
         val inventory = Serialization.read[InventoryMessage](message)
         date = inventory.date
 

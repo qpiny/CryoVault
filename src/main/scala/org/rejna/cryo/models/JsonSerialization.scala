@@ -25,7 +25,7 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
         case JString("InventoryRetrieval") =>
           new InventoryJob(
             (json \ "JobId").extract[String],
-            (json \ "JobDescription").extract[String],
+            (json \ "JobDescription").extractOpt[String].getOrElse(""),
             DateUtil.fromISOString((json \ "CreationDate").extract[String]),
             jobStatus,
             (json \ "CompletionDate").extractOpt[String].map(DateUtil.fromISOString))
@@ -33,7 +33,7 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
           val statusCode = (json \ "StatusCode").extract[String]
           new ArchiveJob(
             (json \ "JobId").extract[String],
-            (json \ "JobDescription").extract[String],
+            (json \ "JobDescription").extractOpt[String].getOrElse(""),
             DateUtil.fromISOString((json \ "CreationDate").extract[String]),
             jobStatus,
             (json \ "CompletionDate").extractOpt[String].map(DateUtil.fromISOString),
@@ -100,11 +100,13 @@ object JsonInventoryEntrySerialization extends Serializer[InventoryEntry] {
     def apply(a: Any) = JNull
   }
 }
-object JsonInventorySerialization extends Serializer[InventoryMessage] {
+
+object JsonInventorySerialization extends Serializer[InventoryMessage] with LoggingClass {
   val InventoryClass = classOf[InventoryMessage]
 
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), InventoryMessage] = {
     case (TypeInfo(InventoryClass, _), json) =>
+      log.debug(s"deserilize inventory : ${pretty(render(json))}")
       InventoryMessage(
         DateUtil.fromISOString((json \ "InventoryDate").extract[String]),
         (json \ "ArchiveList").children.map(_.extract[InventoryEntry]))
@@ -115,6 +117,7 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] {
     def apply(a: Any) = JNull
   }
 }
+
 
 
 /*

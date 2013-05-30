@@ -4,13 +4,14 @@ import scala.collection.JavaConversions.asScalaBuffer
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.concurrent.Await
+import scala.util.{ Failure, Success }
 
 import java.nio.channels.Channels
 import java.nio.ByteBuffer
 
 import akka.actor.{ Actor, Props }
 import akka.pattern.ask
-import akka.util.Timeout
+import akka.util.{ ByteString, Timeout }
 
 import com.amazonaws.services.glacier.AmazonGlacierClient
 import com.amazonaws.services.glacier.model._
@@ -62,38 +63,48 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
       succeededJobs.map {
         case (dataId, job) =>
           log.info(s"Job ${job.id} is completed, downloading data ${dataId}")
-          (cryoctx.datastore ? GetDataStatus(dataId)) map {
+          var transfer = (cryoctx.datastore ? GetDataStatus(dataId)) map {
             case DataStatus(_, _, _, status, _, _) if status != EntryStatus.Creating => // TODO will be Loading when implemented
             case DataNotFoundError(_, _, _) =>
             case o: Any => throw new CryoError(s"Invalid data status ${o}")
           } flatMap {
             Unit => (cryoctx.datastore ? CreateData(Some(dataId), job.description))
           } map {
-            case DataCreated(dataId) =>
-              log.debug(s"Data ${dataId} created, starting download")
-              for (
-                input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
-                  .withJobId(job.id)
-                  .withVaultName(cryoctx.vaultName)).getBody);
-                output <- managed(new DatastoreOutputStream(cryoctx, dataId))
-              ) {
-                val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
-                Iterator.continually(input.read(buffer))
-                  .takeWhile(_ != -1)
-                  .foreach { output.write(buffer, 0, _) }
+            case DataCreated(dataId) => log.debug(s"Data ${dataId} created, starting download")
+            case o: Any => throw CryoError(o)
+          }
+          for (
+            input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
+              .withJobId(job.id)
+              .withVaultName(cryoctx.vaultName)).getBody)
+          ) {
+            val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
+            Iterator.continually(input.read(buffer))
+              .takeWhile(_ != -1)
+              .foreach { nRead =>
+                transfer = transfer.flatMap { Unit =>
+                  (cryoctx.datastore ? WriteData(dataId, -1, ByteString.fromArray(buffer, 0, nRead))) map {
+                    case DataWritten(_, _, s) => log.debug(s"${s} bytes written in ${dataId}")
+                    case o: Any => throw CryoError(o)
+                  }
+                }
               }
-            case o => throw CryoError(o)
-          } flatMap {
+          }
+
+          transfer flatMap {
             Unit => (cryoctx.datastore ? CloseData(dataId))
           } map {
             case DataClosed(id) =>
             case o => throw CryoError(o)
-          } flatMap {
-            Unit => cryoctx.datastore ? FinalizeJob(job.id)
-          } map {
-            case JobFinalized => log.info(s"Data ${dataId} downloaded")
-          } onFailure {
-            case t => log.error(s"Download job ${job.id} data has failed", t)
+          } onComplete { t =>
+            t match {
+              case Failure(e) => log.error(s"Download job ${job.id} data has failed", e)
+              case Success(_) => log.info(s"Data ${dataId} downloaded")
+            }
+            (cryoctx.manager ? FinalizeJob(job.id)) map {
+              case JobFinalized(_) => log.info(s"Data ${dataId} downloaded")
+              case o: Any => log.debug("Unexpected error", CryoError(o))
+            }
           }
       }
 

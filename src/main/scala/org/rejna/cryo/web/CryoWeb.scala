@@ -27,6 +27,10 @@ object CryoWeb extends App with LoggingClass {
 
   val routes = Routes({
     case HttpRequest(request) => request match {
+      case GET(Path("/exit")) =>
+        log.info("Stopping Cryo")
+        system.shutdown()
+        System.exit(0)
       case GET(Path("/")) =>
         staticHandler ! new StaticResourceRequest(request, "webapp/glacier.html")
       case GET(Path(path)) =>
@@ -42,7 +46,6 @@ object CryoWeb extends App with LoggingClass {
     case WebSocketFrame(wsFrame) => {
       wsHandlers.get(wsFrame.channel).map(_ ! wsFrame)
     }
-
   })
 
   def unregisterWebSocket(channel: Channel) = {
@@ -65,7 +68,10 @@ object CryoWeb extends App with LoggingClass {
     super.main(args)
     val webServer = new WebServer(WebServerConfig(), routes, system)
     Runtime.getRuntime.addShutdownHook(new Thread {
-      override def run { webServer.stop() }
+      override def run {
+        webServer.stop()
+        system.shutdown()
+      }
     })
     webServer.start()
 

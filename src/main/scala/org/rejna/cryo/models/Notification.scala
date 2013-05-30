@@ -98,6 +98,11 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   }
 
   override def preStart = {
+    // Remove previous messages
+    val oldMessageList = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages map {
+      case message => new DeleteMessageBatchRequestEntry(message.getMessageId, message.getReceiptHandle)
+    }
+    sqs.deleteMessageBatch(new DeleteMessageBatchRequest(queueUrl, oldMessageList))
     context.system.scheduler.schedule(0 second, cryoctx.queueRequestInterval, self, GetNotification())(context.system.dispatcher)
   }
 

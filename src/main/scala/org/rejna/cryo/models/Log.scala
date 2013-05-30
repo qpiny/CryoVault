@@ -33,10 +33,11 @@ trait LoggingClass {
 class CryoReceive(r: Actor.Receive)(implicit context: ActorContext, log: org.slf4j.Logger) extends Actor.Receive {
   def isDefinedAt(o: Any): Boolean = {
     val handled = r.isDefinedAt(o)
-    if (handled)
-      log.debug(s"Receive handled message ${o}")
-    else
-      log.info(s"Receive unhandled message ${o}")
+    o match {
+      case a: Any if handled => log.debug(s"Receive handled message ${a}")
+      case t: Throwable => log.info(s"Receive unhandled error", t)
+      case a: Any => log.info(s"Receive unhandled message ${a}")
+    }
     handled
   }
   def apply(o: Any): Unit = {
