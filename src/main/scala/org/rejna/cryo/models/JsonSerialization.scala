@@ -2,13 +2,21 @@ package org.rejna.cryo.models
 
 import net.liftweb.json._
 import net.liftweb.json.JsonDSL._
+import net.liftweb.json.ext.EnumSerializer
+
+import org.joda.time.DateTime
+import org.joda.time.format.DateTimeFormatterBuilder
+
+import EntryStatus._
 
 object JsonSerialization {
   val format = Serialization.formats(NoTypeHints) +
     JsonJobSerialization +
     JsonNotificationSerialization +
     JsonInventoryEntrySerialization +
-    JsonInventorySerialization
+    JsonInventorySerialization +
+    new EnumSerializer(EntryStatus) + 
+    JsonDateTimeSerialization
 }
 
 object JsonJobSerialization extends Serializer[Job] with LoggingClass {
@@ -118,7 +126,40 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] with Logg
   }
 }
 
+object JsonDateTimeSerialization extends Serializer[DateTime] with LoggingClass {
+  val DateTimeClass = classOf[DateTime]
+ val dateFormat = new DateTimeFormatterBuilder()
+    .appendYear(4, 9)
+    .appendLiteral('-')
+    .appendMonthOfYear(2)
+    .appendLiteral('-')
+    .appendDayOfMonth(2)
+    .appendLiteral('T')
+    .appendHourOfDay(2)
+    .appendLiteral(':')
+    .appendMinuteOfHour(2)
+    .appendLiteral(':')
+    .appendSecondOfMinute(2)
+    .appendLiteral('.')
+    .appendFractionOfSecond(2, 9)
+    .appendTimeZoneOffset("Z", true, 2, 4)
+    .toFormatter()
+    
+  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), DateTime] = {
+    case (TypeInfo(DateTimeClass, _), json) =>
+      json match {
+        case s: JString => dateFormat.parseDateTime(s.values)
+        case _: Any => throw new MappingException(s"Can't convert DataTime from ${json}")
+      }
+  }
 
+  def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {
+    def isDefinedAt(a: Any) = a.isInstanceOf[DateTime]
+    def apply(a: Any) = a match {
+      case dt: DateTime => JString(dateFormat.print(dt))
+    }
+  }
+}
 
 /*
 

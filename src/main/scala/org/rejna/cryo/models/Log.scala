@@ -30,36 +30,6 @@ trait LoggingClass {
   lazy implicit val log = Log.getLogger(this.getClass)
 }
 
-class CryoReceive(r: Actor.Receive)(implicit context: ActorContext, log: org.slf4j.Logger) extends Actor.Receive {
-  def isDefinedAt(o: Any): Boolean = {
-    val handled = r.isDefinedAt(o)
-    o match {
-      case a: Any if handled => log.debug(s"Receive handled message ${a}")
-      case t: Throwable => log.info(s"Receive unhandled error", t)
-      case a: Any => log.info(s"Receive unhandled message ${a}")
-    }
-    handled
-  }
-  def apply(o: Any): Unit = {
-    val sender = context.sender
-    try {
-      r(o)
-      log.debug(s"Message ${o} has been successfully handled")
-    } catch {
-      case t: Throwable =>
-        val e = CryoError(t)
-        sender ! e
-        log.error(s"Message ${o} has generated an exception", e)
-    }
-  }
-}
-object CryoReceive {
-  def apply(r: Actor.Receive)(implicit context: ActorContext, log: org.slf4j.Logger): Actor.Receive = r match {
-    case _: CryoReceive => r
-    case _: Any => new CryoReceive(r)
-  }
-}
-
 object LogDispatcher extends TurboFilter {
   override def decide(marker: Marker, logger: Logger, level: Level, format: String, params: Array[AnyRef], t: Throwable) = {
     val message =

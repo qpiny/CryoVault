@@ -29,8 +29,7 @@ object CryoWeb extends App with LoggingClass {
     case HttpRequest(request) => request match {
       case GET(Path("/exit")) =>
         log.info("Stopping Cryo")
-        system.shutdown()
-        System.exit(0)
+        cryoctx.shutdown
       case GET(Path("/")) =>
         staticHandler ! new StaticResourceRequest(request, "webapp/glacier.html")
       case GET(Path(path)) =>
@@ -67,12 +66,7 @@ object CryoWeb extends App with LoggingClass {
   override def main(args: Array[String]) = {
     super.main(args)
     val webServer = new WebServer(WebServerConfig(), routes, system)
-    Runtime.getRuntime.addShutdownHook(new Thread {
-      override def run {
-        webServer.stop()
-        system.shutdown()
-      }
-    })
+    cryoctx.addShutdownHook { webServer.stop() }
     webServer.start()
 
     log.info("Open a few browsers and navigate to http://localhost:8888/html")

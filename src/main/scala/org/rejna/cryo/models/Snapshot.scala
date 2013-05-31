@@ -3,7 +3,6 @@ package org.rejna.cryo.models
 import scala.collection.mutable.{ HashMap, ListBuffer, LinkedList }
 import scala.collection.JavaConversions._
 import scala.concurrent.{ ExecutionContext, Await, Future }
-import scala.concurrent.duration._
 import scala.language.{ implicitConversions, postfixOps }
 import scala.util.{ Try, Success, Failure }
 
@@ -15,9 +14,7 @@ import java.nio.file.StandardOpenOption._
 import java.nio.file.attribute._
 import java.nio.channels.FileChannel
 
-import akka.actor.Actor
-import akka.pattern.ask
-import akka.util.{ Timeout, ByteString, ByteStringBuilder }
+import akka.util.{ ByteString, ByteStringBuilder }
 
 import com.typesafe.config.Config
 
@@ -58,8 +55,7 @@ case class SnapshotUploaded(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
 //case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
 
-class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with LoggingClass {
-  implicit val ctx = cryoctx
+class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
   val attributeBuilder = AttributeBuilder(s"/cryo/snapshot/${id}")
 
   val sizeAttribute = attributeBuilder("size", 0L)
@@ -107,7 +103,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
         Iterator.continually { buffer.clear; input.read(buffer) }
           .takeWhile(_ != -1)
           .filter(_ > 0)
-          .foreach(size => { buffer.flip; func(Block(buffer)) })
+          .foreach(size => { buffer.flip; func(Block(buffer)(cryoctx)) })
       } finally {
         input.close
       }
@@ -116,7 +112,7 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
 
   
   case class UploaderState(out: ByteStringBuilder, aid: String, len: Int)
-  class ArchiveUploader(implicit val timeout: Timeout, val executionContext: ExecutionContext) {
+  class ArchiveUploader {
     import ByteStringSerializer._
     var state: Future[UploaderState] = (cryoctx.datastore ? CreateArchive) map {
       case ArchiveCreated(aid) => UploaderState(new ByteStringBuilder, aid, 0)
@@ -203,14 +199,12 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
     }
   }
 
-  def receive = CryoReceive {
+  def cryoReceive = {
     case SnapshotUpdateFilter(id, file, filter) =>
       fileFilters += file -> filter
       sender ! FilterUpdated
     case SnapshotGetFiles(id, directory) => // TODO
     case SnapshotUpload(id) =>
-      implicit val timeout = Timeout(10 seconds)
-      implicit val executionContext = context.system.dispatcher
       val requester = sender
       var archiveUploader = new ArchiveUploader
       for (f <- files()) {
@@ -266,8 +260,8 @@ class LocalSnapshot(cryoctx: CryoContext, id: String) extends Actor with Logging
 
 
 
-class RemoteSnapshot(cryoctx: CryoContext, id: String) extends Actor {
-  def receive = {
+class RemoteSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
+  def cryoReceive = {
     case _ => 
   }
 }

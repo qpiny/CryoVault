@@ -41,7 +41,7 @@ sealed abstract class DataEntry(
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
-  def state = EntryState(status.toString, id, description, creationDate, size, checksum)
+  def state = EntryState(status, id, description, creationDate, size, checksum)
   override def toString = state.toString
 }
 
@@ -51,7 +51,7 @@ object DataEntry {
     state.status match {
       //case Creating => // not supported
       //case Loading => // not supported yet
-      case "Created" =>
+      case Created =>
         new DataEntryCreated(
           cryoctx,
           state.id,
@@ -60,7 +60,7 @@ object DataEntry {
           entryAttributeBuilder("status", Created),
           entryAttributeBuilder("size", state.size),
           state.checksum)
-      case "Remote" =>
+      case Remote =>
         new DataEntryRemote(
           cryoctx,
           state.id,
@@ -202,13 +202,13 @@ class DataEntryLoading(
     new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, checksum)
   }
 
-  override def state = EntryState(status.toString, id, description, creationDate, expectedSize, checksum, Some(range))
+  //override def state = EntryState(status, id, description, creationDate, expectedSize, checksum, Some(range))
 }
 case class EntryState(
-  status: String,
+  status: EntryStatus,
   id: String,
   description: String,
   creationDate: DateTime,
   size: Long,
-  checksum: String,
-  range: Option[MultiRange[Long]] = None)
+  checksum: String)//,
+  //range: Option[MultiRange[Long]] = None)

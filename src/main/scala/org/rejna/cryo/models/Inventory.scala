@@ -2,13 +2,11 @@ package org.rejna.cryo.models
 
 import scala.io.Source
 import scala.concurrent.Future
-import scala.concurrent.duration._
 import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConversions._
-import scala.language.postfixOps
-import akka.actor.{ Actor, ActorRef, Props }
-import akka.pattern.ask
-import akka.util.Timeout
+
+import akka.actor.{ ActorRef, Props }
+
 import java.io.FileOutputStream
 import java.nio.file.{ Files, Path }
 import java.nio.file.StandardOpenOption._
@@ -17,7 +15,6 @@ import java.nio.channels.FileChannel
 import java.util.UUID
 import org.joda.time.{ DateTime, Interval }
 import net.liftweb.json.Serialization
-import akka.dispatch.OnSuccess
 
 sealed abstract class InventoryRequest extends Request
 sealed abstract class InventoryResponse extends Response
@@ -38,10 +35,7 @@ case class SnapshotNotFound(id: String, message: String, cause: Throwable = null
 case class InventoryEntry(id: String, description: String, creationDate: DateTime, size: Long, checksum: String)
 case class InventoryMessage(date: DateTime, entries: List[InventoryEntry])
 
-class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
-  implicit val contextExecutor = context.system.dispatcher
-  implicit val timeout = Timeout(10 seconds)
-
+class Inventory(val cryoctx: CryoContext) extends CryoActor {
   val attributeBuilder = AttributeBuilder("/cryo/inventory")
   val inventoryDataId = "inventory"
 
@@ -57,7 +51,7 @@ class Inventory(cryoctx: CryoContext) extends Actor with LoggingClass {
     cryoctx.datastore ! GetDataStatus(inventoryDataId)
   }
 
-  def receive = CryoReceive {
+  def cryoReceive = {
     case DataStatus(id, description, creationDate, status, size, checksum) =>
       if (id == inventoryDataId && status == EntryStatus.Created)
         cryoctx.datastore ! ReadData(inventoryDataId, 0, size.toInt)

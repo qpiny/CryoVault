@@ -1,10 +1,13 @@
 package org.rejna.cryo.models
 
-import scala.util.Random
+import scala.util.{ Success, Failure, Random }
 import scala.concurrent.duration._
+import scala.concurrent.{ Future, Promise }
 import scala.language.postfixOps
 
-import akka.actor.{ ActorRefFactory, Props }
+import akka.actor.{ ActorSystem, Props, PoisonPill }
+import akka.pattern.gracefulStop
+import akka.util.Timeout
 
 import java.nio.file.{ Path, FileSystems }
 import javax.crypto.{ Cipher, KeyGenerator, CipherOutputStream }
@@ -15,8 +18,33 @@ import com.typesafe.config.Config
 import com.amazonaws.auth.BasicAWSCredentials
 import com.amazonaws.{ ClientConfiguration, Protocol }
 
-class CryoContext(val system: ActorRefFactory, val config: Config) {
+class CryoContext(val system: ActorSystem, val config: Config) {
   import org.rejna.util.IsoUnit._
+  implicit val executionContext = system.dispatcher
+
+  val exitPromise = Promise[Any]()
+  var shutdownHooks = exitPromise.future
+  def addShutdownHook[T](f: => T) {
+    shutdownHooks = shutdownHooks.map((Unit) => f)
+  }
+
+  def addFutureShutdownHook[T](f: => Future[T]) {
+    shutdownHooks = shutdownHooks.flatMap((Unit) => f)
+  }
+
+  def shutdown() {
+    exitPromise.success()
+    addShutdownHook { system.shutdown }
+    addShutdownHook { System.exit(0) }
+    shutdownHooks.onComplete {
+      case Success(_) =>
+        println("Shutdown completed")
+        System.exit(0)
+      case Failure(e) =>
+        e.printStackTrace()
+        System.exit(0)
+    }
+  }
 
   val hashAlgorithm = config.getString("cryo.hash-algorithm") // TODO use MessageDigest.getInstance
   val bufferSize = config.getBytes("cryo.buffer-size").toInt
@@ -35,6 +63,8 @@ class CryoContext(val system: ActorRefFactory, val config: Config) {
     else if (fileSize < (512 gibi)) 512 mebi
     else 1 gibi
   }
+
+  def getTimeout(clazz: Class[_]) = Timeout(30 seconds)
 
   val cipher = Cipher.getInstance(config.getString("cryo.cipher"));
   val key = {
@@ -77,11 +107,25 @@ class CryoContext(val system: ActorRefFactory, val config: Config) {
   if (config.getBoolean("aws.disable-cert-checking"))
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 
-  val deadLetterMonitor = system.actorOf(Props(classOf[DeadLetterMonitor], this), "deadletter")
   val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
+  addFutureShutdownHook { gracefulStop(notification, 10 seconds) }
+  
+  val deadLetterMonitor = system.actorOf(Props(classOf[DeadLetterMonitor], this), "deadletter")
+  addFutureShutdownHook { gracefulStop(deadLetterMonitor, 10 seconds) }
+
   val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
-  val datastore = system.actorOf(Props(classOf[Datastore], this), "datastore")
-  val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
+  addFutureShutdownHook { gracefulStop(cryo, 10 seconds) }
+
   val manager = system.actorOf(Props(classOf[Manager], this), "manager")
+  addFutureShutdownHook { gracefulStop(manager, 10 seconds) }
+
   val hashcatalog = system.actorOf(Props(classOf[HashCatalog], this), "catalog")
+  addFutureShutdownHook { gracefulStop(hashcatalog, 10 seconds) }
+
+  val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
+  addFutureShutdownHook { gracefulStop(inventory, 10 seconds) }
+
+  val datastore = system.actorOf(Props(classOf[Datastore], this), "datastore")
+  addFutureShutdownHook { gracefulStop(datastore, 10 seconds) }
+
 }

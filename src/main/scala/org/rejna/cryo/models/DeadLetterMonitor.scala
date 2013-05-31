@@ -2,13 +2,13 @@ package org.rejna.cryo.models
 
 import akka.actor.{ Actor, DeadLetter }
 
-class DeadLetterMonitor(cryoctx: CryoContext) extends Actor with LoggingClass {
+class DeadLetterMonitor(val cryoctx: CryoContext) extends CryoActor {
   
   override def preStart = {
     context.system.eventStream.subscribe(self, classOf[DeadLetter])
   }
   
-  def receive = {
+  def cryoReceive = {
     case dl: DeadLetter =>
       log.error(s"A message has been lost: ${dl}")
     case o: Any =>

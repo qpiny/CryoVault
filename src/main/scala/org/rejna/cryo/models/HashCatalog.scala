@@ -2,13 +2,8 @@ package org.rejna.cryo.models
 
 import scala.language.postfixOps
 import scala.collection.mutable.HashMap
-import scala.concurrent.duration._
 import scala.concurrent.Future
 import scala.util.{ Success, Failure }
-
-import akka.actor.Actor
-import akka.pattern.ask
-import akka.util.Timeout
 
 import java.nio.ByteBuffer
 import java.nio.file.StandardOpenOption._
@@ -31,12 +26,11 @@ case class HashCollision(message: String) extends HashCatalogError("Blocklocatio
 case class GetCatalogContent() extends HashCatalogRequest
 case class CatalogContent(catalog: Map[HashVersion, BlockLocation]) extends HashCatalogResponse
 
-class HashCatalog(cryoctx: CryoContext) extends Actor with LoggingClass {
-  implicit val executionContext = context.system.dispatcher
+class HashCatalog(val cryoctx: CryoContext) extends CryoActor {
   private val content = HashMap.empty[HashVersion, BlockLocation]
   private val hashVersions = HashMap.empty[Hash, List[HashVersion]]
 
-  def receive = CryoReceive {
+  def cryoReceive = {
     case m: GetCatalogContent => sender ! CatalogContent(content.toMap)
     case GetHashBlockLocation(hash) =>
       content.get(hash) match {
@@ -99,7 +93,6 @@ class HashCatalog(cryoctx: CryoContext) extends Actor with LoggingClass {
   }
 
   private def sameContent(block: Block, bl: BlockLocation): Future[Option[Boolean]] = {
-    implicit val timeout = Timeout(10 seconds)
     cryoctx.datastore ? ReadData(bl.archiveId, bl.offset, bl.size) map {
       case DataRead(_, _, buffer) => Some(block.data.deep == buffer.toArray.deep)
       case _: Any => None

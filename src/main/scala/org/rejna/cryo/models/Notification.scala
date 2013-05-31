@@ -1,12 +1,8 @@
 package org.rejna.cryo.models
 
+import scala.collection.JavaConversions._ //{ asScalaBuffer, mapAsJavaMap }
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import scala.collection.JavaConversions._ //{ asScalaBuffer, mapAsJavaMap }
-
-import akka.actor.Actor
-import akka.pattern.ask
-import akka.util.Timeout
 
 import net.liftweb.json.{ Serialization, NoTypeHints }
 
@@ -21,23 +17,22 @@ sealed abstract class NotificationRequest extends Request
 sealed abstract class NotificationResponse extends Response
 sealed class NotificationError(message: String, cause: Throwable) extends CryoError(message, cause)
 
-
 case class GetNotification() extends NotificationRequest
 case class GetNotificationARN() extends NotificationRequest
 case class NotificationARN(arn: String) extends NotificationResponse
 
 case class NotificationMessage(
-    notificationType: String,
-    messageId: String,
-    topicArn: String,
-    message: String,
-    timestamp: DateTime)
-    // SignatureVersion(1)
-    // Signature(Kss0qWBDa...)
-    // SigningCertURL(https://sns.eu-west-1.amaz...)
-    // UnsubscribeURLhttps://sns.eu-west-1.amaz...)
+  notificationType: String,
+  messageId: String,
+  topicArn: String,
+  message: String,
+  timestamp: DateTime)
+// SignatureVersion(1)
+// Signature(Kss0qWBDa...)
+// SigningCertURL(https://sns.eu-west-1.amaz...)
+// UnsubscribeURLhttps://sns.eu-west-1.amaz...)
 
-abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClass {
+abstract class Notification(val cryoctx: CryoContext) extends CryoActor {
   val sns = new AmazonSNSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(sns)
@@ -60,14 +55,14 @@ abstract class Notification(cryoctx: CryoContext) extends Actor with LoggingClas
 
 class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   implicit val formats = JsonSerialization.format
-  implicit val timeout = Timeout(10 seconds)
-  implicit val executionContext = context.system.dispatcher
-  
+
   val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(sqs)
   sqs.setEndpoint("sqs." + cryoctx.region + ".amazonaws.com")
+  log.debug("getQueue(url&arn)")
   val (queueUrl, queueArn) = getOrCreateQueue
+  log.debug("getQueue(url&arn) done")
 
   private def getOrCreateQueue: (String, String) = {
     sqs.listQueues(new ListQueuesRequest(cryoctx.sqsQueueName)).getQueueUrls.headOption match {
@@ -99,29 +94,32 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
 
   override def preStart = {
     // Remove previous messages
+    log.debug("request message from queue")
     val oldMessageList = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages map {
       case message => new DeleteMessageBatchRequestEntry(message.getMessageId, message.getReceiptHandle)
     }
-    sqs.deleteMessageBatch(new DeleteMessageBatchRequest(queueUrl, oldMessageList))
+    log.debug("request message from queue done")
+    if (oldMessageList.size > 0)
+      sqs.deleteMessageBatch(new DeleteMessageBatchRequest(queueUrl, oldMessageList))
     context.system.scheduler.schedule(0 second, cryoctx.queueRequestInterval, self, GetNotification())(context.system.dispatcher)
+    log.debug("Notification actor is ready")
   }
 
-  def receive = CryoReceive {
+  def cryoReceive = {
     case GetNotification() =>
       val jobs = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages map {
         case message =>
-	        val body = message.getBody
-	        log.debug("Receive notification message :" + message)
-	        val notificationMessage = Serialization.read[NotificationMessage](body)
-	        Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
+          val body = message.getBody
+          log.debug("Receive notification message :" + message)
+          val notificationMessage = Serialization.read[NotificationMessage](body)
+          Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
       } toMap
-      
-      
+
       cryoctx.manager ? AddJobs(jobs.keySet.toList) map {
         case JobsAdded(addedJobs) =>
           sqs.deleteMessageBatch(new DeleteMessageBatchRequest(
-              queueUrl,
-              addedJobs.map(j => new DeleteMessageBatchRequestEntry(j.id, jobs(j)))))
+            queueUrl,
+            addedJobs.map(j => new DeleteMessageBatchRequestEntry(j.id, jobs(j)))))
       }
 
     case GetNotificationARN() =>

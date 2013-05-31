@@ -69,7 +69,7 @@ object EventSerialization {
   implicit def toEventSender(channel: Channel) = EventSender(channel)
 }
 
-class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
+class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass{
   import EventSerialization._
   implicit val timeout = Timeout(10 seconds)
   implicit val executionContext = context.system.dispatcher
@@ -81,6 +81,7 @@ class CryoSocket(cryoctx: CryoContext, channel: Channel) extends Actor with Logg
       Stop
     case _: Exception => Resume
   }
+  
   def receive = {
     case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText

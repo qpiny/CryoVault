@@ -2,6 +2,7 @@ package org.rejna.cryo.models
 
 import scala.collection.JavaConversions.asScalaBuffer
 import scala.concurrent.duration._
+import scala.concurrent.Future
 import scala.language.postfixOps
 import scala.concurrent.Await
 import scala.util.{ Failure, Success }
@@ -10,8 +11,7 @@ import java.nio.channels.Channels
 import java.nio.ByteBuffer
 
 import akka.actor.{ Actor, Props }
-import akka.pattern.ask
-import akka.util.{ ByteString, Timeout }
+import akka.util.ByteString
 
 import com.amazonaws.services.glacier.AmazonGlacierClient
 import com.amazonaws.services.glacier.model._
@@ -34,14 +34,12 @@ case class DownloadArchiveRequested(job: ArchiveJob) extends CryoResponse
 case class UploadData(id: String) extends CryoRequest
 case class DataUploaded(id: String) extends CryoResponse
 
-class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
+class Glacier(val cryoctx: CryoContext) extends CryoActor {
 
   val glacier = new AmazonGlacierClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(glacier)
   glacier.setEndpoint("glacier." + cryoctx.region + ".amazonaws.com/")
-  implicit val executionContext = context.system.dispatcher
-  implicit val timeout = Timeout(10 seconds)
   val futureSnsTopicARN = (cryoctx.notification ? GetNotificationARN()) map {
     case NotificationARN(arn) => arn
     case e: Any => throw CryoError(e)
@@ -52,7 +50,7 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
     CryoEventBus.subscribe(self, "/cryo/manager#jobs")
   }
 
-  def receive: Receive = CryoReceive {
+  def cryoReceive = {
     case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
       val succeededJobs = addedJobs.asInstanceOf[List[(String, Job)]].flatMap {
         case (_, a: ArchiveJob) if a.status.isSucceeded => Some(a.archiveId -> a)
@@ -122,16 +120,22 @@ class Glacier(cryoctx: CryoContext) extends Actor with LoggingClass {
 
     case RefreshInventory() =>
       val requester = sender
-      val jobId = glacier.initiateJob(new InitiateJobRequest()
-        .withVaultName(cryoctx.vaultName)
-        .withJobParameters(
-          new JobParameters()
-            .withType("inventory-retrieval")
-            .withSNSTopic(snsTopicARN))).getJobId
-
-      val job = new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
-      cryoctx.manager ? AddJobs(job) map {
-        case JobsAdded(_) => requester ! RefreshInventoryRequested(job)
+      Future {
+        log.debug("initiateInventoryJob")
+        glacier.initiateJob(new InitiateJobRequest()
+          .withVaultName(cryoctx.vaultName)
+          .withJobParameters(
+            new JobParameters()
+              .withType("inventory-retrieval")
+              .withSNSTopic(snsTopicARN))).getJobId
+      } map {
+        case jobId =>
+          log.debug("initiateInventoryJob done")
+          new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
+      } flatMap {
+        case job => cryoctx.manager ? AddJobs(job)
+      } map {
+        case JobsAdded(job) => requester ! RefreshInventoryRequested(job.head.asInstanceOf[InventoryJob])
         case o: Any => requester ! CryoError(o)
       }
 

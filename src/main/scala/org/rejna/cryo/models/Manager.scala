@@ -1,13 +1,8 @@
 package org.rejna.cryo.models
 
 import scala.concurrent.Promise
-import scala.concurrent.duration._
 import scala.collection.mutable.HashSet
 import scala.language.postfixOps
-
-import akka.actor.Actor
-import akka.util.Timeout
-import akka.pattern.ask
 
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -105,10 +100,7 @@ case class FinalizeJob(jobIds: List[String]) extends ManagerRequest
 object FinalizeJob { def apply(jobIds: String*): FinalizeJob = FinalizeJob(jobIds.toList) }
 case class JobFinalized(jobIds: List[String]) extends ManagerResponse
 
-class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
-  implicit val timeout = Timeout(10 seconds)
-  implicit val executionContext = context.system.dispatcher
-  
+class Manager(val cryoctx: CryoContext) extends CryoActor {
   val attributeBuilder = AttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
   val finalizedJobs = HashSet.empty[String]
@@ -124,6 +116,13 @@ class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
   }
   override def preStart = {
     implicit val formats = JsonSerialization.format
+    log.info("Starting manager ...")
+    log.info("Refreshing job list")
+    (cryoctx.cryo ? RefreshJobList()) map {
+      case JobListRefreshed() => log.info("Job list has been refreshed")
+      case o: Any => log.error("Unexpected message", CryoError(o))
+    }
+    log.info("Loading finalized jobs")
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("finalizedJobs"), READ))) {
         val buffer = ByteBuffer.allocate(channel.size.toInt)
@@ -133,13 +132,10 @@ class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
     } catch {
       case e: IOException => log.warn("finalizedJobs file not found")
     }
-    (cryoctx.cryo ? RefreshJobList()) map {
-      case JobListRefreshed() => 
-      case o: Any => log.error("Unexpected message", CryoError(o))
-    }
+    log.info("Finalized jobs loaded")
   }
 
-  def receive = CryoReceive {
+  def cryoReceive = {
     case AddJobs(addedJobs) =>
       jobs ++= addedJobs.filterNot(j => finalizedJobs.contains(j.id)).map(j => j.id -> j)
       sender ! JobsAdded(addedJobs)
@@ -159,7 +155,6 @@ class Manager(cryoctx: CryoContext) extends Actor with LoggingClass {
       if (jobUpdated.isCompleted) {
     	  sender ! JobList(jobs.values.toList)
       } else {
-        implicit val executionContext = context.system.dispatcher
         val requester = sender
         jobUpdated.future.onSuccess { case _ => requester ! JobList(jobs.values.toList) }
       }

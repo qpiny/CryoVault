@@ -4,8 +4,7 @@ import scala.concurrent.{ Await, Future }
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-import akka.actor.{ Actor, ActorRefFactory }
-import akka.pattern.ask
+import akka.actor.{ ActorRefFactory }
 import akka.util.{ ByteString, ByteIterator, Timeout }
 
 import java.io.{ InputStream, OutputStream, IOException }
@@ -42,7 +41,7 @@ case class ReadError(message: String, cause: Throwable = null) extends Datastore
 case class DataNotFoundError(id: String, message: String, cause: Throwable = null) extends DatastoreError(message, cause)
 case class InvalidDataStatus(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
 
-class Datastore(cryoctx: CryoContext) extends Actor with LoggingClass {
+class Datastore(val cryoctx: CryoContext) extends CryoActor {
   import EntryStatus._
 
   val attributeBuilder = AttributeBuilder("/cryo/datastore")
@@ -75,7 +74,7 @@ class Datastore(cryoctx: CryoContext) extends Actor with LoggingClass {
     }
   }
 
-  def receive: Receive = CryoReceive {
+  def cryoReceive = {
     case CreateData(idOption, description, size) =>
       val id = idOption.getOrElse {
         var i = ""
@@ -150,6 +149,7 @@ class Datastore(cryoctx: CryoContext) extends Actor with LoggingClass {
 class DatastoreInputStream(cryoctx: CryoContext, id: String, val size: Long = 0, var position: Long = 0) extends InputStream {
   implicit val contextExecutor = cryoctx.system.dispatcher
   implicit val timeout = Timeout(10 seconds)
+  import akka.pattern.ask
 
   private var buffer: ByteIterator = ByteIterator.ByteArrayIterator.empty
   private var limit = position
@@ -198,44 +198,44 @@ class DatastoreInputStream(cryoctx: CryoContext, id: String, val size: Long = 0,
 
   //override def skip(n: Long): Long = {
 }
-
-@Deprecated
-class DatastoreOutputStream(cryoctx: CryoContext, id: String) extends OutputStream {
-  implicit val contextExecutor = cryoctx.system.dispatcher
-  implicit val timeout = Timeout(10 seconds)
-
-  private var error: Option[CryoError] = None
-
-  override def close = {
-    error.map(e => throw new IOException("DatastoreOutputStream error", e))
-  }
-
-  override def flush = {}
-
-  override def write(b: Array[Byte]) = {
-    error.map(e => throw new IOException("DatastoreOutputStream error", e))
-    (cryoctx.datastore ? WriteData(id, -1, ByteString(b)))
-      .map {
-        case DataWritten(_, _, _) =>
-        case o: Any => error = Some(CryoError(o))
-      }
-  }
-
-  override def write(b: Array[Byte], off: Int, len: Int) = {
-    error.map(e => throw new IOException("DatastoreOutputStream error", e))
-    (cryoctx.datastore ? WriteData(id, -1, ByteString.fromArray(b, off, len)))
-      .map {
-        case DataWritten(_, _, _) =>
-        case o: Any => error = Some(CryoError(o))
-      }
-  }
-
-  override def write(b: Int) = {
-    error.map(e => throw new IOException("DatastoreOutputStream error", e))
-    (cryoctx.datastore ? WriteData(id, -1, ByteString(b)))
-      .map {
-        case DataWritten(_, _, _) =>
-        case o: Any => error = Some(CryoError(o))
-      }
-  }
-}
+//
+//@Deprecated
+//class DatastoreOutputStream(cryoctx: CryoContext, id: String) extends OutputStream {
+//  implicit val contextExecutor = cryoctx.system.dispatcher
+//  implicit val timeout = Timeout(10 seconds)
+//
+//  private var error: Option[CryoError] = None
+//
+//  override def close = {
+//    error.map(e => throw new IOException("DatastoreOutputStream error", e))
+//  }
+//
+//  override def flush = {}
+//
+//  override def write(b: Array[Byte]) = {
+//    error.map(e => throw new IOException("DatastoreOutputStream error", e))
+//    (cryoctx.datastore ? WriteData(id, -1, ByteString(b)))
+//      .map {
+//        case DataWritten(_, _, _) =>
+//        case o: Any => error = Some(CryoError(o))
+//      }
+//  }
+//
+//  override def write(b: Array[Byte], off: Int, len: Int) = {
+//    error.map(e => throw new IOException("DatastoreOutputStream error", e))
+//    (cryoctx.datastore ? WriteData(id, -1, ByteString.fromArray(b, off, len)))
+//      .map {
+//        case DataWritten(_, _, _) =>
+//        case o: Any => error = Some(CryoError(o))
+//      }
+//  }
+//
+//  override def write(b: Int) = {
+//    error.map(e => throw new IOException("DatastoreOutputStream error", e))
+//    (cryoctx.datastore ? WriteData(id, -1, ByteString(b)))
+//      .map {
+//        case DataWritten(_, _, _) =>
+//        case o: Any => error = Some(CryoError(o))
+//      }
+//  }
+//}
