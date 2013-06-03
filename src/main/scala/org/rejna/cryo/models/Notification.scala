@@ -3,6 +3,7 @@ package org.rejna.cryo.models
 import scala.collection.JavaConversions._ //{ asScalaBuffer, mapAsJavaMap }
 import scala.concurrent.duration._
 import scala.language.postfixOps
+import scala.util.{ Success, Failure }
 
 import net.liftweb.json.{ Serialization, NoTypeHints }
 
@@ -95,8 +96,10 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   override def preStart = {
     // Remove previous messages
     log.debug("request message from queue")
-    val oldMessageList = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages map {
-      case message => new DeleteMessageBatchRequestEntry(message.getMessageId, message.getReceiptHandle)
+    val oldMessageList = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages.distinct map {
+      case message =>
+        log.debug(s"Message in queue : ${message.getMessageId} / ${message.getReceiptHandle}")
+        new DeleteMessageBatchRequestEntry(message.getMessageId, message.getReceiptHandle)
     }
     log.debug("request message from queue done")
     if (oldMessageList.size > 0)
@@ -120,6 +123,9 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
           sqs.deleteMessageBatch(new DeleteMessageBatchRequest(
             queueUrl,
             addedJobs.map(j => new DeleteMessageBatchRequestEntry(j.id, jobs(j)))))
+      } onComplete {
+        case Success(_) => log.info("Notification messages have been removed")
+        case Failure(e) => log.info("An error has occured while removing notification message", e)
       }
 
     case GetNotificationARN() =>

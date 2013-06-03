@@ -67,7 +67,7 @@ object Job {
         new ArchiveJob(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
-          DateUtil.fromISOString(j.getCreationDate),
+          DateUtil.fromISOString(j.getCreationDate), // FIXME
           getStatus(j.getStatusCode, j.getStatusMessage),
           Option(DateUtil.fromISOString(j.getCompletionDate)),
           j.getArchiveId)

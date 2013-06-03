@@ -15,7 +15,7 @@ object JsonSerialization {
     JsonNotificationSerialization +
     JsonInventoryEntrySerialization +
     JsonInventorySerialization +
-    new EnumSerializer(EntryStatus) + 
+    new EnumSerializer(EntryStatus) +
     JsonDateTimeSerialization
 }
 
@@ -34,17 +34,17 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
           new InventoryJob(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extractOpt[String].getOrElse(""),
-            DateUtil.fromISOString((json \ "CreationDate").extract[String]),
+            (json \ "CreationDate").extract[DateTime],
             jobStatus,
-            (json \ "CompletionDate").extractOpt[String].map(DateUtil.fromISOString))
+            (json \ "CompletionDate").extractOpt[DateTime])
         case JString("ArchiveRetrieval") =>
           val statusCode = (json \ "StatusCode").extract[String]
           new ArchiveJob(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extractOpt[String].getOrElse(""),
-            DateUtil.fromISOString((json \ "CreationDate").extract[String]),
+            (json \ "CreationDate").extract[DateTime],
             jobStatus,
-            (json \ "CompletionDate").extractOpt[String].map(DateUtil.fromISOString),
+            (json \ "CompletionDate").extractOpt[DateTime],
             (json \ "ArchiveId").extract[String])
         case o: Any =>
           throw new MappingException(s"Job deserialization fails: unknown type: ${o}", null)
@@ -81,7 +81,7 @@ object JsonNotificationSerialization extends Serializer[NotificationMessage] wit
         (json \ "MessageId").extract[String],
         (json \ "TopicArn").extract[String],
         (json \ "Message").extract[String],
-        DateUtil.fromISOString((json \ "Timestamp").extract[String]))
+        (json \ "Timestamp").extract[DateTime])
   }
 
   def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {
@@ -98,7 +98,7 @@ object JsonInventoryEntrySerialization extends Serializer[InventoryEntry] {
       InventoryEntry(
         (json \ "ArchiveId").extract[String],
         (json \ "ArchiveDescription").extract[String],
-        DateUtil.fromISOString((json \ "CreationDate").extract[String]),
+        (json \ "CreationDate").extract[DateTime],
         (json \ "Size").extract[Long],
         (json \ "SHA256TreeHash").extract[String])
   }
@@ -116,7 +116,7 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] with Logg
     case (TypeInfo(InventoryClass, _), json) =>
       log.debug(s"deserilize inventory : ${pretty(render(json))}")
       InventoryMessage(
-        DateUtil.fromISOString((json \ "InventoryDate").extract[String]),
+        (json \ "InventoryDate").extract[DateTime],
         (json \ "ArchiveList").children.map(_.extract[InventoryEntry]))
   }
 
@@ -128,7 +128,11 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] with Logg
 
 object JsonDateTimeSerialization extends Serializer[DateTime] with LoggingClass {
   val DateTimeClass = classOf[DateTime]
- val dateFormat = new DateTimeFormatterBuilder()
+  val fractionOfSecondFormat = new DateTimeFormatterBuilder()
+    .appendLiteral('.')
+    .appendFractionOfSecond(2, 9)
+    .toParser()
+  val dateFormat = new DateTimeFormatterBuilder()
     .appendYear(4, 9)
     .appendLiteral('-')
     .appendMonthOfYear(2)
@@ -140,11 +144,10 @@ object JsonDateTimeSerialization extends Serializer[DateTime] with LoggingClass 
     .appendMinuteOfHour(2)
     .appendLiteral(':')
     .appendSecondOfMinute(2)
-    .appendLiteral('.')
-    .appendFractionOfSecond(2, 9)
+    .appendOptional(fractionOfSecondFormat)
     .appendTimeZoneOffset("Z", true, 2, 4)
     .toFormatter()
-    
+
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), DateTime] = {
     case (TypeInfo(DateTimeClass, _), json) =>
       json match {

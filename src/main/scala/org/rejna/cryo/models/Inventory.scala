@@ -88,7 +88,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
 
     case AddSnapshot(id) =>
       if (!snapshots.contains(id))
-        snapshots += id -> context.actorOf(Props(classOf[RemoteSnapshot], cryoctx))
+        snapshots += id -> context.actorOf(Props(classOf[RemoteSnapshot], cryoctx, id))
 
     case AttributeChange(path, attribute) =>
       path match {

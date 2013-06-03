@@ -48,13 +48,15 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   val data = attributeBuilder.map("repository", Map.empty[String, DataEntry])
 
   override def postStop = {
-    // Serialize data
-    log.info("Write repository")
     implicit val formats = JsonSerialization.format
-    for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
-      channel.truncate(0)
-      val repository = Serialization.write(data.map(_._2.state))
-      channel.write(ByteBuffer.wrap(repository.getBytes))
+    try {
+      for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
+        channel.truncate(0)
+        val repository = Serialization.write(data.map(_._2.state))
+        channel.write(ByteBuffer.wrap(repository.getBytes))
+      }
+    } catch {
+      case t: Throwable => println(s"Datastore has failed to store its state", t)
     }
   }
 
@@ -109,10 +111,8 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
       data.get(id) match {
         case None =>
           sender ! DataNotFoundError(id, s"Data ${id} not found")
-        case Some(de: DataEntryCreated) =>
-          sender ! DataStatus(id, de.description, de.creationDate, de.status, de.size, de.checksum)
         case Some(de: DataEntry) =>
-          sender ! DataStatus(id, de.description, de.creationDate, de.status, de.size, "")
+          sender ! DataStatus(id, de.description, de.creationDate, de.status, de.size, de.checksum)
       }
 
     case ReadData(id, position, length) =>
