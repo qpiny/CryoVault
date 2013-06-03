@@ -2,6 +2,7 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.HashMap
 import scala.util.matching.Regex
+import scala.util.{ Failure, Success }
 
 import akka.actor.ActorRef
 import akka.event.{ EventBus, SubchannelClassification }
@@ -14,8 +15,10 @@ abstract class Request extends CryoMessage
 abstract class Response extends CryoMessage
 class CryoError(message: String, cause: Throwable = null) extends Exception(message, cause) with CryoMessage
 object CryoError {
-  def apply(a: Any) = a match {
+  def apply(a: Any): CryoError = a match {
     case e: CryoError => e
+    case Failure(e) => CryoError(e)
+    case Success(e) => CryoError(e)
     case e: Throwable => new CryoError("Unexpected error", e)
     case e: Any => new CryoError(s"Unexpected message: ${e}")
   }

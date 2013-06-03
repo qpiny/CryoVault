@@ -4,6 +4,7 @@ import scala.io.Source
 import scala.concurrent.Future
 import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConversions._
+import scala.util.{ Success, Failure }
 
 import akka.actor.{ ActorRef, Props }
 
@@ -16,12 +17,14 @@ import java.util.UUID
 import org.joda.time.{ DateTime, Interval }
 import net.liftweb.json.Serialization
 
+sealed abstract class InventoryInternalMessage
 sealed abstract class InventoryRequest extends Request
 sealed abstract class InventoryResponse extends Response
 sealed class InventoryError(message: String, cause: Throwable) extends CryoError(message, cause)
 
-case class AddArchive(id: String)
-case class AddSnapshot(id: String)
+case class UpdateInventoryDate(date: DateTime) extends InventoryInternalMessage
+case class AddArchive(id: String) extends InventoryInternalMessage
+case class AddSnapshot(id: String) extends InventoryInternalMessage
 case class CreateArchive() extends InventoryRequest
 case class ArchiveCreated(id: String) extends InventoryResponse
 case class CreateSnapshot() extends InventoryRequest
@@ -48,41 +51,63 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
 
   override def preStart = {
     CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
-    cryoctx.datastore ! GetDataStatus(inventoryDataId)
+    reloadInventory
+  }
+
+  def reloadInventory = {
+    implicit val formats = JsonSerialization.format
+
+    (cryoctx.datastore ? GetDataStatus(inventoryDataId)) flatMap {
+      case DataStatus(_, _, _, status, size, _) =>
+        if (status == EntryStatus.Created) {
+          cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
+            case DataRead(id, position, buffer) =>
+              val message = buffer.decodeString("UTF-8")
+              val inventory = Serialization.read[InventoryMessage](message)
+              cryoctx.inventory ! UpdateInventoryDate(inventory.date)
+
+              for (entry <- inventory.entries) {
+                (cryoctx.datastore ? DefineData(entry.id, entry.description, entry.creationDate, entry.size, entry.checksum)) map {
+                  case DataDefined(_) =>
+                    if (entry.description.startsWith("Data"))
+                      cryoctx.inventory ! AddArchive(entry.id)
+                    else
+                      cryoctx.inventory ! AddSnapshot(entry.id)
+                  case o =>
+                    log.error("Unexpected message from datastore : ", CryoError(o))
+                }
+              }
+              Log.info("Inventory updated")
+            case o: Any => CryoError(o)
+          }
+        } else
+          Future(Log.info("Waiting for inventory download completion"))
+      case DataNotFoundError(id, _, _) =>
+        (cryoctx.manager ? GetJobList()) map {
+          case JobList(jl) =>
+            if (!jl.exists(_.isInstanceOf[InventoryJob])) {
+              (cryoctx.cryo ? RefreshInventory()) map {
+                case RefreshInventoryRequested(job) => Log.info(s"Inventory update requested (${job.id})")
+                case o: Any => CryoError(o)
+              }
+            }
+            else
+              Log.info("Inventory update has been already requested")
+          case o: Any => CryoError(o)
+        }
+      case o: Any => Future(CryoError(o))
+    } onComplete {
+      case Success(l: Log) => log(l)
+      case Success(e) => log.error("An error has occured while updating inventory", CryoError(e))
+      case Failure(e) => log.error("An error has occured while updating inventory", CryoError(e))
+    }
+
   }
 
   def cryoReceive = {
-    case DataStatus(id, description, creationDate, status, size, checksum) =>
-      if (id == inventoryDataId && status == EntryStatus.Created)
-        cryoctx.datastore ! ReadData(inventoryDataId, 0, size.toInt)
-
-    case DataNotFoundError(id, _, _) =>
-      if (id == inventoryDataId) {
-        (cryoctx.manager ? GetJobList()) map {
-          case JobList(jl) =>
-            if (!jl.exists(_.isInstanceOf[InventoryJob]))
-              cryoctx.cryo ! RefreshInventory()
-        }
-      }
-    case DataRead(id, position, buffer) =>
-      if (id == "inventory") {
-        implicit val formats = JsonSerialization.format
-        val message = buffer.decodeString("UTF-8")
-        log.debug(s"read buffer = ${message}")
-        val inventory = Serialization.read[InventoryMessage](message)
-        date = inventory.date
-
-        for (entry <- inventory.entries) {
-          (cryoctx.datastore ? DefineData(entry.id, entry.description, entry.creationDate, entry.size, entry.checksum)) map {
-            case DataDefined(_) =>
-              if (entry.description.startsWith("Data"))
-                cryoctx.inventory ! AddArchive(entry.id)
-              else
-                cryoctx.inventory ! AddSnapshot(entry.id)
-          }
-        }
-      }
-
+    case UpdateInventoryDate(d) =>
+      date = d
+      
     case AddArchive(id) =>
       archiveIds += id
 
@@ -95,7 +120,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         case AttributePath("datastore", `inventoryDataId`, "status") =>
           CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
           if (attribute.now == EntryStatus.Created) {
-            cryoctx.datastore ! GetDataStatus(inventoryDataId)
+            reloadInventory
           }
         case AttributePath("datastore", id, attr) =>
           if (archiveIds.contains(id))
@@ -104,25 +129,26 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
       }
     case CreateArchive() =>
       val requester = sender
-      (cryoctx.datastore ? CreateData).map {
-        case DataCreated(id) =>
+      (cryoctx.datastore ? CreateData).onComplete {
+        case Success(DataCreated(id)) =>
           archiveIds += id
           requester ! ArchiveCreated(id)
-        case e: DatastoreError =>
-          requester ! new InventoryError("Error while creating a new archive", e)
+        case e: Any =>
+          requester ! new InventoryError("Error while creating a new archive", CryoError(e))
       }
 
     case CreateSnapshot() =>
       val requester = sender
-      (cryoctx.datastore ? CreateData).map {
-        case DataCreated(id) =>
+      (cryoctx.datastore ? CreateData).onComplete {
+        case Success(DataCreated(id)) =>
           val aref = context.actorOf(Props[LocalSnapshot])
           snapshots += id -> aref
           // TODO watch aref
           requester ! SnapshotCreated(id, aref)
-        case e: DatastoreError =>
-          requester ! new InventoryError("Error while creating a new snapshot", e)
+        case e: Any =>
+          requester ! new InventoryError("Error while creating a new snapshot", CryoError(e))
       }
+      
     case GetArchiveList() =>
       sender ! ArchiveIdList(archiveIds.toList)
 

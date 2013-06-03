@@ -66,7 +66,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
             case DataNotFoundError(_, _, _) =>
             case o: Any => throw new CryoError(s"Invalid data status ${o}")
           } flatMap {
-            Unit => (cryoctx.datastore ? CreateData(Some(dataId), job.description))
+            Unit => (cryoctx.datastore ? CreateData(Some(dataId), "Inventory")) //job.description))
           } map {
             case DataCreated(dataId) => log.debug(s"Data ${dataId} created, starting download")
             case o: Any => throw CryoError(o)
@@ -99,8 +99,8 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
               case Failure(e) => log.error(s"Download job ${job.id} data has failed", e)
               case Success(_) => log.info(s"Data ${dataId} downloaded")
             }
-            (cryoctx.manager ? FinalizeJob(job.id)) map {
-              case JobFinalized(_) => log.info(s"Data ${dataId} downloaded")
+            (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
+              case Success(JobFinalized(_)) => log.info(s"Data ${dataId} downloaded")
               case o: Any => log.debug("Unexpected error", CryoError(o))
             }
           }
@@ -113,8 +113,8 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
         .getJobList
         .map(Job(_))
         .toList
-      cryoctx.manager ? UpdateJobList(jobList) map {
-        case JobListUpdated(jobs) => requester ! JobListRefreshed()
+      cryoctx.manager ? UpdateJobList(jobList) onComplete {
+        case Success(JobListUpdated(jobs)) => requester ! JobListRefreshed()
         case o: Any => requester ! CryoError(o)
       }
 
@@ -134,8 +134,8 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
           new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
       } flatMap {
         case job => cryoctx.manager ? AddJobs(job)
-      } map {
-        case JobsAdded(job) => requester ! RefreshInventoryRequested(job.head.asInstanceOf[InventoryJob])
+      } onComplete {
+        case Success(JobsAdded(job)) => requester ! RefreshInventoryRequested(job.head.asInstanceOf[InventoryJob])
         case o: Any => requester ! CryoError(o)
       }
 
@@ -150,15 +150,15 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
             .withSNSTopic(snsTopicARN))).getJobId
 
       val job = new ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
-      cryoctx.manager ? AddJobs(job) map {
-        case JobsAdded(_) => requester ! DownloadArchiveRequested(job)
+      cryoctx.manager ? AddJobs(job) onComplete {
+        case Success(JobsAdded(_)) => requester ! DownloadArchiveRequested(job)
         case o: Any => requester ! CryoError(o)
       }
 
     case UploadData(id) =>
       val requester = sender
-      (cryoctx.datastore ? GetDataStatus(id)) map {
-        case DataStatus(_, _, _, status, size, checksum) if status == EntryStatus.Created =>
+      (cryoctx.datastore ? GetDataStatus(id)) onComplete {
+        case Success(DataStatus(_, _, _, status, size, checksum)) if status == EntryStatus.Created =>
           if (size < cryoctx.multipartThreshold) {
             glacier.uploadArchive(new UploadArchiveRequest()
               //.withArchiveDescription(description)

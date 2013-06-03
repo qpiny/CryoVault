@@ -3,6 +3,7 @@ package org.rejna.cryo.models
 import scala.concurrent.Promise
 import scala.collection.mutable.HashSet
 import scala.language.postfixOps
+import scala.util.Success
 
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -118,8 +119,8 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
     implicit val formats = JsonSerialization.format
     log.info("Starting manager ...")
     log.info("Refreshing job list")
-    (cryoctx.cryo ? RefreshJobList()) map {
-      case JobListRefreshed() => log.info("Job list has been refreshed")
+    (cryoctx.cryo ? RefreshJobList()) onComplete {
+      case Success(JobListRefreshed()) => log.info("Job list has been refreshed")
       case o: Any => log.error("Unexpected message", CryoError(o))
     }
     log.info("Loading finalized jobs")

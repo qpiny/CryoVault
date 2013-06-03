@@ -122,7 +122,7 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
         case JobsAdded(addedJobs) =>
           sqs.deleteMessageBatch(new DeleteMessageBatchRequest(
             queueUrl,
-            addedJobs.map(j => new DeleteMessageBatchRequestEntry(j.id, jobs(j)))))
+            addedJobs.zipWithIndex.map(j => new DeleteMessageBatchRequestEntry(j._2.toString, jobs(j._1)))))
       } onComplete {
         case Success(_) => log.info("Notification messages have been removed")
         case Failure(e) => log.info("An error has occured while removing notification message", e)

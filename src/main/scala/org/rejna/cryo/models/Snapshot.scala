@@ -110,14 +110,12 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
     }
   }
 
-  
   case class UploaderState(out: ByteStringBuilder, aid: String, len: Int)
   class ArchiveUploader {
     import ByteStringSerializer._
     var state: Future[UploaderState] = (cryoctx.datastore ? CreateArchive) map {
       case ArchiveCreated(aid) => UploaderState(new ByteStringBuilder, aid, 0)
-      case e: CryoError => throw e
-      case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+      case o: Any => throw CryoError(o)
     }
 
     def addFile(filename: String, blocks: TraversableOnce[Block]) = {
@@ -161,8 +159,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
               out.putBoolean(true)
               out.putHash(block.hash)
               UploaderState(out, aid, len + length.toInt)
-            case e: CryoError => throw e
-            case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+            case e: Any => throw CryoError(e)
           }
       }
     }
@@ -177,8 +174,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
               out.putBoolean(true)
               out.putHash(bl.hashVersion)
               Future(UploaderState(out, aid, len + block.size))
-            case e: CryoError => throw e
-            case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+            case e: Any => throw CryoError(e)
           }
       }
     }
@@ -188,8 +184,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
         case UploaderState(out, aid, len) =>
           (cryoctx.cryo ? UploadData(aid)) map {
             case DataUploaded(_) => out.result
-            case e: CryoError => throw e
-            case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+            case e: Any => throw CryoError(e)
           }
       }
     }
@@ -216,8 +211,8 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
             case CatalogContent(catalog) =>
               //out.putCatalog(catalog)
               UploaderState(out, aid, len)
+            case e: Any => throw CryoError(e)
           }
-
       }
       // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
       //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
@@ -226,43 +221,20 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
           cryoctx.datastore ? WriteData(id, bs) map {
             case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
               case DataUploaded(sid) => requester ! SnapshotUploaded(sid)
-              case e: CryoError => throw e
-              case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+              case e: Any => throw CryoError(e)
             }
-            case e: CryoError => throw e
-            case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+            case e: Any => throw CryoError(e)
           }
       }.onFailure {
         case e: CryoError => requester ! e
         case o: Any => requester ! new CryoError(s"Unexpected message: ${o}")
       }
-    //}
-    //case Failure(e) => requester ! new CryoError(s"Unexpected error", e)
-
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class RemoteSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
   def cryoReceive = {
-    case _ => 
+    case _ =>
   }
 }
 

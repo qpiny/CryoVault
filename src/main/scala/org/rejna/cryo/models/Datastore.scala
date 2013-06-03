@@ -49,10 +49,11 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
 
   override def postStop = {
     implicit val formats = JsonSerialization.format
+
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
         channel.truncate(0)
-        val repository = Serialization.write(data.map(_._2.state))
+        val repository = Serialization.write(data.map(_._2.state)) // except repository entry ?
         channel.write(ByteBuffer.wrap(repository.getBytes))
       }
     } catch {
@@ -63,14 +64,20 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   override def preStart = {
     implicit val formats = JsonSerialization.format
     try {
-      for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), READ))) {
-        val buffer = ByteBuffer.allocate(channel.size.toInt)
-        channel.read(buffer)
-        val entries = Serialization.read[List[EntryState]](buffer.asCharBuffer.toString) map {
-          case state => DataEntry(cryoctx, attributeBuilder, state)
-        }
-        data ++= entries.map(e => e.id -> e)
+      val repositoryAttributeBuilder = attributeBuilder / "repository"
+      val entry = new DataEntryCreated(
+        cryoctx,
+        "repository",
+        "repository",
+        new DateTime,
+        repositoryAttributeBuilder("status", Created),
+        repositoryAttributeBuilder("Size", 0),
+        "")
+      val content = entry.read(0, entry.size.toInt).decodeString("UTF-8")
+      val entries = Serialization.read[List[EntryState]](content) map {
+        case state => DataEntry(cryoctx, attributeBuilder, state)
       }
+      data ++= entries.map(e => e.id -> e)
     } catch {
       case e: IOException => log.warn("Repository file not found")
     }

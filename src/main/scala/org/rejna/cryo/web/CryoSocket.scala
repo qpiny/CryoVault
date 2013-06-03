@@ -1,5 +1,6 @@
 package org.rejna.cryo.web
 
+import scala.util.Success
 import scala.util.matching.Regex
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -110,8 +111,9 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
             case ds: DataStatus => Some(ds)
             case _: Any => None
           }
-      }).onSuccess {
-        case msgList => channel.send(ArchiveList(msgList.flatten))
+      }).onComplete {
+        case Success(msgList) => channel.send(ArchiveList(msgList.flatten))
+        case e: Any => log.error("Get archive list error", CryoError(e))
       }
     case SnapshotIdList(snapshots) =>
       log.debug(s"SnapshotIdList => ${snapshots} snapshot(s) found")
@@ -120,8 +122,9 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           case ds: DataStatus => Some(ds)
           case _: Any => None
         }
-      }).onSuccess {
-        case msgList => channel.send(SnapshotList(msgList.flatten.toList))
+      }).onComplete {
+        case Success(msgList) => channel.send(SnapshotList(msgList.flatten.toList))
+        case e: Any => log.error("Get snapshot list error", CryoError(e))
       }
     case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore
     case msg: CryoMessage =>

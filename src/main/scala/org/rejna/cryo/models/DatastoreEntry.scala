@@ -95,6 +95,7 @@ class DataEntryCreating(
   initSize: Long,
   entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, new DateTime, "") with LoggingClass {
 
+  override val file = cryoctx.workingDirectory.resolve(id + ".creating")
   val statusAttribute = entryAttributeBuilder("status", Creating)
   val sizeAttribute = entryAttributeBuilder("size", initSize)
 
@@ -142,6 +143,7 @@ class DataEntryCreating(
     log.debug(s"Closing ${id} size = ${Files.size(file)}")
     if (blockSize > 0)
       checksums += digest.digest
+    Files.move(file, cryoctx.workingDirectory.resolve(id))
     new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
   }
 }
@@ -156,6 +158,8 @@ class DataEntryCreated(
   checksum: String) extends DataEntry(cryoctx, id, description, creationDate, checksum) with LoggingClass {
 
   status = Created
+  if (size == 0)
+    size = Files.size(file)
   val channel = FileChannel.open(file, READ)
 
   def read(position: Long, length: Int) = {
@@ -182,6 +186,7 @@ class DataEntryLoading(
   checksum: String,
   entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
 
+  override val file = cryoctx.workingDirectory.resolve(id + ".loading")
   val statusAttribute = entryAttributeBuilder("status", Loading)
   val sizeAttribute = entryAttributeBuilder("size", 0L)
   val channel = FileChannel.open(file, WRITE, CREATE)
@@ -199,6 +204,7 @@ class DataEntryLoading(
 
   def close: DataEntryCreated = {
     channel.close
+    Files.move(file, cryoctx.workingDirectory.resolve(id))
     new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, checksum)
   }
 

@@ -1,5 +1,7 @@
 package org.rejna.cryo.models
 
+import scala.language.implicitConversions
+
 import akka.actor.{ Actor, ActorContext }
 
 import org.slf4j.{ Marker, LoggerFactory }
@@ -17,6 +19,12 @@ object Log {
 
   def getLogger(clazz: Class[_]) = LoggerFactory.getLogger(clazz)
 
+  def trace(message: String) = Log(Level.TRACE, "", message)
+  def debug(message: String) = Log(Level.DEBUG, "", message)
+  def info(message: String) = Log(Level.INFO, "", message)
+  def warn(message: String) = Log(Level.WARN, "", message)
+  def error(message: String) = Log(Level.ERROR, "", message)
+
   val levelToPath = Map(
     Level.ALL -> "/log",
     Level.TRACE -> "/log/trace",
@@ -28,6 +36,16 @@ object Log {
 
 trait LoggingClass {
   lazy implicit val log = Log.getLogger(this.getClass)
+  implicit def l2rl(l: org.slf4j.Logger) = RichLog(l)
+  case class RichLog(log: org.slf4j.Logger) {
+    def apply(l: Log) = l.level match {
+      case Level.TRACE => log.trace(l.message)
+      case Level.DEBUG => log.debug(l.message)
+      case Level.INFO => log.info(l.message)
+      case Level.WARN => log.warn(l.message)
+      case Level.ERROR => log.error(l.message)
+    }
+  }
 }
 
 object LogDispatcher extends TurboFilter {
