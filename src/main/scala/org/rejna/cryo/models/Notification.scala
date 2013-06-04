@@ -94,23 +94,27 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   }
 
   override def preStart = {
-    // Remove previous messages
-    log.debug("request message from queue")
-    val oldMessageList = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages.distinct map {
-      case message =>
-        log.debug(s"Message in queue : ${message.getMessageId} / ${message.getReceiptHandle}")
-        new DeleteMessageBatchRequestEntry(message.getMessageId, message.getReceiptHandle)
-    }
-    log.debug("request message from queue done")
-    if (oldMessageList.size > 0)
-      sqs.deleteMessageBatch(new DeleteMessageBatchRequest(queueUrl, oldMessageList))
+    removeMessage(getMessages.map(_.getReceiptHandle))
     context.system.scheduler.schedule(0 second, cryoctx.queueRequestInterval, self, GetNotification())(context.system.dispatcher)
-    log.debug("Notification actor is ready")
   }
 
+  def getMessages = {
+    sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages
+  }
+
+  def removeMessage(receiptHandles: Iterable[String]) = {
+    if (!receiptHandles.isEmpty) {
+      log.debug("Remove message from queue")
+      val request = receiptHandles.zipWithIndex map {
+        case (receiptHandle, i) => new DeleteMessageBatchRequestEntry(i.toString, receiptHandle)
+      }
+      sqs.deleteMessageBatch(new DeleteMessageBatchRequest(queueUrl, request.toList))
+    }
+
+  }
   def cryoReceive = {
     case GetNotification() =>
-      val jobs = sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages map {
+      val jobsReceipt = getMessages map {
         case message =>
           val body = message.getBody
           log.debug("Receive notification message :" + message)
@@ -118,11 +122,9 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
           Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
       } toMap
 
-      cryoctx.manager ? AddJobs(jobs.keySet.toList) map {
+      cryoctx.manager ? AddJobs(jobsReceipt.keySet.toList) map {
         case JobsAdded(addedJobs) =>
-          sqs.deleteMessageBatch(new DeleteMessageBatchRequest(
-            queueUrl,
-            addedJobs.zipWithIndex.map(j => new DeleteMessageBatchRequestEntry(j._2.toString, jobs(j._1)))))
+          removeMessage(addedJobs.map(jobsReceipt))
       } onComplete {
         case Success(_) => log.info("Notification messages have been removed")
         case Failure(e) => log.info("An error has occured while removing notification message", e)

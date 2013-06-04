@@ -115,7 +115,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
     import ByteStringSerializer._
     var state: Future[UploaderState] = (cryoctx.datastore ? CreateArchive) map {
       case ArchiveCreated(aid) => UploaderState(new ByteStringBuilder, aid, 0)
-      case o: Any => throw CryoError(o)
+      case o: Any => throw CryoError("Fail to create data", o)
     }
 
     def addFile(filename: String, blocks: TraversableOnce[Block]) = {
@@ -159,7 +159,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
               out.putBoolean(true)
               out.putHash(block.hash)
               UploaderState(out, aid, len + length.toInt)
-            case e: Any => throw CryoError(e)
+            case e: Any => throw CryoError("Fail to write data", e)
           }
       }
     }
@@ -174,7 +174,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
               out.putBoolean(true)
               out.putHash(bl.hashVersion)
               Future(UploaderState(out, aid, len + block.size))
-            case e: Any => throw CryoError(e)
+            case e: Any => throw CryoError("Fail to get block location", e)
           }
       }
     }
@@ -184,7 +184,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
         case UploaderState(out, aid, len) =>
           (cryoctx.cryo ? UploadData(aid)) map {
             case DataUploaded(_) => out.result
-            case e: Any => throw CryoError(e)
+            case e: Any => throw CryoError("Fail to upload data", e)
           }
       }
     }
@@ -211,7 +211,7 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
             case CatalogContent(catalog) =>
               //out.putCatalog(catalog)
               UploaderState(out, aid, len)
-            case e: Any => throw CryoError(e)
+            case e: Any => throw CryoError("Fail to get block location", e)
           }
       }
       // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
@@ -221,13 +221,13 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
           cryoctx.datastore ? WriteData(id, bs) map {
             case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
               case DataUploaded(sid) => requester ! SnapshotUploaded(sid)
-              case e: Any => throw CryoError(e)
+              case e: Any => throw CryoError("Fail to upload data", e)
             }
-            case e: Any => throw CryoError(e)
+            case e: Any => throw CryoError("Fail to write data", e)
           }
       }.onFailure {
         case e: CryoError => requester ! e
-        case o: Any => requester ! new CryoError(s"Unexpected message: ${o}")
+        case o: Any => requester ! CryoError("Unexpected message", o)
       }
   }
 }

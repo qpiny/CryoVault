@@ -42,7 +42,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
   glacier.setEndpoint("glacier." + cryoctx.region + ".amazonaws.com/")
   val futureSnsTopicARN = (cryoctx.notification ? GetNotificationARN()) map {
     case NotificationARN(arn) => arn
-    case e: Any => throw CryoError(e)
+    case e: Any => throw CryoError("Fail to get notification ARN", e)
   }
   lazy val snsTopicARN = Await.result(futureSnsTopicARN, 10 seconds)
 
@@ -66,43 +66,48 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
             case DataNotFoundError(_, _, _) =>
             case o: Any => throw new CryoError(s"Invalid data status ${o}")
           } flatMap {
-            Unit => (cryoctx.datastore ? CreateData(Some(dataId), "Inventory")) //job.description))
+            Unit => (cryoctx.datastore ? CreateData(Some(dataId), job.description))
           } map {
             case DataCreated(dataId) => log.debug(s"Data ${dataId} created, starting download")
-            case o: Any => throw CryoError(o)
+            case o: Any => throw CryoError(s"Fail to create data ${dataId}", o)
           }
-          for (
-            input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
-              .withJobId(job.id)
-              .withVaultName(cryoctx.vaultName)).getBody)
-          ) {
-            val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
-            Iterator.continually(input.read(buffer))
-              .takeWhile(_ != -1)
-              .foreach { nRead =>
-                transfer = transfer.flatMap { Unit =>
-                  (cryoctx.datastore ? WriteData(dataId, -1, ByteString.fromArray(buffer, 0, nRead))) map {
-                    case DataWritten(_, _, s) => log.debug(s"${s} bytes written in ${dataId}")
-                    case o: Any => throw CryoError(o)
+          try {
+            for (
+              input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
+                .withJobId(job.id)
+                .withVaultName(cryoctx.vaultName)).getBody)
+            ) {
+              val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
+              Iterator.continually(input.read(buffer))
+                .takeWhile(_ != -1)
+                .foreach { nRead =>
+                  transfer = transfer.flatMap { Unit =>
+                    (cryoctx.datastore ? WriteData(dataId, -1, ByteString.fromArray(buffer, 0, nRead))) map {
+                      case DataWritten(_, _, s) => log.debug(s"${s} bytes written in ${dataId}")
+                      case o: Any => throw CryoError(s"Fail to write data ${dataId}", o)
+                    }
                   }
                 }
-              }
-          }
+            }
 
-          transfer flatMap {
-            Unit => (cryoctx.datastore ? CloseData(dataId))
-          } map {
-            case DataClosed(id) =>
-            case o => throw CryoError(o)
-          } onComplete { t =>
-            t match {
-              case Failure(e) => log.error(s"Download job ${job.id} data has failed", e)
-              case Success(_) => log.info(s"Data ${dataId} downloaded")
+            transfer flatMap {
+              Unit => (cryoctx.datastore ? CloseData(dataId))
+            } map {
+              case DataClosed(id) =>
+              case o => throw CryoError(s"Fail to close data ${dataId}", o)
+            } onComplete { t =>
+              t match {
+                case Failure(e) => log.error(s"Download job ${job.id} data has failed", e)
+                case Success(_) => log.info(s"Data ${dataId} downloaded")
+              }
             }
-            (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
-              case Success(JobFinalized(_)) => log.info(s"Data ${dataId} downloaded")
-              case o: Any => log.debug("Unexpected error", CryoError(o))
-            }
+          } catch {
+            case rnfe: ResourceNotFoundException => log.warn(s"Job ${job.id} is outdated. It can't be downloaded")
+            case t: Throwable => log.error(s"Fail to download job ${job.id}", t)
+          }
+          (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
+            case Success(JobFinalized(_)) => log.info(s"Data ${dataId} download job finalized")
+            case o: Any => log.error(CryoError(s"Fail to finalize data ${dataId}", o))
           }
       }
 
@@ -115,7 +120,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
         .toList
       cryoctx.manager ? UpdateJobList(jobList) onComplete {
         case Success(JobListUpdated(jobs)) => requester ! JobListRefreshed()
-        case o: Any => requester ! CryoError(o)
+        case o: Any => requester ! CryoError("Fail to update job list", o)
       }
 
     case RefreshInventory() =>
@@ -136,7 +141,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
         case job => cryoctx.manager ? AddJobs(job)
       } onComplete {
         case Success(JobsAdded(job)) => requester ! RefreshInventoryRequested(job.head.asInstanceOf[InventoryJob])
-        case o: Any => requester ! CryoError(o)
+        case o: Any => requester ! CryoError("Fail to add refresh inventory job", o)
       }
 
     case DownloadArchive(archiveId) =>
@@ -152,7 +157,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
       val job = new ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
       cryoctx.manager ? AddJobs(job) onComplete {
         case Success(JobsAdded(_)) => requester ! DownloadArchiveRequested(job)
-        case o: Any => requester ! CryoError(o)
+        case o: Any => requester ! CryoError("Fail to add download archive job", o)
       }
 
     case UploadData(id) =>
@@ -187,7 +192,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
               .withUploadId(uploadId)).getArchiveId
           }
           requester ! DataUploaded(id)
-        case o: Any => requester ! CryoError(o)
+        case o: Any => requester ! CryoError(s"Upload error : fail to get status of data ${id}", o)
       }
   }
 }

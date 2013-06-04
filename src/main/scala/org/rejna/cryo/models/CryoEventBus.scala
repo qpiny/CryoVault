@@ -15,12 +15,12 @@ abstract class Request extends CryoMessage
 abstract class Response extends CryoMessage
 class CryoError(message: String, cause: Throwable = null) extends Exception(message, cause) with CryoMessage
 object CryoError {
-  def apply(a: Any): CryoError = a match {
-    case e: CryoError => e
-    case Failure(e) => CryoError(e)
-    case Success(e) => CryoError(e)
-    case e: Throwable => new CryoError("Unexpected error", e)
-    case e: Any => new CryoError(s"Unexpected message: ${e}")
+  def apply(message: String, a: Any): CryoError = a match {
+    //case e: CryoError => e
+    case Failure(e) => CryoError(s"${message}: failure", e)
+    case Success(e) => CryoError(s"${message}: success", e)
+    case e: Throwable => new CryoError(message, e)
+    case e: Any => new CryoError(s"${message}: unexpected message: ${e}")
   }
 }
 

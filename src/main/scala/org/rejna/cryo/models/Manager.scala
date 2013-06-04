@@ -3,7 +3,7 @@ package org.rejna.cryo.models
 import scala.concurrent.Promise
 import scala.collection.mutable.HashSet
 import scala.language.postfixOps
-import scala.util.Success
+import scala.util.{ Success, Failure }
 
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -121,19 +121,26 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
     log.info("Refreshing job list")
     (cryoctx.cryo ? RefreshJobList()) onComplete {
       case Success(JobListRefreshed()) => log.info("Job list has been refreshed")
-      case o: Any => log.error("Unexpected message", CryoError(o))
+      case o: Any => log.error(CryoError("Fail to refresh job list", o))
     }
-    log.info("Loading finalized jobs")
-    try {
-      for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("finalizedJobs"), READ))) {
-        val buffer = ByteBuffer.allocate(channel.size.toInt)
-        channel.read(buffer)
-        finalizedJobs ++= Serialization.read[List[String]](buffer.asCharBuffer.toString)
-      }
-    } catch {
-      case e: IOException => log.warn("finalizedJobs file not found")
+    
+    (cryoctx.datastore ? GetDataStatus("finalizedJobs")) flatMap {
+      case DataStatus(id, _, _, status, size, _) if status == EntryStatus.Created && size > 0 =>
+        (cryoctx.datastore ? ReadData(id, 0, size.toInt))
+      case dnfe: DataNotFoundError => throw dnfe 
+      case o: Any =>
+        throw CryoError("Fail to get finalizedJobs", o)
+    } map {
+      case DataRead(_, _, buffer) =>
+        finalizedJobs ++= Serialization.read[List[String]](buffer.decodeString("UTF-8"))
+      case o: Any =>
+        throw CryoError("Fail to read finalizedJobs", o)
+    } onComplete {
+      case Success(_) => log.info("Finalized jobs loaded")
+      case Failure(DataNotFoundError(_, _, _)) => log.info("Finalized jobs not found")
+      case Failure(e) => log.error("Fail to load Finalized jobs", e)
     }
-    log.info("Finalized jobs loaded")
+    
   }
 
   def cryoReceive = {

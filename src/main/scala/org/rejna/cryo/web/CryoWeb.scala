@@ -29,6 +29,7 @@ object CryoWeb extends App with LoggingClass {
     case HttpRequest(request) => request match {
       case GET(Path("/exit")) =>
         log.info("Stopping Cryo")
+        request.response.write(HttpResponseStatus.ACCEPTED, "Shutting down cryo ...")
         cryoctx.shutdown
       case GET(Path("/")) =>
         staticHandler ! new StaticResourceRequest(request, "webapp/glacier.html")

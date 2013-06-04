@@ -74,32 +74,29 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
                     else
                       cryoctx.inventory ! AddSnapshot(entry.id)
                   case o =>
-                    log.error("Unexpected message from datastore : ", CryoError(o))
+                    throw CryoError(s"Fail to define archive data ${entry.id}", o)
                 }
               }
-              Log.info("Inventory updated")
-            case o: Any => CryoError(o)
+              log.info("Inventory updated")
+            case o: Any => throw CryoError("Fail to read inventory data", o)
           }
         } else
-          Future(Log.info("Waiting for inventory download completion"))
+          Future(log.info("Waiting for inventory download completion"))
       case DataNotFoundError(id, _, _) =>
-        (cryoctx.manager ? GetJobList()) map {
+        (cryoctx.manager ? GetJobList()) flatMap {
           case JobList(jl) =>
             if (!jl.exists(_.isInstanceOf[InventoryJob])) {
               (cryoctx.cryo ? RefreshInventory()) map {
-                case RefreshInventoryRequested(job) => Log.info(s"Inventory update requested (${job.id})")
-                case o: Any => CryoError(o)
+                case RefreshInventoryRequested(job) => log.info(s"Inventory update requested (${job.id})")
+                case o: Any => throw CryoError("Fail to refresh inventory", o)
               }
-            }
-            else
-              Log.info("Inventory update has been already requested")
-          case o: Any => CryoError(o)
+            } else
+              Future(log.info("Inventory update has been already requested"))
+          case o: Any => throw CryoError("Fail to get job list", o)
         }
-      case o: Any => Future(CryoError(o))
-    } onComplete {
-      case Success(l: Log) => log(l)
-      case Success(e) => log.error("An error has occured while updating inventory", CryoError(e))
-      case Failure(e) => log.error("An error has occured while updating inventory", CryoError(e))
+      case o: Any => throw CryoError("Fail to get inventory status", o)
+    } onFailure {
+      case t => log.error(CryoError("An error has occured while updating inventory", t))
     }
 
   }
@@ -107,7 +104,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   def cryoReceive = {
     case UpdateInventoryDate(d) =>
       date = d
-      
+
     case AddArchive(id) =>
       archiveIds += id
 
@@ -134,7 +131,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
           archiveIds += id
           requester ! ArchiveCreated(id)
         case e: Any =>
-          requester ! new InventoryError("Error while creating a new archive", CryoError(e))
+          requester ! CryoError("Error while creating a new archive", e)
       }
 
     case CreateSnapshot() =>
@@ -146,9 +143,9 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
           // TODO watch aref
           requester ! SnapshotCreated(id, aref)
         case e: Any =>
-          requester ! new InventoryError("Error while creating a new snapshot", CryoError(e))
+          requester ! CryoError("Error while creating a new snapshot", e)
       }
-      
+
     case GetArchiveList() =>
       sender ! ArchiveIdList(archiveIds.toList)
 

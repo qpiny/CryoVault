@@ -45,6 +45,12 @@ trait LoggingClass {
       case Level.WARN => log.warn(l.message)
       case Level.ERROR => log.error(l.message)
     }
+    def trace(e: CryoError) = log.trace(e.getMessage, e.getCause) 
+    def debug(e: CryoError) = log.debug(e.getMessage, e.getCause)
+    def info(e: CryoError) = log.info(e.getMessage, e.getCause)
+    def warn(e: CryoError) = log.warn(e.getMessage, e.getCause)
+    def error(e: CryoError) = log.error(e.getMessage, e.getCause)
+    
   }
 }
 

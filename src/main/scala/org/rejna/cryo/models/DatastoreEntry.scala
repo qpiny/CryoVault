@@ -7,6 +7,7 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption._
+import java.nio.file.StandardCopyOption._
 import java.nio.channels.FileChannel
 import java.security.MessageDigest
 
@@ -69,6 +70,8 @@ object DataEntry {
           state.size,
           state.checksum,
           entryAttributeBuilder)
+      case e =>
+        throw new CryoError(s"Unsupported data entry status ${e}")
     }
   }
 }
@@ -143,7 +146,7 @@ class DataEntryCreating(
     log.debug(s"Closing ${id} size = ${Files.size(file)}")
     if (blockSize > 0)
       checksums += digest.digest
-    Files.move(file, cryoctx.workingDirectory.resolve(id))
+    Files.move(file, cryoctx.workingDirectory.resolve(id), REPLACE_EXISTING)
     new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
   }
 }
@@ -204,7 +207,7 @@ class DataEntryLoading(
 
   def close: DataEntryCreated = {
     channel.close
-    Files.move(file, cryoctx.workingDirectory.resolve(id))
+    Files.move(file, cryoctx.workingDirectory.resolve(id), REPLACE_EXISTING)
     new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, checksum)
   }
 

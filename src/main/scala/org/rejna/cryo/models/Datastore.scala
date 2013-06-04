@@ -53,8 +53,10 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
         channel.truncate(0)
-        val repository = Serialization.write(data.map(_._2.state)) // except repository entry ?
-        channel.write(ByteBuffer.wrap(repository.getBytes))
+        val repository = data.values
+          .filter { d => d.status == Created || d.status == Remote }
+          .map { _.state }
+        channel.write(ByteBuffer.wrap(Serialization.write(repository).getBytes))
       }
     } catch {
       case t: Throwable => println(s"Datastore has failed to store its state", t)
@@ -64,22 +66,20 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   override def preStart = {
     implicit val formats = JsonSerialization.format
     try {
-      val repositoryAttributeBuilder = attributeBuilder / "repository"
-      val entry = new DataEntryCreated(
-        cryoctx,
-        "repository",
-        "repository",
-        new DateTime,
-        repositoryAttributeBuilder("status", Created),
-        repositoryAttributeBuilder("Size", 0),
-        "")
-      val content = entry.read(0, entry.size.toInt).decodeString("UTF-8")
-      val entries = Serialization.read[List[EntryState]](content) map {
-        case state => DataEntry(cryoctx, attributeBuilder, state)
+      for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), READ))) {
+        val buffer = ByteBuffer.allocate(channel.size.toInt)
+        channel.read(buffer)
+        val repository = new String(buffer.array, "UTF-8")
+        log.debug("Repository: " + repository)
+        val entries = Serialization.read[List[EntryState]](repository) map {
+          case state => DataEntry(cryoctx, attributeBuilder, state)
+        }
+        data ++= entries.map(e => e.id -> e)
+        log.info("Repository loaded : " + entries.map(_.id).mkString(","))
       }
-      data ++= entries.map(e => e.id -> e)
     } catch {
       case e: IOException => log.warn("Repository file not found")
+      case t: Throwable => log.error("Repository load failed", t)
     }
   }
 

@@ -113,7 +113,7 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           }
       }).onComplete {
         case Success(msgList) => channel.send(ArchiveList(msgList.flatten))
-        case e: Any => log.error("Get archive list error", CryoError(e))
+        case e: Any => log.error(CryoError("Get archive list error", e))
       }
     case SnapshotIdList(snapshots) =>
       log.debug(s"SnapshotIdList => ${snapshots} snapshot(s) found")
@@ -124,7 +124,7 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
         }
       }).onComplete {
         case Success(msgList) => channel.send(SnapshotList(msgList.flatten.toList))
-        case e: Any => log.error("Get snapshot list error", CryoError(e))
+        case e: Any => log.error(CryoError("Get snapshot list error", e))
       }
     case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore
     case msg: CryoMessage =>

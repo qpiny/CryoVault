@@ -44,9 +44,9 @@ trait CryoActor extends Actor with LoggingClass {
         log.debug(s"Message ${o} has been successfully handled")
       } catch {
         case t: Throwable =>
-          val e = CryoError(t)
+          val e = CryoError(s"Message ${o} has generated an exception", t)
           sender ! e
-          log.error(s"Message ${o} has generated an exception", e)
+          log.error(e)
       }
     }
   }
