@@ -104,30 +104,40 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
 
   def removeMessage(receiptHandles: Iterable[String]) = {
     if (!receiptHandles.isEmpty) {
-      log.debug("Remove message from queue")
+      log.debug(s"Remove ${receiptHandles.size} message(s) from queue")
       val request = receiptHandles.zipWithIndex map {
         case (receiptHandle, i) => new DeleteMessageBatchRequestEntry(i.toString, receiptHandle)
       }
-      sqs.deleteMessageBatch(new DeleteMessageBatchRequest(queueUrl, request.toList))
+      val response = sqs.deleteMessageBatch(new DeleteMessageBatchRequest(queueUrl, request.toList))
+      for (failure <- response.getFailed)
+        log.debug(s"Fail to remove message ${failure.getId}: ${failure.getCode} ${failure.getMessage} (${if (failure.isSenderFault) "client" else "server"} fault")
+      for (success <- response.getSuccessful)
+        log.debug(s"Message ${success.getId} has been successfully removed")
     }
 
   }
   def cryoReceive = {
     case GetNotification() =>
-      val jobsReceipt = getMessages map {
-        case message =>
-          val body = message.getBody
-          log.debug("Receive notification message :" + message)
-          val notificationMessage = Serialization.read[NotificationMessage](body)
-          Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
-      } toMap
+      val messages = getMessages.distinct
+      log.debug(s"${messages.size} message(s) read from SQS")
+      if (!messages.isEmpty) {
+        val jobsReceipt = messages map {
+          case message =>
+            val body = message.getBody
+            log.debug("Receive notification message :" + message)
+            val notificationMessage = Serialization.read[NotificationMessage](body)
+            Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
+        } toMap
 
-      cryoctx.manager ? AddJobs(jobsReceipt.keySet.toList) map {
-        case JobsAdded(addedJobs) =>
-          removeMessage(addedJobs.map(jobsReceipt))
-      } onComplete {
-        case Success(_) => log.info("Notification messages have been removed")
-        case Failure(e) => log.info("An error has occured while removing notification message", e)
+        log.debug("Creating jobs for each message")
+        cryoctx.manager ? AddJobs(jobsReceipt.keySet.toList) map {
+          case JobsAdded(addedJobs) =>
+            removeMessage(addedJobs.map(jobsReceipt))
+          case o: Any => throw CryoError("Fail to add job", o)
+        } onComplete {
+          case Success(_) => log.info("Notification messages have been removed")
+          case Failure(e) => log.info("An error has occured while removing notification message", e)
+        }
       }
 
     case GetNotificationARN() =>

@@ -228,7 +228,7 @@ $ =>
 			@subscribe('/cryo/Data')
 			@subscribe('/cryo/inventory')
 			@subscribe('/cryo/manager')
-			@subscribe('/log')
+			@subscribe('/log/trace/debug/info')
 			@addIgnoreSubscription('#files$')
 			@getSnapshotList()
 			

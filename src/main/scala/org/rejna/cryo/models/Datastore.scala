@@ -91,8 +91,17 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
         while (data contains i)
         i
       }
-      data += id -> new DataEntryCreating(cryoctx, id, description, size, attributeBuilder / id)
-      sender ! DataCreated(id)
+      data.get(id) match {
+        case Some(d: DataEntryCreated) =>
+          d.close
+          data += id -> new DataEntryCreating(cryoctx, id, description, size, attributeBuilder / id)
+          sender ! DataCreated(id)
+        case None =>
+          data += id -> new DataEntryCreating(cryoctx, id, description, size, attributeBuilder / id)
+          sender ! DataCreated(id)
+        case Some(d) =>
+          sender ! OpenError(s"Data ${id} can't be created (${d.status})")
+      }
 
     case DefineData(id, description, creationDate, size, checksum) =>
       data.get(id) match {
