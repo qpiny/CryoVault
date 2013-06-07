@@ -53,27 +53,36 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
     CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
     reloadInventory
   }
-  
+
   override def postStop = {
-    
+
   }
 
-//  def saveInventory = {
-//    cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
-//      case DataCreated(id) =>
-//        val a = Future.sequence((snapshots.keys ++ archiveIds) map {
-//          case aid => cryoctx.datastore ? GetDataStatus(aid)
-//        })
-//        a map _.map { }
-//        flatMap {
-//          case a => 
-//        }
-//        val data = //("VaultARN" -> ??) ~
-//          ("InventoryDate" -> date) ~
-//          ("ArchiveList" -> )
-//        cryoctx.datastore ? WriteData(id, ByteString((Serialization.write())))
-//    }
-//  }
+  def saveInventory = {
+    cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
+      case DataCreated(id) =>
+        val a = Future.sequence((snapshots.keys ++ archiveIds) map {
+          case aid => cryoctx.datastore ? GetDataStatus(aid)
+        })
+        a flatMap {
+          case list => list.map {
+            e: DataStatus =>
+              ("ArchiveId" -> e.id) ~
+                ("ArchiveDescription" -> e.description) ~
+                ("CreationDate" -> e.creationDate) ~
+                ("Size" -> e.size) ~
+                ("SHA256TreeHash" -> e.checksum)
+          }
+        }
+        flatMap {
+          case a =>
+        }
+        val data = //("VaultARN" -> ??) ~
+          ("InventoryDate" -> date) ~
+            ("ArchiveList" ->)
+        cryoctx.datastore ? WriteData(id, ByteString((Serialization.write())))
+    }
+  }
   def loadInventory(size: Long) = {
     implicit val formats = JsonSerialization
     cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
