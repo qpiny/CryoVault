@@ -9,14 +9,43 @@ import org.joda.time.format.DateTimeFormatterBuilder
 
 import EntryStatus._
 
-object JsonSerialization {
-  val format = Serialization.formats(NoTypeHints) +
-    JsonJobSerialization +
-    JsonNotificationSerialization +
-    JsonInventoryEntrySerialization +
-    JsonInventorySerialization +
-    new EnumSerializer(EntryStatus) +
-    JsonDateTimeSerialization
+object JsonSerialization extends Formats {
+  override val customSerializers =
+    JsonJobSerialization ::
+      JsonNotificationSerialization ::
+      JsonInventoryEntrySerialization ::
+      JsonInventorySerialization ::
+      new EnumSerializer(EntryStatus) ::
+      JsonDateTimeSerialization ::
+      Nil
+  val fractionOfSecondFormat = new DateTimeFormatterBuilder()
+    .appendLiteral('.')
+    .appendFractionOfSecond(2, 9)
+    .toParser()
+  val jodaDateFormat = new DateTimeFormatterBuilder()
+    .appendYear(4, 9)
+    .appendLiteral('-')
+    .appendMonthOfYear(2)
+    .appendLiteral('-')
+    .appendDayOfMonth(2)
+    .appendLiteral('T')
+    .appendHourOfDay(2)
+    .appendLiteral(':')
+    .appendMinuteOfHour(2)
+    .appendLiteral(':')
+    .appendSecondOfMinute(2)
+    .appendOptional(fractionOfSecondFormat)
+    .appendTimeZoneOffset("Z", true, 2, 4)
+    .toFormatter()
+
+  val dateFormat = new DateFormat {
+    def parse(s: String) = try {
+      Some(jodaDateFormat.parseDateTime(s).toDate)
+    } catch {
+      case t: Throwable => None
+    }
+    def format(d: java.util.Date): String = jodaDateFormat.print(new DateTime(d))
+  }
 }
 
 object JsonJobSerialization extends Serializer[Job] with LoggingClass {
@@ -128,41 +157,46 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] with Logg
 
 object JsonDateTimeSerialization extends Serializer[DateTime] with LoggingClass {
   val DateTimeClass = classOf[DateTime]
-  val fractionOfSecondFormat = new DateTimeFormatterBuilder()
-    .appendLiteral('.')
-    .appendFractionOfSecond(2, 9)
-    .toParser()
-  val dateFormat = new DateTimeFormatterBuilder()
-    .appendYear(4, 9)
-    .appendLiteral('-')
-    .appendMonthOfYear(2)
-    .appendLiteral('-')
-    .appendDayOfMonth(2)
-    .appendLiteral('T')
-    .appendHourOfDay(2)
-    .appendLiteral(':')
-    .appendMinuteOfHour(2)
-    .appendLiteral(':')
-    .appendSecondOfMinute(2)
-    .appendOptional(fractionOfSecondFormat)
-    .appendTimeZoneOffset("Z", true, 2, 4)
-    .toFormatter()
 
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), DateTime] = {
     case (TypeInfo(DateTimeClass, _), json) =>
       json match {
-        case s: JString => dateFormat.parseDateTime(s.values)
+        case s: JString => JsonSerialization.jodaDateFormat.parseDateTime(s.values)
         case _: Any => throw new MappingException(s"Can't convert DataTime from ${json}")
       }
   }
 
-  def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {
-    def isDefinedAt(a: Any) = a.isInstanceOf[DateTime]
-    def apply(a: Any) = a match {
-      case dt: DateTime => JString(dateFormat.print(dt))
-    }
+  def serialize(implicit format: Formats) = { //new PartialFunction[Any, JValue] {
+//    def isDefinedAt(a: Any) = a.isInstanceOf[DateTime]
+//    def apply(a: Any) = a match {
+      case dt: DateTime => JString(JsonSerialization.jodaDateFormat.print(dt))
+//    }
   }
 }
+
+object JsonDataStatusSerialization extends Serializer[DataStatus] {
+  val DataStatusClass = classOf[DataStatus]
+  
+  def deserialize(implicit format: Formats) = new PartialFunction[(TypeInfo, JValue), DataStatus] {
+    def isDefinedAt(a: (TypeInfo, JValue)) = false
+    def apply(a: (TypeInfo, JValue)) = null
+  }
+  
+  def serialize(implicit format: Formats) = {
+    case ds: DataStatus =>
+      ("id" -> ds.id) ~
+      ("description" -> ds.description) ~
+      ("creationDate" -> Extraction.decompose(ds.creationDate)) ~
+      ("checksum" -> ds.checksum) ~
+      ("size" -> ds.size) ~
+      ("status" -> Extraction.decompose(ds.status))
+  }
+}
+
+//=>"{\"type\":\"SnapshotList\",\"snapshots\":[" +
+//		"{\"id\":\"CP6-biSqTKya2U7tMOgBL-wO_AunwkURiqMcdXtYg1szqtxL8QHtlDVQlL-cX1Co-5YOEhUO8pfTAx9lVZiz-swZ-pGstAgFAm6Ag2Dmci93f1YHKmwaQWrxTuHV9wqoczKc_lNlAg\"," +
+//		"\"description\":\"Index-2013-05-15T22:03:04+02:00\"," +
+//		"\"creationDate\":{},\"status\":{\"name\":null},\"size\":1040648,\"checksum\":\"1839a063dbe16b913c21e2568315bd324541a93b419552c3ad9b2c11ec1aef68\"},{\"id\":\"NTGTdpaFplQJXa6JZhNh-sm35_ADbnZdf9maGwwmHbokjFB0CO-3DLsynfVjyrmuqHw0takd-DPD-uKn8Z6FRFXnji7o70FgqveDl_O1r4aO42hLLwZkZhhxNtfTbygjgJZ_G97LFg\",\"description\":\"Index-2013-05-15T22:15:43+02:00\",\"creationDate\":{},\"status\":{\"name\":null},\"size\":821552,\"checksum\":\"e25217d32ffbef95eb66cf8adbdc5bda1648424cba295e8d090a021acdbf6fff\"}]}"
 
 /*
 

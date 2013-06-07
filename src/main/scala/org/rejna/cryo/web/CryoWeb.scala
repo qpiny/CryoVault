@@ -52,7 +52,7 @@ object CryoWeb extends App with LoggingClass {
     log.info("Unregister websocket connection")
     wsHandlers.get(channel) match {
       case Some(aref) =>
-        //aref ! PoisonPill
+        aref ! PoisonPill
         wsHandlers -= channel
       case None =>
         log.warn("Should not happen")

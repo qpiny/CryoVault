@@ -10,6 +10,8 @@ import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption._
 import java.nio.ByteBuffer
 
+import akka.util.ByteString
+
 import com.amazonaws.services.glacier.model.GlacierJobDescription
 import resource.managed
 import org.joda.time.DateTime
@@ -28,9 +30,9 @@ sealed class JobStatus(message: String) {
   val isSucceeded = false
   val isFailed = false
 }
-case class InProgress(message: String) extends JobStatus(message) { override val isInProgress = true}
-case class Succeeded(message: String) extends JobStatus(message) { override val isSucceeded = true}
-case class Failed(message: String) extends JobStatus(message) { override val isFailed = true}
+case class InProgress(message: String) extends JobStatus(message) { override val isInProgress = true }
+case class Succeeded(message: String) extends JobStatus(message) { override val isSucceeded = true }
+case class Failed(message: String) extends JobStatus(message) { override val isFailed = true }
 
 sealed abstract class Job {
   val id: String
@@ -107,27 +109,37 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
   val finalizedJobs = HashSet.empty[String]
   val jobUpdated = Promise[Unit]()
 
-  
   override def postStop = {
-    implicit val formats = JsonSerialization.format
-    for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("finalizedJobs"), WRITE, CREATE))) {
-      channel.truncate(0)
-      channel.write(ByteBuffer.wrap(Serialization.write(finalizedJobs).getBytes))
+    implicit val formats = JsonSerialization
+    cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
+      case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs))))
+      case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
+    } flatMap {
+      case DataWritten(id, _, _) => cryoctx.datastore ? CloseData(id)
+      case o: Any => throw CryoError("Fail to write finalizedJobs data", o)
+    } onComplete {
+      case Success(DataClosed(_)) => log.info("FinalizedJobs data has been stored")
+      case o: Any => log.error("Fail to save finalized jobs", o)
     }
+
+    //    for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("finalizedJobs"), WRITE, CREATE))) {
+    //      channel.truncate(0)
+    //      channel.write(ByteBuffer.wrap(Serialization.write(finalizedJobs).getBytes))
+    //    }
   }
   override def preStart = {
-    implicit val formats = JsonSerialization.format
+    implicit val formats = JsonSerialization
     log.info("Starting manager ...")
     log.info("Refreshing job list")
     (cryoctx.cryo ? RefreshJobList()) onComplete {
       case Success(JobListRefreshed()) => log.info("Job list has been refreshed")
       case o: Any => log.error(CryoError("Fail to refresh job list", o))
     }
-    
+
     (cryoctx.datastore ? GetDataStatus("finalizedJobs")) flatMap {
       case DataStatus(id, _, _, status, size, _) if status == EntryStatus.Created && size > 0 =>
         (cryoctx.datastore ? ReadData(id, 0, size.toInt))
-      case dnfe: DataNotFoundError => throw dnfe 
+      case dnfe: DataNotFoundError => throw dnfe
       case o: Any =>
         throw CryoError("Fail to get finalizedJobs", o)
     } map {
@@ -140,7 +152,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
       case Failure(DataNotFoundError(_, _, _)) => log.info("Finalized jobs not found")
       case Failure(e) => log.error("Fail to load Finalized jobs", e)
     }
-    
+
   }
 
   def cryoReceive = {
@@ -161,12 +173,12 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
 
     case GetJobList() =>
       if (jobUpdated.isCompleted) {
-    	  sender ! JobList(jobs.values.toList)
+        sender ! JobList(jobs.values.toList)
       } else {
         val requester = sender
         jobUpdated.future.onSuccess { case _ => requester ! JobList(jobs.values.toList) }
       }
-      
+
     case FinalizeJob(jobIds) =>
       jobs --= jobIds
       finalizedJobs ++= jobIds

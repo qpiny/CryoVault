@@ -14,10 +14,14 @@ toIsoString = (value) ->
 	else
 		(value / Math.pow(2, 60)).toFixed(2) + 'Ei'
 
+#[{"id":"CP6-**","description":\"Index-2013-05-15T22:03:04+02:00\",
+#\"creationDate\":{},\"status\":{\"name\":null},\"size\":1040648,\"checksum\":\"1839a063dbe16b913c21e2568315bd324541a93b419552c3ad9b2c11ec1aef68\"},
+#{\"id\":\"NTGTdpaFplQJXa6JZhNh-sm35_ADbnZdf9maGwwmHbokjFB0CO-3DLsynfVjyrmuqHw0takd-DPD-uKn8Z6FRFXnji7o70FgqveDl_O1r4aO42hLLwZkZhhxNtfTbygjgJZ_G97LFg\",\"description\":\"Index-2013-05-15T22:15:43+02:00\",
+#\"creationDate\":{},\"status\":{\"name\":null},\"size\":821552,\"checksum\":\"e25217d32ffbef95eb66cf8adbdc5bda1648424cba295e8d090a021acdbf6fff\"}]"
 class Snapshot
 	constructor: (@cryo, init) ->
 		@id = init.id ? '<not_set>'
-		@date = init.date ? '<not_set>'
+		@date = init.creationDate ? '<not_set>'
 		@size = init.size ? 0
 		@status = init.status ? '<not_set>'
 		@transfer = { status: false, value: false }

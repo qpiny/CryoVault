@@ -55,7 +55,7 @@ abstract class Notification(val cryoctx: CryoContext) extends CryoActor {
 }
 
 class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
-  implicit val formats = JsonSerialization.format
+  implicit val formats = JsonSerialization
 
   val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
@@ -102,7 +102,7 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
     sqs.receiveMessage(new ReceiveMessageRequest(queueUrl).withMaxNumberOfMessages(10)).getMessages
   }
 
-  def removeMessage(receiptHandles: Iterable[String]) = {
+  def removeMessage2(receiptHandles: Iterable[String]) = {
     if (!receiptHandles.isEmpty) {
       log.debug(s"Remove ${receiptHandles.size} message(s) from queue")
       val request = receiptHandles.zipWithIndex map {
@@ -114,7 +114,15 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
       for (success <- response.getSuccessful)
         log.debug(s"Message ${success.getId} has been successfully removed")
     }
+  }
 
+  def removeMessage(receiptHandles: Iterable[String]) = {
+    for (rh <- receiptHandles)
+      try {
+        sqs.deleteMessage(new DeleteMessageRequest(queueUrl, rh))
+      } catch {
+        case e: Exception => log.warn("Fail to remove message in queue", e)
+      }
   }
   def cryoReceive = {
     case GetNotification() =>

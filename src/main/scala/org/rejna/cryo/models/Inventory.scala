@@ -53,46 +53,66 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
     CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
     reloadInventory
   }
+  
+  override def postStop = {
+    
+  }
+
+//  def saveInventory = {
+//    cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
+//      case DataCreated(id) =>
+//        val a = Future.sequence((snapshots.keys ++ archiveIds) map {
+//          case aid => cryoctx.datastore ? GetDataStatus(aid)
+//        })
+//        a map _.map { }
+//        flatMap {
+//          case a => 
+//        }
+//        val data = //("VaultARN" -> ??) ~
+//          ("InventoryDate" -> date) ~
+//          ("ArchiveList" -> )
+//        cryoctx.datastore ? WriteData(id, ByteString((Serialization.write())))
+//    }
+//  }
+  def loadInventory(size: Long) = {
+    implicit val formats = JsonSerialization
+    cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
+      case DataRead(id, position, buffer) =>
+        val message = buffer.decodeString("UTF-8")
+        val inventory = Serialization.read[InventoryMessage](message)
+        cryoctx.inventory ! UpdateInventoryDate(inventory.date)
+
+        for (entry <- inventory.entries) {
+          (cryoctx.datastore ? DefineData(entry.id, entry.description, entry.creationDate, entry.size, entry.checksum)) map {
+            case DataDefined(_) =>
+              if (entry.description.startsWith("Data"))
+                cryoctx.inventory ! AddArchive(entry.id)
+              else
+                cryoctx.inventory ! AddSnapshot(entry.id)
+            case o =>
+              throw CryoError(s"Fail to define archive data ${entry.id}", o)
+          }
+        }
+        log.info("Inventory updated")
+      case o: Any => throw CryoError("Fail to read inventory data", o)
+    }
+  }
 
   def reloadInventory = {
-    implicit val formats = JsonSerialization.format
-
     (cryoctx.datastore ? GetDataStatus(inventoryDataId)) flatMap {
-      case DataStatus(_, _, _, status, size, _) =>
-        if (status == EntryStatus.Created) {
-          cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
-            case DataRead(id, position, buffer) =>
-              val message = buffer.decodeString("UTF-8")
-              val inventory = Serialization.read[InventoryMessage](message)
-              cryoctx.inventory ! UpdateInventoryDate(inventory.date)
-
-              for (entry <- inventory.entries) {
-                (cryoctx.datastore ? DefineData(entry.id, entry.description, entry.creationDate, entry.size, entry.checksum)) map {
-                  case DataDefined(_) =>
-                    if (entry.description.startsWith("Data"))
-                      cryoctx.inventory ! AddArchive(entry.id)
-                    else
-                      cryoctx.inventory ! AddSnapshot(entry.id)
-                  case o =>
-                    throw CryoError(s"Fail to define archive data ${entry.id}", o)
-                }
-              }
-              log.info("Inventory updated")
-            case o: Any => throw CryoError("Fail to read inventory data", o)
-          }
-        } else
-          Future(log.info("Waiting for inventory download completion"))
+      case DataStatus(_, _, _, status, size, _) if status == EntryStatus.Created => loadInventory(size)
+      case _: DataStatus => Future(log.info("Waiting for inventory download completion"))
       case DataNotFoundError(id, _, _) =>
         (cryoctx.manager ? GetJobList()) flatMap {
-          case JobList(jl) =>
-            if (!jl.exists(_.isInstanceOf[InventoryJob])) {
-              (cryoctx.cryo ? RefreshInventory()) map {
-                case RefreshInventoryRequested(job) => log.info(s"Inventory update requested (${job.id})")
-                case o: Any => throw CryoError("Fail to refresh inventory", o)
-              }
-            } else
-              Future(log.info("Inventory update has been already requested"))
-          case o: Any => throw CryoError("Fail to get job list", o)
+          case JobList(jl) if !jl.exists(_.isInstanceOf[InventoryJob]) =>
+            (cryoctx.cryo ? RefreshInventory()) map {
+              case RefreshInventoryRequested(job) => log.info(s"Inventory update requested (${job.id})")
+              case o: Any => throw CryoError("Fail to refresh inventory", o)
+            }
+          case _: JobList =>
+            Future(log.info("Inventory update has been already requested"))
+          case o: Any =>
+            throw CryoError("Fail to get job list", o)
         }
       case o: Any => throw CryoError("Fail to get inventory status", o)
     } onFailure {

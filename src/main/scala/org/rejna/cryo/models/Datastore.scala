@@ -48,11 +48,14 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   val data = attributeBuilder.map("repository", Map.empty[String, DataEntry])
 
   override def postStop = {
-    implicit val formats = JsonSerialization.format
+    implicit val formats = JsonSerialization
 
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
         channel.truncate(0)
+        
+        log.debug("Writting repository :")
+        data.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}")}
         val repository = data.values
           .filter { d => d.status == Created || d.status == Remote }
           .map { _.state }
@@ -64,7 +67,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   }
 
   override def preStart = {
-    implicit val formats = JsonSerialization.format
+    implicit val formats = JsonSerialization
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), READ))) {
         val buffer = ByteBuffer.allocate(channel.size.toInt)

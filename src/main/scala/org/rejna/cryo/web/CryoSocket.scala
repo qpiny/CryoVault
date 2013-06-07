@@ -35,7 +35,7 @@ object EventTypeHints extends TypeHints {
       classOf[RemoveIgnoreSubscription] ::
       classOf[RefreshInventory] ::
       classOf[GetSnapshotList] ::
-      //      classOf[GetSnapshotFiles] ::
+      classOf[SnapshotGetFiles] ::
       //      classOf[GetArchiveList] ::
       classOf[CreateSnapshot] ::
       classOf[SnapshotCreated] ::
@@ -54,35 +54,40 @@ object EventTypeHints extends TypeHints {
   def classFor(hint: String) = hints find (hintFor(_) == hint)
 }
 object EventSerialization {
-  implicit object CryoFormats extends DefaultFormats {
+  implicit object CryoFormats extends Formats {
     override val typeHintFieldName = "type"
     override val typeHints = EventTypeHints
-    override val customSerializers =
-      JsonSerializer ::
-        Nil
+    override val customSerializers = JsonSerialization.customSerializers
+    val dateFormat = JsonSerialization.dateFormat
   }
 
   case class EventSender(channel: Channel) {
-    def send(message: CryoMessage) = channel.write(new TextWebSocketFrame(Serialization.write(message)))
-    def send(messageList: Iterable[CryoMessage]) = channel.write(new TextWebSocketFrame(Serialization.write(messageList)))
+    private def sendIfOpen(message: Any) = {
+      if (channel.isOpen)
+        channel.write(message)
+      else
+        CryoWeb.unregisterWebSocket(channel)
+    }
+    def send(message: CryoMessage) = sendIfOpen(new TextWebSocketFrame(Serialization.write(message)))
+    def send(messageList: Iterable[CryoMessage]) = sendIfOpen(new TextWebSocketFrame(Serialization.write(messageList)))
   }
 
   implicit def toEventSender(channel: Channel) = EventSender(channel)
 }
 
-class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass{
+class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
   import EventSerialization._
   implicit val timeout = Timeout(10 seconds)
   implicit val executionContext = context.system.dispatcher
   val ignore = ListBuffer[Regex]()
 
-  override val supervisorStrategy = OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
-    case _: ClosedChannelException =>
-      CryoWeb.unregisterWebSocket(channel)
-      Stop
-    case _: Exception => Resume
-  }
-  
+  //  override val supervisorStrategy = OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
+  //    case _: ClosedChannelException =>
+  //      CryoWeb.unregisterWebSocket(channel)
+  //      Stop
+  //    case _: Exception => Resume
+  //  }
+
   def receive = {
     case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
