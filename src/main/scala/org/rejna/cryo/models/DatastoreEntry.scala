@@ -10,10 +10,9 @@ import java.nio.file.StandardOpenOption._
 import java.nio.file.StandardCopyOption._
 import java.nio.channels.FileChannel
 import java.security.MessageDigest
+import java.util.Date
 
 import akka.util.ByteString
-
-import org.joda.time.DateTime
 
 import com.amazonaws.services.glacier.TreeHashGenerator
 
@@ -30,7 +29,7 @@ sealed abstract class DataEntry(
   val cryoctx: CryoContext,
   val id: String,
   val description: String,
-  val creationDate: DateTime,
+  val creationDate: Date,
   val checksum: String) {
   val file = cryoctx.workingDirectory.resolve(id)
 
@@ -80,7 +79,7 @@ class DataEntryRemote(
   cryoctx: CryoContext,
   id: String,
   description: String,
-  creationDate: DateTime,
+  creationDate: Date,
   initSize: Long,
   checksum: String,
   entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
@@ -96,7 +95,7 @@ class DataEntryCreating(
   id: String,
   description: String,
   initSize: Long,
-  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, new DateTime, "") with LoggingClass {
+  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, new Date, "") with LoggingClass {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".creating")
   val statusAttribute = entryAttributeBuilder("status", Creating)
@@ -155,7 +154,7 @@ class DataEntryCreated(
   cryoctx: CryoContext,
   id: String,
   description: String,
-  creationDate: DateTime,
+  creationDate: Date,
   val statusAttribute: Attribute[EntryStatus],
   val sizeAttribute: Attribute[Long],
   checksum: String) extends DataEntry(cryoctx, id, description, creationDate, checksum) with LoggingClass {
@@ -184,7 +183,7 @@ class DataEntryLoading(
   cryoctx: CryoContext,
   id: String,
   description: String,
-  creationDate: DateTime,
+  creationDate: Date,
   val expectedSize: Long,
   checksum: String,
   entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
@@ -217,7 +216,7 @@ case class EntryState(
   status: EntryStatus,
   id: String,
   description: String,
-  creationDate: DateTime,
+  creationDate: Date,
   size: Long,
   checksum: String)//,
   //range: Option[MultiRange[Long]] = None)

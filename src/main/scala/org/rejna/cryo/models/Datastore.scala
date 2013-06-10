@@ -11,10 +11,9 @@ import java.io.{ InputStream, OutputStream, IOException }
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption._
 import java.nio.ByteBuffer
-import java.util.UUID
+import java.util.{ Date, UUID }
 
 import resource.managed
-import org.joda.time.DateTime
 import net.liftweb.json.Serialization
 
 sealed abstract class DatastoreRequest extends Request
@@ -23,7 +22,7 @@ sealed abstract class DatastoreError(message: String, cause: Throwable) extends 
 
 case class CreateData(idOption: Option[String], description: String, size: Long = 0L) extends DatastoreRequest
 case class DataCreated(id: String) extends DatastoreResponse
-case class DefineData(id: String, description: String, creationDate: DateTime, size: Long, checksum: String) extends DatastoreRequest
+case class DefineData(id: String, description: String, creationDate: Date, size: Long, checksum: String) extends DatastoreRequest
 case class DataDefined(id: String) extends DatastoreResponse
 case class WriteData(id: String, position: Long, buffer: ByteString) extends DatastoreRequest
 object WriteData { def apply(id: String, buffer: ByteString): WriteData = WriteData(id, -1, buffer) } // AppendData
@@ -33,7 +32,7 @@ case class DataRead(id: String, position: Long, buffer: ByteString) extends Data
 case class CloseData(id: String) extends DatastoreRequest
 case class DataClosed(id: String) extends DatastoreResponse
 case class GetDataStatus(id: String) extends DatastoreRequest
-case class DataStatus(id: String, description: String, creationDate: DateTime, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DatastoreResponse
+case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DatastoreResponse
 
 case class OpenError(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
 case class WriteError(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
@@ -48,7 +47,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   val data = attributeBuilder.map("repository", Map.empty[String, DataEntry])
 
   override def postStop = {
-    implicit val formats = JsonSerialization
+    implicit val formats = Json
 
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
@@ -67,7 +66,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   }
 
   override def preStart = {
-    implicit val formats = JsonSerialization
+    implicit val formats = Json
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), READ))) {
         val buffer = ByteBuffer.allocate(channel.size.toInt)

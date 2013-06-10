@@ -7,22 +7,24 @@ import scala.collection.JavaConversions._
 import scala.util.{ Success, Failure }
 
 import akka.actor.{ ActorRef, Props }
+import akka.util.ByteString
 
 import java.io.FileOutputStream
 import java.nio.file.{ Files, Path }
 import java.nio.file.StandardOpenOption._
 import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
-import java.util.UUID
-import org.joda.time.{ DateTime, Interval }
+import java.util.Date
+//import org.joda.time.{ Date, Interval }
 import net.liftweb.json.Serialization
+import net.liftweb.json.JsonDSL._
 
 sealed abstract class InventoryInternalMessage
 sealed abstract class InventoryRequest extends Request
 sealed abstract class InventoryResponse extends Response
 sealed class InventoryError(message: String, cause: Throwable) extends CryoError(message, cause)
 
-case class UpdateInventoryDate(date: DateTime) extends InventoryInternalMessage
+case class UpdateInventoryDate(date: Date) extends InventoryInternalMessage
 case class AddArchive(id: String) extends InventoryInternalMessage
 case class AddSnapshot(id: String) extends InventoryInternalMessage
 case class CreateArchive() extends InventoryRequest
@@ -35,14 +37,14 @@ case class GetSnapshotList() extends InventoryRequest
 case class SnapshotIdList(snapshots: Map[String, ActorRef]) extends InventoryResponse
 case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 
-case class InventoryEntry(id: String, description: String, creationDate: DateTime, size: Long, checksum: String)
-case class InventoryMessage(date: DateTime, entries: List[InventoryEntry])
+case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)
+case class InventoryMessage(date: Date, entries: List[InventoryEntry])
 
 class Inventory(val cryoctx: CryoContext) extends CryoActor {
   val attributeBuilder = AttributeBuilder("/cryo/inventory")
   val inventoryDataId = "inventory"
 
-  val dateAttribute = attributeBuilder("date", DateTime.now)
+  val dateAttribute = attributeBuilder("date", new Date())
   def date = dateAttribute()
   private def date_= = dateAttribute() = _
 
@@ -59,32 +61,41 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   }
 
   def saveInventory = {
+    implicit val format = Json
+
     cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
       case DataCreated(id) =>
-        val a = Future.sequence((snapshots.keys ++ archiveIds) map {
-          case aid => cryoctx.datastore ? GetDataStatus(aid)
-        })
-        a flatMap {
-          case list => list.map {
-            e: DataStatus =>
-              ("ArchiveId" -> e.id) ~
-                ("ArchiveDescription" -> e.description) ~
-                ("CreationDate" -> e.creationDate) ~
-                ("Size" -> e.size) ~
-                ("SHA256TreeHash" -> e.checksum)
+        Future.sequence((snapshots.keys ++ archiveIds) map {
+          case aid => cryoctx.datastore ? GetDataStatus(aid) map {
+            case ds: DataStatus =>
+              ("ArchiveId" -> ds.id) ~
+                ("ArchiveDescription" -> ds.description) ~
+                ("CreationDate" -> Json.dateFormat.format(ds.creationDate)) ~
+                ("Size" -> ds.size) ~
+                ("SHA256TreeHash" -> ds.checksum)
+            case e: Any => throw CryoError("Fail to get data status", e)
           }
+        }) flatMap {
+          case archiveList =>
+            cryoctx.datastore ? WriteData(id, ByteString(Serialization.write(
+              //("VaultARN" -> ??) ~
+              ("InventoryDate" -> Json.dateFormat.format(date)) ~
+                ("ArchiveList" -> archiveList))))
         }
-        flatMap {
-          case a =>
-        }
-        val data = //("VaultARN" -> ??) ~
-          ("InventoryDate" -> date) ~
-            ("ArchiveList" ->)
-        cryoctx.datastore ? WriteData(id, ByteString((Serialization.write())))
+      case e: Any => throw CryoError("Fail to create inventory", e)
+    } flatMap {
+      case DataWritten(id, _, _) =>
+        cryoctx.datastore ? CloseData(id)
+      case e: Any =>
+        throw CryoError("Fail to write inventory", e)
+    } onComplete {
+      case Success(DataClosed(id)) => log.info("Inventory saved")
+      case o: Any => log.error(CryoError("Fail to save inventory", o))
     }
   }
+  
   def loadInventory(size: Long) = {
-    implicit val formats = JsonSerialization
+    implicit val formats = Json
     cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
       case DataRead(id, position, buffer) =>
         val message = buffer.decodeString("UTF-8")

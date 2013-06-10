@@ -57,8 +57,8 @@ object EventSerialization {
   implicit object CryoFormats extends Formats {
     override val typeHintFieldName = "type"
     override val typeHints = EventTypeHints
-    override val customSerializers = JsonSerialization.customSerializers
-    val dateFormat = JsonSerialization.dateFormat
+    override val customSerializers = Json.customSerializers
+    val dateFormat = Json.dateFormat
   }
 
   case class EventSender(channel: Channel) {

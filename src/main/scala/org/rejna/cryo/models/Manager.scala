@@ -110,7 +110,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
   val jobUpdated = Promise[Unit]()
 
   override def postStop = {
-    implicit val formats = JsonSerialization
+    implicit val formats = Json
     cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
       case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs))))
       case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
@@ -128,7 +128,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
     //    }
   }
   override def preStart = {
-    implicit val formats = JsonSerialization
+    implicit val formats = Json
     log.info("Starting manager ...")
     log.info("Refreshing job list")
     (cryoctx.cryo ? RefreshJobList()) onComplete {

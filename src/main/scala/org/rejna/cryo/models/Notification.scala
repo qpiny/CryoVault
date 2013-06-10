@@ -55,7 +55,7 @@ abstract class Notification(val cryoctx: CryoContext) extends CryoActor {
 }
 
 class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
-  implicit val formats = JsonSerialization
+  implicit val formats = Json
 
   val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))

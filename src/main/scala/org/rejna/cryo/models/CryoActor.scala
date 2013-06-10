@@ -27,6 +27,13 @@ trait CryoActor extends Actor with LoggingClass {
   
   def cryoReceive: Actor.Receive
   
+//  val actorDependencies: List[ActorRef] = Nil
+//  
+//  override def preStart = {
+//    for (aref <- actorDependencies)
+//      aref !
+//  }
+  
   final def receive = new Actor.Receive {
     def isDefinedAt(o: Any): Boolean = {
       val handled = cryoReceive.isDefinedAt(o)

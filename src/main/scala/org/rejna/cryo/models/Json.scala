@@ -1,5 +1,7 @@
 package org.rejna.cryo.models
 
+import java.util.Date
+
 import net.liftweb.json._
 import net.liftweb.json.JsonDSL._
 import net.liftweb.json.ext.EnumSerializer
@@ -9,14 +11,14 @@ import org.joda.time.format.DateTimeFormatterBuilder
 
 import EntryStatus._
 
-object JsonSerialization extends Formats {
+object Json extends Formats {
   override val customSerializers =
     JsonJobSerialization ::
       JsonNotificationSerialization ::
       JsonInventoryEntrySerialization ::
       JsonInventorySerialization ::
       new EnumSerializer(EntryStatus) ::
-      JsonDateTimeSerialization ::
+//      JsonDateTimeSerialization ::
       Nil
   val fractionOfSecondFormat = new DateTimeFormatterBuilder()
     .appendLiteral('.')
@@ -44,7 +46,7 @@ object JsonSerialization extends Formats {
     } catch {
       case t: Throwable => None
     }
-    def format(d: java.util.Date): String = jodaDateFormat.print(new DateTime(d))
+    def format(d: Date): String = jodaDateFormat.print(new DateTime(d))
   }
 }
 
@@ -127,7 +129,7 @@ object JsonInventoryEntrySerialization extends Serializer[InventoryEntry] {
       InventoryEntry(
         (json \ "ArchiveId").extract[String],
         (json \ "ArchiveDescription").extract[String],
-        (json \ "CreationDate").extract[DateTime],
+        (json \ "CreationDate").extract[Date],
         (json \ "Size").extract[Long],
         (json \ "SHA256TreeHash").extract[String])
   }
@@ -145,7 +147,7 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] with Logg
     case (TypeInfo(InventoryClass, _), json) =>
       log.debug(s"deserilize inventory : ${pretty(render(json))}")
       InventoryMessage(
-        (json \ "InventoryDate").extract[DateTime],
+        (json \ "InventoryDate").extract[Date],
         (json \ "ArchiveList").children.map(_.extract[InventoryEntry]))
   }
 
@@ -155,24 +157,24 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] with Logg
   }
 }
 
-object JsonDateTimeSerialization extends Serializer[DateTime] with LoggingClass {
-  val DateTimeClass = classOf[DateTime]
-
-  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), DateTime] = {
-    case (TypeInfo(DateTimeClass, _), json) =>
-      json match {
-        case s: JString => JsonSerialization.jodaDateFormat.parseDateTime(s.values)
-        case _: Any => throw new MappingException(s"Can't convert DataTime from ${json}")
-      }
-  }
-
-  def serialize(implicit format: Formats) = { //new PartialFunction[Any, JValue] {
-//    def isDefinedAt(a: Any) = a.isInstanceOf[DateTime]
-//    def apply(a: Any) = a match {
-      case dt: DateTime => JString(JsonSerialization.jodaDateFormat.print(dt))
-//    }
-  }
-}
+//object JsonDateTimeSerialization extends Serializer[DateTime] with LoggingClass {
+//  val DateTimeClass = classOf[DateTime]
+//
+//  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), DateTime] = {
+//    case (TypeInfo(DateTimeClass, _), json) =>
+//      json match {
+//        case s: JString => Json.jodaDateFormat.parseDateTime(s.values)
+//        case _: Any => throw new MappingException(s"Can't convert DataTime from ${json}")
+//      }
+//  }
+//
+//  def serialize(implicit format: Formats) = { //new PartialFunction[Any, JValue] {
+////    def isDefinedAt(a: Any) = a.isInstanceOf[DateTime]
+////    def apply(a: Any) = a match {
+//      case dt: DateTime => JString(Json.jodaDateFormat.print(dt))
+////    }
+//  }
+//}
 
 object JsonDataStatusSerialization extends Serializer[DataStatus] {
   val DataStatusClass = classOf[DataStatus]
