@@ -9,6 +9,7 @@ import scala.util.{ Failure, Success }
 
 import java.nio.channels.Channels
 import java.nio.ByteBuffer
+import java.util.Date
 
 import akka.actor.{ Actor, Props }
 import akka.util.ByteString
@@ -17,8 +18,6 @@ import com.amazonaws.services.glacier.AmazonGlacierClient
 import com.amazonaws.services.glacier.model._
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sns.AmazonSNSClient
-
-import org.joda.time.DateTime
 
 import resource._
 
@@ -37,20 +36,20 @@ case class DataUploaded(id: String) extends CryoResponse
 class Glacier(val cryoctx: CryoContext) extends CryoActor {
 
   val glacier = new AmazonGlacierClient(cryoctx.awsCredentials, cryoctx.awsConfig)
-  if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
-    HttpClientProxyHack(glacier)
   glacier.setEndpoint("glacier." + cryoctx.region + ".amazonaws.com/")
+  if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref")) HttpClientProxyHack(glacier)
   val futureSnsTopicARN = (cryoctx.notification ? GetNotificationARN()) map {
     case NotificationARN(arn) => arn
     case e: Any => throw CryoError("Fail to get notification ARN", e)
   }
-  lazy val snsTopicARN = Await.result(futureSnsTopicARN, 10 seconds)
+  //lazy val snsTopicARN = Await.result(futureSnsTopicARN, 10 seconds)
 
-  override def preStart = {
-    CryoEventBus.subscribe(self, "/cryo/manager#jobs")
-  }
+  CryoEventBus.subscribe(self, "/cryo/manager#jobs")
 
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() =>
+      sender ! ReadyToDie()
+
     case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
       val succeededJobs = addedJobs.asInstanceOf[List[(String, Job)]].flatMap {
         case (_, a: ArchiveJob) if a.status.isSucceeded => Some(a.archiveId -> a)
@@ -125,18 +124,19 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
 
     case RefreshInventory() =>
       val requester = sender
-      Future {
-        log.debug("initiateInventoryJob")
-        glacier.initiateJob(new InitiateJobRequest()
-          .withVaultName(cryoctx.vaultName)
-          .withJobParameters(
-            new JobParameters()
-              .withType("inventory-retrieval")
-              .withSNSTopic(snsTopicARN))).getJobId
+      futureSnsTopicARN map {
+        case snsTopicARN =>
+          log.debug("initiateInventoryJob")
+          glacier.initiateJob(new InitiateJobRequest()
+            .withVaultName(cryoctx.vaultName)
+            .withJobParameters(
+              new JobParameters()
+                .withType("inventory-retrieval")
+                .withSNSTopic(snsTopicARN))).getJobId
       } map {
         case jobId =>
           log.debug("initiateInventoryJob done")
-          new InventoryJob(jobId, "", new DateTime, InProgress(""), None)
+          new InventoryJob(jobId, "", new Date, InProgress(""), None)
       } flatMap {
         case job => cryoctx.manager ? AddJobs(job)
       } onComplete {
@@ -146,18 +146,24 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
 
     case DownloadArchive(archiveId) =>
       val requester = sender
-      val jobId = glacier.initiateJob(new InitiateJobRequest()
-        .withVaultName(cryoctx.vaultName)
-        .withJobParameters(
-          new JobParameters()
-            .withArchiveId(archiveId)
-            .withType("archive-retrieval")
-            .withSNSTopic(snsTopicARN))).getJobId
-
-      val job = new ArchiveJob(jobId, "", new DateTime, InProgress(""), None, archiveId)
-      cryoctx.manager ? AddJobs(job) onComplete {
-        case Success(JobsAdded(_)) => requester ! DownloadArchiveRequested(job)
-        case o: Any => requester ! CryoError("Fail to add download archive job", o)
+      futureSnsTopicARN map {
+        case snsTopicARN =>
+          glacier.initiateJob(new InitiateJobRequest()
+            .withVaultName(cryoctx.vaultName)
+            .withJobParameters(
+              new JobParameters()
+                .withArchiveId(archiveId)
+                .withType("archive-retrieval")
+                .withSNSTopic(snsTopicARN))).getJobId
+      } flatMap {
+        case jobId =>
+          cryoctx.manager ? AddJobs(new ArchiveJob(jobId, "", new Date, InProgress(""), None, archiveId))
+      } onComplete {
+            case Success(JobsAdded(jobs)) => jobs.map {
+              case job: ArchiveJob => requester ! DownloadArchiveRequested(job)
+              case o: Any => requester ! CryoError("Fail to add download archive job", o)
+            }
+            case o: Any => requester ! CryoError("Fail to add download archive job", o)
       }
 
     case UploadData(id) =>

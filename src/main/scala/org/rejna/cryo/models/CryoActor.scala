@@ -9,13 +9,13 @@ import akka.pattern.{ ask, AskTimeoutException }
 import org.slf4j.Logger
 
 class CryoAskableActorRef(cryoctx: CryoContext, log: Logger, actorRef: ActorRef)(implicit executionContext: ExecutionContext) {
-  def ? (message: Any) = {
+  def ?(message: Any) = {
     log.debug(s"Sending ${message} to ${actorRef}")
     val timeout = cryoctx.getTimeout(message.getClass)
     actorRef.ask(message)(timeout).recover {
-    case e =>
-      log.error(s"${actorRef} has failed to process message ${message} in ${timeout}", e)
-      Future.failed(e)
+      case e =>
+        log.error(s"${actorRef} has failed to process message ${message} in ${timeout}", e)
+        Future.failed(e)
     }
   }
 }
@@ -24,19 +24,10 @@ trait CryoActor extends Actor with LoggingClass {
   val cryoctx: CryoContext
   implicit val executionContext = context.system.dispatcher
   implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(cryoctx, log, actorRef)
-  
-  def cryoReceive: Actor.Receive
-  
-//  val actorDependencies: List[ActorRef] = Nil
-//  
-//  override def preStart = {
-//    for (aref <- actorDependencies)
-//      aref !
-//  }
-  
-  final def receive = new Actor.Receive {
+
+  def cryoReceive(f: Actor.Receive) = new Actor.Receive {
     def isDefinedAt(o: Any): Boolean = {
-      val handled = cryoReceive.isDefinedAt(o)
+      val handled = f.isDefinedAt(o)
       o match {
         case a: Any if handled => log.debug(s"Receive handled message ${a}")
         case t: Throwable => log.info(s"Receive unhandled error", t)
@@ -47,7 +38,7 @@ trait CryoActor extends Actor with LoggingClass {
     def apply(o: Any): Unit = {
       val sender = context.sender
       try {
-        cryoReceive(o)
+        f(o)
         log.debug(s"Message ${o} has been successfully handled")
       } catch {
         case t: Throwable =>

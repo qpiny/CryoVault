@@ -3,7 +3,6 @@ package org.rejna.cryo.web
 import java.nio.file.Path
 import scala.concurrent.duration._
 import net.liftweb.json._
-import org.joda.time.DateTime
 import org.rejna.cryo.models._
 
 //case class GetArchiveList() extends RequestEvent

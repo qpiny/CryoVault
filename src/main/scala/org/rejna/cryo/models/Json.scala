@@ -65,17 +65,17 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
           new InventoryJob(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extractOpt[String].getOrElse(""),
-            (json \ "CreationDate").extract[DateTime],
+            (json \ "CreationDate").extract[Date],
             jobStatus,
-            (json \ "CompletionDate").extractOpt[DateTime])
+            (json \ "CompletionDate").extractOpt[Date])
         case JString("ArchiveRetrieval") =>
           val statusCode = (json \ "StatusCode").extract[String]
           new ArchiveJob(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extractOpt[String].getOrElse(""),
-            (json \ "CreationDate").extract[DateTime],
+            (json \ "CreationDate").extract[Date],
             jobStatus,
-            (json \ "CompletionDate").extractOpt[DateTime],
+            (json \ "CompletionDate").extractOpt[Date],
             (json \ "ArchiveId").extract[String])
         case o: Any =>
           throw new MappingException(s"Job deserialization fails: unknown type: ${o}", null)
@@ -112,7 +112,7 @@ object JsonNotificationSerialization extends Serializer[NotificationMessage] wit
         (json \ "MessageId").extract[String],
         (json \ "TopicArn").extract[String],
         (json \ "Message").extract[String],
-        (json \ "Timestamp").extract[DateTime])
+        (json \ "Timestamp").extract[Date])
   }
 
   def serialize(implicit format: Formats) = new PartialFunction[Any, JValue] {

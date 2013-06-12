@@ -85,7 +85,9 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
     }
   }
 
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() => sender ! ReadyToDie()
+    
     case CreateData(idOption, description, size) =>
       val id = idOption.getOrElse {
         var i = ""

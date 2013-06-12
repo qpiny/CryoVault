@@ -9,12 +9,12 @@ import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption._
 import java.nio.ByteBuffer
+import java.util.Date
 
 import akka.util.ByteString
 
 import com.amazonaws.services.glacier.model.GlacierJobDescription
 import resource.managed
-import org.joda.time.DateTime
 import net.liftweb.json.Serialization
 
 object JobStatus {
@@ -37,24 +37,24 @@ case class Failed(message: String) extends JobStatus(message) { override val isF
 sealed abstract class Job {
   val id: String
   val description: String
-  val creationDate: DateTime
+  val creationDate: Date
   val status: JobStatus
-  val completedDate: Option[DateTime]
+  val completedDate: Option[Date]
 }
 
 case class InventoryJob(
   id: String,
   description: String,
-  creationDate: DateTime,
+  creationDate: Date,
   status: JobStatus,
-  completedDate: Option[DateTime]) extends Job
+  completedDate: Option[Date]) extends Job
 
 case class ArchiveJob(
   id: String,
   description: String,
-  creationDate: DateTime,
+  creationDate: Date,
   status: JobStatus,
-  completedDate: Option[DateTime],
+  completedDate: Option[Date],
   val archiveId: String) extends Job
 
 object Job {
@@ -70,17 +70,17 @@ object Job {
         new ArchiveJob(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
-          DateUtil.fromISOString(j.getCreationDate), // FIXME
+          Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()),//DateUtil.fromISOString(j.getCreationDate), // FIXME
           getStatus(j.getStatusCode, j.getStatusMessage),
-          Option(DateUtil.fromISOString(j.getCompletionDate)),
+          Json.dateFormat.parse(j.getCompletionDate()),
           j.getArchiveId)
       case "InventoryRetrieval" =>
         new InventoryJob(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
-          DateUtil.fromISOString(j.getCreationDate),
+          Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()),
           getStatus(j.getStatusCode, j.getStatusMessage),
-          Option(j.getCompletionDate).map(DateUtil.fromISOString))
+          Json.dateFormat.parse(j.getCompletionDate())) //Option(j.getCompletionDate).map(DateUtil.fromISOString))
     }
   }
 }
@@ -109,24 +109,6 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
   val finalizedJobs = HashSet.empty[String]
   val jobUpdated = Promise[Unit]()
 
-  override def postStop = {
-    implicit val formats = Json
-    cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
-      case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs))))
-      case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
-    } flatMap {
-      case DataWritten(id, _, _) => cryoctx.datastore ? CloseData(id)
-      case o: Any => throw CryoError("Fail to write finalizedJobs data", o)
-    } onComplete {
-      case Success(DataClosed(_)) => log.info("FinalizedJobs data has been stored")
-      case o: Any => log.error("Fail to save finalized jobs", o)
-    }
-
-    //    for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("finalizedJobs"), WRITE, CREATE))) {
-    //      channel.truncate(0)
-    //      channel.write(ByteBuffer.wrap(Serialization.write(finalizedJobs).getBytes))
-    //    }
-  }
   override def preStart = {
     implicit val formats = Json
     log.info("Starting manager ...")
@@ -155,7 +137,24 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
 
   }
 
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() =>
+      val requester = sender
+      implicit val formats = Json
+      cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
+        case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs))))
+        case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
+      } flatMap {
+        case DataWritten(id, _, _) => cryoctx.datastore ? CloseData(id)
+        case o: Any => throw CryoError("Fail to write finalizedJobs data", o)
+      } onComplete {
+        case Success(DataClosed(_)) =>
+          requester ! ReadyToDie()
+          log.info("FinalizedJobs data has been stored")
+        case o: Any =>
+          requester ! ReadyToDie()
+          log.error("Fail to save finalized jobs", o)
+      }
     case AddJobs(addedJobs) =>
       jobs ++= addedJobs.filterNot(j => finalizedJobs.contains(j.id)).map(j => j.id -> j)
       sender ! JobsAdded(addedJobs)

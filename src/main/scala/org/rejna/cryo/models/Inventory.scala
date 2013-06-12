@@ -15,7 +15,7 @@ import java.nio.file.StandardOpenOption._
 import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
 import java.util.Date
-//import org.joda.time.{ Date, Interval }
+
 import net.liftweb.json.Serialization
 import net.liftweb.json.JsonDSL._
 
@@ -51,16 +51,13 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   val snapshots = attributeBuilder.map("snapshots", Map[String, ActorRef]())
   val archiveIds = attributeBuilder.list("archives", List[String]())
 
+  CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
+
   override def preStart = {
-    CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
-    reloadInventory
+    reload
   }
 
-  override def postStop = {
-
-  }
-
-  def saveInventory = {
+  private def save() = {
     implicit val format = Json
 
     cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
@@ -88,13 +85,13 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         cryoctx.datastore ? CloseData(id)
       case e: Any =>
         throw CryoError("Fail to write inventory", e)
-    } onComplete {
-      case Success(DataClosed(id)) => log.info("Inventory saved")
-      case o: Any => log.error(CryoError("Fail to save inventory", o))
+    } map {
+      case DataClosed(id) => log.info("Inventory saved")
+      case o: Any => throw CryoError("Fail to close inventory", o)
     }
   }
-  
-  def loadInventory(size: Long) = {
+
+  private def loadFromDataStore(size: Long) = {
     implicit val formats = Json
     cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
       case DataRead(id, position, buffer) =>
@@ -105,7 +102,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         for (entry <- inventory.entries) {
           (cryoctx.datastore ? DefineData(entry.id, entry.description, entry.creationDate, entry.size, entry.checksum)) map {
             case DataDefined(_) =>
-              if (entry.description.startsWith("Data"))
+              if (entry.description.startsWith("Data")) // TODO make description more structured
                 cryoctx.inventory ! AddArchive(entry.id)
               else
                 cryoctx.inventory ! AddSnapshot(entry.id)
@@ -118,9 +115,9 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
     }
   }
 
-  def reloadInventory = {
+  private def reload() = {
     (cryoctx.datastore ? GetDataStatus(inventoryDataId)) flatMap {
-      case DataStatus(_, _, _, status, size, _) if status == EntryStatus.Created => loadInventory(size)
+      case DataStatus(_, _, _, status, size, _) if status == EntryStatus.Created => loadFromDataStore(size)
       case _: DataStatus => Future(log.info("Waiting for inventory download completion"))
       case DataNotFoundError(id, _, _) =>
         (cryoctx.manager ? GetJobList()) flatMap {
@@ -138,10 +135,22 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
     } onFailure {
       case t => log.error(CryoError("An error has occured while updating inventory", t))
     }
-
   }
 
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() =>
+      val requester = sender
+      Future.sequence(snapshots.values map { _ ? PrepareToDie() }) andThen {
+        case _ => save()
+      } onComplete {
+        case Success(_) =>
+          log.debug("Inventory is ready to die")
+          requester ! ReadyToDie()
+        case Failure(e) =>
+          log.info("Inventory shutdown has generated an error", e)
+          requester ! ReadyToDie()
+      }
+
     case UpdateInventoryDate(d) =>
       date = d
 
@@ -157,7 +166,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         case AttributePath("datastore", `inventoryDataId`, "status") =>
           CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
           if (attribute.now == EntryStatus.Created) {
-            reloadInventory
+            reload
           }
         case AttributePath("datastore", id, attr) =>
           if (archiveIds.contains(id))
@@ -166,7 +175,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
       }
     case CreateArchive() =>
       val requester = sender
-      (cryoctx.datastore ? CreateData).onComplete {
+      (cryoctx.datastore ? CreateData(None, "Data")).onComplete { // TODO set better description
         case Success(DataCreated(id)) =>
           archiveIds += id
           requester ! ArchiveCreated(id)
@@ -176,9 +185,9 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
 
     case CreateSnapshot() =>
       val requester = sender
-      (cryoctx.datastore ? CreateData).onComplete {
+      (cryoctx.datastore ? CreateData(None, "Index")).onComplete { // TODO set better description
         case Success(DataCreated(id)) =>
-          val aref = context.actorOf(Props[LocalSnapshot])
+          val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx))
           snapshots += id -> aref
           // TODO watch aref
           requester ! SnapshotCreated(id, aref)

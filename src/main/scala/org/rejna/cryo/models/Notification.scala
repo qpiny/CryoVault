@@ -5,9 +5,9 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.{ Success, Failure }
 
-import net.liftweb.json.{ Serialization, NoTypeHints }
+import java.util.Date
 
-import org.joda.time.DateTime
+import net.liftweb.json.{ Serialization, NoTypeHints }
 
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sqs.model._
@@ -27,7 +27,7 @@ case class NotificationMessage(
   messageId: String,
   topicArn: String,
   message: String,
-  timestamp: DateTime)
+  timestamp: Date)
 // SignatureVersion(1)
 // Signature(Kss0qWBDa...)
 // SigningCertURL(https://sns.eu-west-1.amaz...)
@@ -124,7 +124,8 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
         case e: Exception => log.warn("Fail to remove message in queue", e)
       }
   }
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() => sender ! ReadyToDie()
     case GetNotification() =>
       val messages = getMessages.distinct
       log.debug(s"${messages.size} message(s) read from SQS")

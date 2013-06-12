@@ -30,7 +30,8 @@ class HashCatalog(val cryoctx: CryoContext) extends CryoActor {
   private val content = HashMap.empty[HashVersion, BlockLocation]
   private val hashVersions = HashMap.empty[Hash, List[HashVersion]]
 
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() => sender ! ReadyToDie()
     case m: GetCatalogContent => sender ! CatalogContent(content.toMap)
     case GetHashBlockLocation(hash) =>
       content.get(hash) match {

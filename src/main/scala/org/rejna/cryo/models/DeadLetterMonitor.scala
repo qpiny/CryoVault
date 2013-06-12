@@ -8,7 +8,9 @@ class DeadLetterMonitor(val cryoctx: CryoContext) extends CryoActor {
     context.system.eventStream.subscribe(self, classOf[DeadLetter])
   }
   
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() =>
+      sender ! ReadyToDie()
     case t: Throwable =>
       log.error("Unexpected error", t)
     case DeadLetter(e: Throwable, _, _) =>

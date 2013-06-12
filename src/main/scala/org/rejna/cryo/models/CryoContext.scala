@@ -3,10 +3,10 @@ package org.rejna.cryo.models
 import scala.util.{ Success, Failure, Random }
 import scala.concurrent.duration._
 import scala.concurrent.{ Future, Promise }
-import scala.language.postfixOps
+import scala.language.{ implicitConversions, postfixOps }
 
-import akka.actor.{ ActorSystem, Props, PoisonPill }
-import akka.pattern.gracefulStop
+import akka.actor.{ ActorRef, ActorSystem, Props, PoisonPill }
+import akka.pattern.{ gracefulStop }
 import akka.util.Timeout
 
 import java.nio.file.{ Path, FileSystems }
@@ -18,24 +18,35 @@ import com.typesafe.config.Config
 import com.amazonaws.auth.BasicAWSCredentials
 import com.amazonaws.{ ClientConfiguration, Protocol }
 
-class CryoContext(val system: ActorSystem, val config: Config) {
+case class PrepareToDie()
+case class ReadyToDie()
+
+class CryoContext(val system: ActorSystem, val config: Config) extends LoggingClass {
   import org.rejna.util.IsoUnit._
   implicit val executionContext = system.dispatcher
 
   val exitPromise = Promise[Any]()
   var shutdownHooks = exitPromise.future
-  def addShutdownHook[T](f: => T) {
-    shutdownHooks = shutdownHooks.map((Unit) => f)
-  }
-
-  def addFutureShutdownHook[T](f: => Future[T]) {
-    shutdownHooks = shutdownHooks.flatMap((Unit) => f)
-  }
+  var children: List[ActorRef] = Nil
+  def addShutdownHook[T](f: => T) = shutdownHooks = shutdownHooks map { (Unit) => f }
+  def addFutureShutdownHook[T](f: => Future[T]) = shutdownHooks = shutdownHooks flatMap { (Unit) => f }
 
   def shutdown() {
+    implicit val timeout = getTimeout(classOf[PrepareToDie])
+    implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(this, log, actorRef)
     exitPromise.success()
-    addShutdownHook { system.shutdown }
-    addShutdownHook { System.exit(0) }
+    addFutureShutdownHook {
+      log.info("Prepare actors for the death")
+      Future.sequence(children map { _ ? PrepareToDie() })
+    }
+    addFutureShutdownHook {
+      log.info("Kill all actors")
+      Future.sequence(children map { gracefulStop(_, timeout.duration) })
+    }
+    addShutdownHook {
+      log.info("Shutting down system")
+      system.shutdown
+    }
     shutdownHooks.onComplete {
       case Success(_) =>
         println("Shutdown completed")
@@ -107,25 +118,24 @@ class CryoContext(val system: ActorSystem, val config: Config) {
   if (config.getBoolean("aws.disable-cert-checking"))
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 
-  val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
-  addFutureShutdownHook { gracefulStop(notification, 10 seconds) }
-  
+  val hashcatalog = system.actorOf(Props(classOf[HashCatalog], this), "catalog")
+  children = hashcatalog :: children
+
   val deadLetterMonitor = system.actorOf(Props(classOf[DeadLetterMonitor], this), "deadletter")
-  addFutureShutdownHook { gracefulStop(deadLetterMonitor, 10 seconds) }
+  children = deadLetterMonitor :: children
 
   val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
-  addFutureShutdownHook { gracefulStop(cryo, 10 seconds) }
-
-  val manager = system.actorOf(Props(classOf[Manager], this), "manager")
-  addFutureShutdownHook { gracefulStop(manager, 10 seconds) }
-
-  val hashcatalog = system.actorOf(Props(classOf[HashCatalog], this), "catalog")
-  addFutureShutdownHook { gracefulStop(hashcatalog, 10 seconds) }
-
-  val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
-  addFutureShutdownHook { gracefulStop(inventory, 10 seconds) }
+  children = cryo :: children
 
   val datastore = system.actorOf(Props(classOf[Datastore], this), "datastore")
-  addFutureShutdownHook { gracefulStop(datastore, 10 seconds) }
+  children = datastore :: children
 
+  val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
+  children = notification :: children
+
+  val manager = system.actorOf(Props(classOf[Manager], this), "manager")
+  children = manager :: children
+
+  val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
+  children = inventory :: children
 }

@@ -211,7 +211,7 @@ class Snapshot
 
 @getSnapshotFiles = (snapshotId, directory) =>
 	@log("getSnapshotFiles(#{snapshotId}, #{directory})")
-	@socket.send('GetSnapshotFiles', { snapshotId: snapshotId, directory: directory })
+	@socket.send('SnapshotGetFiles', { id: snapshotId, directory: directory })
 
 @updateSnapshotFileFilter = (snapshotId, directory, filter) =>
 	@socket.send('UpdateSnapshotFileFilter', { snapshotId: snapshotId, directory: directory, filter: filter })

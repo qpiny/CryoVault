@@ -2,6 +2,7 @@ package org.rejna.cryo.web
 
 import scala.util.Success
 import scala.util.matching.Regex
+import scala.util.control.Exception._
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.collection.JavaConversions._
@@ -25,6 +26,11 @@ import org.mashupbots.socko.events.WebSocketFrameEvent
 import org.jboss.netty.channel.Channel
 import org.jboss.netty.handler.codec.http.websocketx.TextWebSocketFrame
 import org.rejna.cryo.models._
+
+class UnexceptionalPartial[-A, +B](exceptionCatcher: Catcher[B])(unsafe: PartialFunction[A, B]) extends PartialFunction[A, B] {
+  def isDefinedAt(a: A) = unsafe.isDefinedAt(a)
+  def apply(a: A) = catching(exceptionCatcher) { unsafe(a) }
+}
 
 object EventTypeHints extends TypeHints {
   val hints =
@@ -65,8 +71,10 @@ object EventSerialization {
     private def sendIfOpen(message: Any) = {
       if (channel.isOpen)
         channel.write(message)
-      else
-        CryoWeb.unregisterWebSocket(channel)
+      else {
+        //CryoWeb.unregisterWebSocket(channel)
+        throw new ClosedChannelException()
+      }
     }
     def send(message: CryoMessage) = sendIfOpen(new TextWebSocketFrame(Serialization.write(message)))
     def send(messageList: Iterable[CryoMessage]) = sendIfOpen(new TextWebSocketFrame(Serialization.write(messageList)))
@@ -81,18 +89,26 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
   implicit val executionContext = context.system.dispatcher
   val ignore = ListBuffer[Regex]()
 
-  //  override val supervisorStrategy = OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
-  //    case _: ClosedChannelException =>
-  //      CryoWeb.unregisterWebSocket(channel)
-  //      Stop
-  //    case _: Exception => Resume
-  //  }
+//  override val supervisorStrategy =
+//    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
+//      case _: ClosedChannelException =>
+//        println("WebSocket is closed, stopping actor")
+//        CryoWeb.unregisterWebSocket(channel)
+//        Stop
+//      case _: Exception => Resume
+//    }
 
-  def receive = {
+  def receive = new UnexceptionalPartial[Any, Unit]({
+    case _: ClosedChannelException =>
+      println("WebSocket is closed, stopping actor")
+      CryoWeb.unregisterWebSocket(channel)
+      context.stop(self)
+  })({
     case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
+      log.debug("Receive from websocket: " + m)
       val event = Serialization.read[Request](m)
-      log.info("Receive from websocket : " + event)
+      log.info("Receive from websocket: " + event)
       event match {
         case Subscribe(subscription) =>
           CryoEventBus.subscribe(self, subscription)
@@ -107,8 +123,8 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           cryoctx.inventory ! sr
         case ie: InventoryRequest =>
           cryoctx.inventory ! ie
-
       }
+
     case ArchiveIdList(archiveIds) =>
       Future.sequence(archiveIds.map {
         id =>
@@ -120,6 +136,7 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
         case Success(msgList) => channel.send(ArchiveList(msgList.flatten))
         case e: Any => log.error(CryoError("Get archive list error", e))
       }
+
     case SnapshotIdList(snapshots) =>
       log.debug(s"SnapshotIdList => ${snapshots} snapshot(s) found")
       Future.sequence(snapshots.map {
@@ -131,46 +148,47 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
         case Success(msgList) => channel.send(SnapshotList(msgList.flatten.toList))
         case e: Any => log.error(CryoError("Get snapshot list error", e))
       }
+
     case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore
+
     case msg: CryoMessage =>
       channel.send(msg)
+  })
 
-    //        case GetArchiveList() =>
-    //          wsFrame.write(ArchiveList(Cryo.inventory.archives.values.toList))
-    //        case GetSnapshotList() =>
-    //          wsFrame.write(SnapshotList(Cryo.inventory.snapshots.values.toList))
-    //        case RefreshInventory(maxAge) =>
-    //          Cryo.inventory.update(maxAge)
-    //        case GetSnapshotFiles(snapshotId, directory) => {
-    //          val snapshot = Cryo.inventory.snapshots(snapshotId)
-    //          val files = snapshot match {
-    //            case ls: LocalSnapshot => ls.files()
-    //            case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
-    //          }
-    //          val dir = Config.baseDirectory.resolve(directory)
-    //          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters).toList))
-    //        }
-    //        case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
-    //          val snapshot = Cryo.inventory.snapshots(snapshotId)
-    //          snapshot match {
-    //            case ls: LocalSnapshot =>
-    //              if (filter == "")
-    //                ls.fileFilters -= directory
-    //              else
-    //                FileFilterParser.parse(filter).fold(
-    //                  message => log.error("UpdateSnapshotFileFilter has failed : " + message),
-    //                  filter => ls.fileFilters(directory) = filter)
-    //            case _ => log.error("UpdateSnapshotFileFilter: File filters in remote snapshot are immutable")
-    //          }
-    //        case UploadSnapshot(snapshotId) =>
-    //          val snapshot = Cryo.inventory.snapshots(snapshotId)
-    //          snapshot match {
-    //            case ls: LocalSnapshot => ls.create
-    //            case _ => log.error("UploadSnapshot: Remote snapshot can't be updaloaded")
-    //          }
-    //        case msg => log.warn("Unknown message has been received : " + msg)
-
-  }
+  //        case GetArchiveList() =>
+  //          wsFrame.write(ArchiveList(Cryo.inventory.archives.values.toList))
+  //        case GetSnapshotList() =>
+  //          wsFrame.write(SnapshotList(Cryo.inventory.snapshots.values.toList))
+  //        case RefreshInventory(maxAge) =>
+  //          Cryo.inventory.update(maxAge)
+  //        case GetSnapshotFiles(snapshotId, directory) => {
+  //          val snapshot = Cryo.inventory.snapshots(snapshotId)
+  //          val files = snapshot match {
+  //            case ls: LocalSnapshot => ls.files()
+  //            case rs: RemoteSnapshot => rs.remoteFiles.map(_.file.toString)
+  //          }
+  //          val dir = Config.baseDirectory.resolve(directory)
+  //          wsFrame.write(new SnapshotFiles(snapshotId, directory, getDirectoryContent(dir, files, snapshot.fileFilters).toList))
+  //        }
+  //        case UpdateSnapshotFileFilter(snapshotId, directory, filter) =>
+  //          val snapshot = Cryo.inventory.snapshots(snapshotId)
+  //          snapshot match {
+  //            case ls: LocalSnapshot =>
+  //              if (filter == "")
+  //                ls.fileFilters -= directory
+  //              else
+  //                FileFilterParser.parse(filter).fold(
+  //                  message => log.error("UpdateSnapshotFileFilter has failed : " + message),
+  //                  filter => ls.fileFilters(directory) = filter)
+  //            case _ => log.error("UpdateSnapshotFileFilter: File filters in remote snapshot are immutable")
+  //          }
+  //        case UploadSnapshot(snapshotId) =>
+  //          val snapshot = Cryo.inventory.snapshots(snapshotId)
+  //          snapshot match {
+  //            case ls: LocalSnapshot => ls.create
+  //            case _ => log.error("UploadSnapshot: Remote snapshot can't be updaloaded")
+  //          }
+  //        case msg => log.warn("Unknown message has been received : " + msg)
 
   //  def getDirectoryContent(directory: Path, fileSelection: Iterable[String], fileFilters: scala.collection.Map[String, FileFilter]): Iterable[FileElement] = {
   //    try {

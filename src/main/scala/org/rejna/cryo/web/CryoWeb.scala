@@ -49,7 +49,7 @@ object CryoWeb extends App with LoggingClass {
   })
 
   def unregisterWebSocket(channel: Channel) = {
-    log.info("Unregister websocket connection")
+    log.info(s"Unregister websocket connection: ${channel}")
     wsHandlers.get(channel) match {
       case Some(aref) =>
         aref ! PoisonPill
@@ -67,7 +67,10 @@ object CryoWeb extends App with LoggingClass {
   override def main(args: Array[String]) = {
     super.main(args)
     val webServer = new WebServer(WebServerConfig(), routes, system)
-    cryoctx.addShutdownHook { webServer.stop() }
+    cryoctx.addShutdownHook {
+      log.info("Stopping web server")
+      webServer.stop()
+    }
     webServer.start()
 
     log.info("Open a few browsers and navigate to http://localhost:8888/html")

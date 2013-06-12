@@ -6,11 +6,10 @@ import akka.util.{ ByteString, ByteStringBuilder }
 
 import java.nio.{ ByteBuffer, BufferOverflowException, ByteOrder }
 import java.nio.channels.FileChannel
+import java.util.Date
 
 import sbinary._
 import sbinary.Operations._
-
-import org.joda.time.DateTime
 
 object ByteStringSerializer {
   implicit val byteOrder = ByteOrder.BIG_ENDIAN
@@ -97,7 +96,7 @@ object CryoBinary extends DefaultProtocol {
       out.writeByte(1)
     }
   }
-  implicit val DateTimeFormat = wrap[DateTime, Long](_.getMillis, new DateTime(_))
+  implicit val DateTimeFormat = wrap[Date, Long](_.getTime, new Date(_))
   implicit val HashFormat = wrap[Hash, Array[Byte]](_.value, new Hash(_))
   implicit val FileFilterFormat = wrap[FileFilter, String](_.toString, FileFilterParser.parse(_) match {
     case Right(ff) => ff

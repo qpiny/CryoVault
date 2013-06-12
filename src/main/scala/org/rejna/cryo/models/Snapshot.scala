@@ -22,8 +22,6 @@ import sbinary._
 import sbinary.DefaultProtocol._
 import sbinary.Operations._
 
-import org.joda.time.DateTime
-
 class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
   def this(path: String) = this(FileSystems.getDefault.getPath(path))
 
@@ -55,29 +53,88 @@ case class SnapshotUploaded(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
 //case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
 
-class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
-  val attributeBuilder = AttributeBuilder(s"/cryo/snapshot/${id}")
+class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
 
-  val sizeAttribute = attributeBuilder("size", 0L)
-  def size = sizeAttribute()
-  def size_= = sizeAttribute() = _
-  val fileFilters = attributeBuilder.map("fileFilters", Map.empty[String, FileFilter])
-  val files = attributeBuilder.list("files", List.empty[String])
+  override def preStart = {
+    cryoctx.datastore ? CreateData(None, "Index") onComplete {
+      case Success(DataCreated(id)) => context.become(cryoReceive(ready(id)))
+      case e: Any => log.error(CryoError("Snapshot creation failed", e))
+    }
+  }
 
-  fileFilters <+> new AttributeListCallback {
-    override def onListChange[A](attribute: ReadAttribute[List[A]], addedValues: List[A], removedValues: List[A]) = {
-      var newSize = size
-      var addedFiles = LinkedList.empty[String]
-      if (removedValues.isEmpty) {
-        val (addedFiles, addedSize) = walkFileSystem(addedValues.asInstanceOf[List[(String, FileFilter)]])
-        files ++= addedFiles
-        size += addedSize
-      } else {
-        val (newFiles, newSize) = walkFileSystem(fileFilters)
-        files() = newFiles.toList
-        size = newSize
+  def receive = cryoReceive {
+    case PrepareToDie() => sender ! ReadyToDie()
+    case m: Any => sender ! new CryoError(s"Snapshot actor is not ready, can't process message ${m}")
+  }
+
+  def ready(id: String): PartialFunction[Any, Unit] = {
+    val attributeBuilder = AttributeBuilder(s"/cryo/snapshot/${id}")
+
+    val sizeAttribute = attributeBuilder("size", 0L)
+    def size = sizeAttribute()
+    def size_= = sizeAttribute() = _
+    val fileFilters = attributeBuilder.map("fileFilters", Map.empty[String, FileFilter])
+    val files = attributeBuilder.list("files", List.empty[String])
+
+    fileFilters <+> new AttributeListCallback {
+      override def onListChange[A](attribute: ReadAttribute[List[A]], addedValues: List[A], removedValues: List[A]) = {
+        var newSize = size
+        var addedFiles = LinkedList.empty[String]
+        if (removedValues.isEmpty) {
+          val (addedFiles, addedSize) = walkFileSystem(addedValues.asInstanceOf[List[(String, FileFilter)]])
+          files ++= addedFiles
+          size_=(size + addedSize)
+        } else {
+          val (newFiles, newSize) = walkFileSystem(fileFilters)
+          files() = newFiles.toList
+          size_=(newSize) // TODO why "size = newSize" doesn't work ?!
+        }
       }
     }
+
+    val f: PartialFunction[Any, Unit] = {
+      case PrepareToDie() =>
+        sender ! ReadyToDie()
+
+      case SnapshotUpdateFilter(id, file, filter) =>
+        fileFilters += file -> filter
+        sender ! FilterUpdated
+
+      case SnapshotGetFiles(id, directory) =>
+      // TODO
+
+      case SnapshotUpload(id) =>
+        val requester = sender
+        var archiveUploader = new ArchiveUploader
+        for (f <- files()) {
+          archiveUploader.addFile(f, splitFile(f))
+        }
+        archiveUploader.flatMap {
+          case UploaderState(out, aid, len) =>
+            (cryoctx.hashcatalog ? GetCatalogContent) map {
+              case CatalogContent(catalog) =>
+                //out.putCatalog(catalog)
+                UploaderState(out, aid, len)
+              case e: Any => throw CryoError("Fail to get block location", e)
+            }
+        }
+        // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
+        //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
+        archiveUploader.upload.map {
+          case bs: ByteString =>
+            cryoctx.datastore ? WriteData(id, bs) map {
+              case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
+                case DataUploaded(sid) => requester ! SnapshotUploaded(sid)
+                case e: Any => throw CryoError("Fail to upload data", e)
+              }
+              case e: Any => throw CryoError("Fail to write data", e)
+            }
+        }.onFailure {
+          case e: CryoError => requester ! e
+          case o: Any => requester ! CryoError("Unexpected message", o)
+        }
+    }
+    f
   }
 
   private def walkFileSystem(filters: Iterable[(String, FileFilter)]) = {
@@ -193,47 +250,11 @@ class LocalSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
       state = state.flatMap(f)
     }
   }
-
-  def cryoReceive = {
-    case SnapshotUpdateFilter(id, file, filter) =>
-      fileFilters += file -> filter
-      sender ! FilterUpdated
-    case SnapshotGetFiles(id, directory) => // TODO
-    case SnapshotUpload(id) =>
-      val requester = sender
-      var archiveUploader = new ArchiveUploader
-      for (f <- files()) {
-        archiveUploader.addFile(f, splitFile(f))
-      }
-      archiveUploader.flatMap {
-        case UploaderState(out, aid, len) =>
-          (cryoctx.hashcatalog ? GetCatalogContent) map {
-            case CatalogContent(catalog) =>
-              //out.putCatalog(catalog)
-              UploaderState(out, aid, len)
-            case e: Any => throw CryoError("Fail to get block location", e)
-          }
-      }
-      // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
-      //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
-      archiveUploader.upload.map {
-        case bs: ByteString =>
-          cryoctx.datastore ? WriteData(id, bs) map {
-            case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
-              case DataUploaded(sid) => requester ! SnapshotUploaded(sid)
-              case e: Any => throw CryoError("Fail to upload data", e)
-            }
-            case e: Any => throw CryoError("Fail to write data", e)
-          }
-      }.onFailure {
-        case e: CryoError => requester ! e
-        case o: Any => requester ! CryoError("Unexpected message", o)
-      }
-  }
 }
 
 class RemoteSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
-  def cryoReceive = {
+  def receive = cryoReceive {
+    case PrepareToDie() => sender ! ReadyToDie()
     case _ =>
   }
 }
