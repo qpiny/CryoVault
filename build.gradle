@@ -21,7 +21,7 @@ mainClassName = "org.rejna.cryo.web.CryoWeb"
 
 ext {
 	majorScalaVersion = '2.10'
-	scalaVersion = '2.10.1'
+	scalaVersion = '2.10.2'
 	akkaVersion = '2.2-M3'
 }
 

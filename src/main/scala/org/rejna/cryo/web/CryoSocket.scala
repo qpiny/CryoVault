@@ -67,20 +67,20 @@ object EventSerialization {
     val dateFormat = Json.dateFormat
   }
 
-  case class EventSender(channel: Channel) {
-    private def sendIfOpen(message: Any) = {
-      if (channel.isOpen)
-        channel.write(message)
-      else {
-        //CryoWeb.unregisterWebSocket(channel)
-        throw new ClosedChannelException()
-      }
-    }
-    def send(message: CryoMessage) = sendIfOpen(new TextWebSocketFrame(Serialization.write(message)))
-    def send(messageList: Iterable[CryoMessage]) = sendIfOpen(new TextWebSocketFrame(Serialization.write(messageList)))
-  }
-
-  implicit def toEventSender(channel: Channel) = EventSender(channel)
+//  case class EventSender(channel: Channel) {
+//    private def sendIfOpen(message: Any) = {
+//      if (channel.isOpen)
+//        channel.write(message)
+//      else {
+//        //CryoWeb.unregisterWebSocket(channel)
+//        throw new ClosedChannelException()
+//      }
+//    }
+//    def send(message: CryoMessage) = sendIfOpen(new TextWebSocketFrame(Serialization.write(message)))
+//    def send(messageList: Iterable[CryoMessage]) = sendIfOpen(new TextWebSocketFrame(Serialization.write(messageList)))
+//  }
+//
+//  implicit def toEventSender(channel: Channel) = EventSender(channel)
 }
 
 class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
@@ -89,21 +89,29 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
   implicit val executionContext = context.system.dispatcher
   val ignore = ListBuffer[Regex]()
 
-//  override val supervisorStrategy =
-//    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
-//      case _: ClosedChannelException =>
-//        println("WebSocket is closed, stopping actor")
-//        CryoWeb.unregisterWebSocket(channel)
-//        Stop
-//      case _: Exception => Resume
-//    }
+  override def postStop = {
+    CryoWeb.unregisterWebSocket(channel)
+    CryoEventBus.unsubscribe(self)
+  }
 
-  def receive = new UnexceptionalPartial[Any, Unit]({
-    case _: ClosedChannelException =>
+  def send[T <: AnyRef](message: T)(implicit t : Manifest[T]) = {
+    if (channel.isOpen) {
+      channel.write(new TextWebSocketFrame(Serialization.write(message)))
+//        message match {
+//          case m: CryoMessage => Serialization.write(m)
+//          case ml: Iterable[_] => Serialization.write(ml)
+//        }))
+    } else {
       println("WebSocket is closed, stopping actor")
-      CryoWeb.unregisterWebSocket(channel)
       context.stop(self)
-  })({
+    }
+  }
+  def receive = {
+//    new UnexceptionalPartial[Any, Unit]({
+//    case _: ClosedChannelException =>
+//      println("WebSocket is closed, stopping actor")
+//      context.stop(self)
+//  })({
     case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
       log.debug("Receive from websocket: " + m)
@@ -125,7 +133,7 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           cryoctx.inventory ! ie
       }
 
-    case ArchiveIdList(archiveIds) =>
+    case ArchiveIdList(date, status, archiveIds) =>
       Future.sequence(archiveIds.map {
         id =>
           (cryoctx.datastore ? GetDataStatus(id)).map {
@@ -133,11 +141,11 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
             case _: Any => None
           }
       }).onComplete {
-        case Success(msgList) => channel.send(ArchiveList(msgList.flatten))
+        case Success(msgList) => send(ArchiveList(date, status, msgList.flatten))
         case e: Any => log.error(CryoError("Get archive list error", e))
       }
 
-    case SnapshotIdList(snapshots) =>
+    case SnapshotIdList(date, status, snapshots) =>
       log.debug(s"SnapshotIdList => ${snapshots} snapshot(s) found")
       Future.sequence(snapshots.map {
         case (id, _) => (cryoctx.datastore ? GetDataStatus(id)).map {
@@ -145,15 +153,15 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           case _: Any => None
         }
       }).onComplete {
-        case Success(msgList) => channel.send(SnapshotList(msgList.flatten.toList))
+        case Success(msgList) => send(SnapshotList(date, status, msgList.flatten.toList))
         case e: Any => log.error(CryoError("Get snapshot list error", e))
       }
 
     case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore
 
     case msg: CryoMessage =>
-      channel.send(msg)
-  })
+      send(msg)
+  }
 
   //        case GetArchiveList() =>
   //          wsFrame.write(ArchiveList(Cryo.inventory.archives.values.toList))

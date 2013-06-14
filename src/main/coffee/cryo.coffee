@@ -234,6 +234,7 @@ $ =>
 			@subscribe('/cryo/manager')
 			@subscribe('/log/trace/debug/info')
 			@addIgnoreSubscription('#files$')
+			# update Inventory Information
 			@getSnapshotList()
 			
 		message: (msg) =>
@@ -241,6 +242,8 @@ $ =>
 		
 		events:
 			SnapshotList: (e) =>
+				@_ui_inventoryDate.text(e.date)
+				@_ui_inventoryState.text(e.status)
 				@snapshotList.update(e.snapshots)
 		
 			SnapshotCreated: (e) =>
@@ -298,13 +301,17 @@ $ =>
 	@_ui_inventoryRefresh = $('#inventoryRefresh')
 	@_ui_inventoryDate = $('#inventoryDate')
 	@_ui_inventoryState = $('#inventoryState')
+	@_ui_jobList = $('#jobList')
 	
 	# UI operations
 	@log = (msg) =>
-			@_ui_console.append(msg + '<br/>')
+		@_ui_console.append(msg + '<br/>')
 	
 	# Build UI
-	$('body').layout({ applyDefaultStyles: true })
+	$('body').layout({
+		south__minSize: 100,
+		showDebugMessages: 100
+	})
 	
 	@_ui_snapshotList.selectable({
 		selected: (event, ui) ->

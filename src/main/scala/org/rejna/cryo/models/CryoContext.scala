@@ -24,31 +24,29 @@ case class ReadyToDie()
 class CryoContext(val system: ActorSystem, val config: Config) extends LoggingClass {
   import org.rejna.util.IsoUnit._
   implicit val executionContext = system.dispatcher
+  implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(this, log, actorRef)
 
   val exitPromise = Promise[Any]()
-  var shutdownHooks = exitPromise.future
   var children: List[ActorRef] = Nil
+  var shutdownHooks: Future[Any] = exitPromise.future
+
   def addShutdownHook[T](f: => T) = shutdownHooks = shutdownHooks map { (Unit) => f }
   def addFutureShutdownHook[T](f: => Future[T]) = shutdownHooks = shutdownHooks flatMap { (Unit) => f }
 
   def shutdown() {
     implicit val timeout = getTimeout(classOf[PrepareToDie])
-    implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(this, log, actorRef)
-    exitPromise.success()
-    addFutureShutdownHook {
+
+    exitPromise.completeWith {
       log.info("Prepare actors for the death")
-      Future.sequence(children map { _ ? PrepareToDie() })
-    }
-    addFutureShutdownHook {
-      log.info("Kill all actors")
-      Future.sequence(children map { gracefulStop(_, timeout.duration) })
-    }
-    addShutdownHook {
-      log.info("Shutting down system")
-      system.shutdown
+      Future.sequence[Any, List](children map { _ ? PrepareToDie() }) flatMap { _ =>
+        log.info("Kill all actors")
+        Future.sequence[Any, List](children map { gracefulStop(_, timeout.duration) })
+      }
     }
     shutdownHooks.onComplete {
       case Success(_) =>
+        log.info("Shutting down system")
+        system.shutdown
         println("Shutdown completed")
         System.exit(0)
       case Failure(e) =>

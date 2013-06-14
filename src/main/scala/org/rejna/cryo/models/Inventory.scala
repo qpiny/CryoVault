@@ -32,21 +32,32 @@ case class ArchiveCreated(id: String) extends InventoryResponse
 case class CreateSnapshot() extends InventoryRequest
 case class SnapshotCreated(id: String, aref: ActorRef) extends InventoryResponse
 case class GetArchiveList() extends InventoryRequest
-case class ArchiveIdList(archiveIds: List[String]) extends InventoryResponse
+case class ArchiveIdList(date: Date, status: InventoryStatus.InventoryStatus, archiveIds: List[String]) extends InventoryResponse
 case class GetSnapshotList() extends InventoryRequest
-case class SnapshotIdList(snapshots: Map[String, ActorRef]) extends InventoryResponse
+case class SnapshotIdList(date: Date, status: InventoryStatus.InventoryStatus, snapshots: Map[String, ActorRef]) extends InventoryResponse
 case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 
 case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)
 case class InventoryMessage(date: Date, entries: List[InventoryEntry])
 
+object InventoryStatus extends Enumeration {
+  type InventoryStatus = Value
+  val Unknown, Refreshing, Cached, Error = Value
+}
+
 class Inventory(val cryoctx: CryoContext) extends CryoActor {
+  import InventoryStatus._
+
   val attributeBuilder = AttributeBuilder("/cryo/inventory")
   val inventoryDataId = "inventory"
 
   val dateAttribute = attributeBuilder("date", new Date())
   def date = dateAttribute()
-  private def date_= = dateAttribute() = _
+  def date_= = dateAttribute() = _
+
+  val statusAttribute = attributeBuilder("status", Unknown)
+  def status = statusAttribute()
+  def status_= = statusAttribute() = _
 
   val snapshots = attributeBuilder.map("snapshots", Map[String, ActorRef]())
   val archiveIds = attributeBuilder.list("archives", List[String]())
@@ -86,12 +97,15 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
       case e: Any =>
         throw CryoError("Fail to write inventory", e)
     } map {
-      case DataClosed(id) => log.info("Inventory saved")
-      case o: Any => throw CryoError("Fail to close inventory", o)
+      case DataClosed(id) =>
+        status = Cached
+        log.info("Inventory saved")
+      case o: Any =>
+        throw CryoError("Fail to close inventory", o)
     }
   }
 
-  private def loadFromDataStore(size: Long) = {
+  private def loadFromDataStore(size: Long): Future[InventoryStatus] = {
     implicit val formats = Json
     cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
       case DataRead(id, position, buffer) =>
@@ -110,30 +124,40 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
               throw CryoError(s"Fail to define archive data ${entry.id}", o)
           }
         }
-        log.info("Inventory updated")
+        Cached
       case o: Any => throw CryoError("Fail to read inventory data", o)
     }
   }
 
   private def reload() = {
     (cryoctx.datastore ? GetDataStatus(inventoryDataId)) flatMap {
-      case DataStatus(_, _, _, status, size, _) if status == EntryStatus.Created => loadFromDataStore(size)
-      case _: DataStatus => Future(log.info("Waiting for inventory download completion"))
+      case DataStatus(_, _, _, ds, size, _) if ds == EntryStatus.Created =>
+        loadFromDataStore(size)
+      case _: DataStatus =>
+        log.info("Waiting for inventory download completion")
+        Future(Refreshing)
       case DataNotFoundError(id, _, _) =>
         (cryoctx.manager ? GetJobList()) flatMap {
           case JobList(jl) if !jl.exists(_.isInstanceOf[InventoryJob]) =>
             (cryoctx.cryo ? RefreshInventory()) map {
-              case RefreshInventoryRequested(job) => log.info(s"Inventory update requested (${job.id})")
+              case RefreshInventoryRequested(job) =>
+                log.info(s"Inventory update requested (${job.id})")
+                Refreshing
               case o: Any => throw CryoError("Fail to refresh inventory", o)
             }
           case _: JobList =>
-            Future(log.info("Inventory update has been already requested"))
+            log.info("Inventory update has been already requested")
+            Future(Refreshing)
           case o: Any =>
             throw CryoError("Fail to get job list", o)
         }
-      case o: Any => throw CryoError("Fail to get inventory status", o)
-    } onFailure {
-      case t => log.error(CryoError("An error has occured while updating inventory", t))
+      case o: Any =>
+        throw CryoError("Fail to get inventory status", o)
+    } onComplete {
+      case Failure(t) =>
+        log.error(CryoError("An error has occured while updating inventory", t))
+      case Success(s) =>
+        status = s
     }
   }
 
@@ -196,10 +220,10 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
       }
 
     case GetArchiveList() =>
-      sender ! ArchiveIdList(archiveIds.toList)
+      sender ! ArchiveIdList(date, status, archiveIds.toList)
 
     case GetSnapshotList() =>
-      sender ! SnapshotIdList(snapshots.toMap)
+      sender ! SnapshotIdList(date, status, snapshots.toMap)
 
     case sr: SnapshotRequest =>
       snapshots.get(sr.id) match {
