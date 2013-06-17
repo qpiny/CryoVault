@@ -3,6 +3,8 @@ package org.rejna.cryo.models
 import scala.collection.mutable.{ Buffer, Map }
 import scala.collection.immutable.{ Map => IMap }
 import scala.util.matching.Regex
+import scala.concurrent.{ Await, Future, ExecutionContext }
+import scala.concurrent.duration._
 
 object AttributePath extends Regex("/cryo/([^/]*)/([^/]*)#(.*)", "service", "object", "attribute")
 
@@ -25,20 +27,27 @@ class AttributeBuilder(path: List[String]) extends LoggingClass {
 
   def apply[A](name: String, initValue: A) = new Attribute(name, initValue) <+> callback
 
-  def apply[A](name: String, body: () => A) = new MetaAttribute(name, body) <+> callback
+  def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaAttribute(name, () => Future(body())) <+> callback
+
+  def future[A](name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaAttribute(name, body) <+> callback
 
   def list[A](name: String, initValue: List[A]) = new ListAttribute[A](name, initValue) <+> listCallback
 
-  def list[A](name: String, body: () => List[A]) = new MetaListAttribute(name, body) <+> listCallback
+  def list[A](name: String, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaListAttribute(name, () => Future(body())) <+> listCallback
+  
+  def futureList[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaListAttribute(name, body) <+> listCallback
 
   def map[A, B](name: String, initValue: IMap[A, B]) = new MapAttribute[A, B](name, initValue) <+> listCallback
 
-  def map[A, B](name: String, body: () => IMap[A, B]) = new MetaMapAttribute(name, body) <+> listCallback
+  def map[A, B](name: String, body: () => IMap[A, B])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaMapAttribute(name, () => Future(body())) <+> listCallback
+  
+  def futureMap[A, B](name: String, body: () => Future[IMap[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaMapAttribute(name, body) <+> listCallback
 
   def /(subpath: String) = AttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
 
   def withAlias(alias: String) = AttributeBuilder(alias :: path: _*)
 }
+
 object AttributeBuilder {
   def apply(path: String*) = new AttributeBuilder(path.toList)
 }
@@ -74,13 +83,13 @@ trait ReadAttribute[A] {
     }
     addCallback(ac)
   }
-  
-  override def toString = s"${name}(${now})"  
+
+  override def toString = s"${name}(${now})"
 }
 
-class MetaAttribute[A](val name: String, body: () => A) extends ReadAttribute[A] { self =>
-  var _now: Option[A] = Some(body())
-  var _previous: Option[A] = _now
+class MetaAttribute[A](val name: String, body: () => Future[A])(implicit val timeout: Duration) extends ReadAttribute[A] { self =>
+  var _now: Option[Future[A]] = Some(body())
+  var _previous: Option[Future[A]] = _now
 
   object Invalidate extends AttributeChangeCallback {
     override def onChange[C](attribute: ReadAttribute[C]) = {
@@ -98,13 +107,16 @@ class MetaAttribute[A](val name: String, body: () => A) extends ReadAttribute[A]
     }
   }
 
-  def now = _now.getOrElse {
-    val value = body()
-    _now = Some(value)
-    value
+  def now = {
+    val future = _now.getOrElse {
+      val value = body()
+      _now = Some(value)
+      value
+    }
+    Await.result(future, timeout)
   }
 
-  def previous = _previous.get
+  def previous = Await.result(_previous.get, timeout)
 
   def link[C](attribute: ReadAttribute[C]): MetaAttribute[A] = {
     attribute.addCallback(Invalidate)
@@ -114,12 +126,12 @@ class MetaAttribute[A](val name: String, body: () => A) extends ReadAttribute[A]
   def <*[C] = link[C] _
 }
 
-class MetaListAttribute[A](name: String, body: () => List[A])
-  extends MetaAttribute[List[A]](name, body)
+class MetaListAttribute[A](name: String, body: () => Future[List[A]])(implicit timeout: Duration)
+  extends MetaAttribute[List[A]](name, body)(timeout)
   with ListCallback[A, MetaListAttribute[A]]
 
-class MetaMapAttribute[A, B](name: String, body: () => IMap[A, B])
-  extends MetaAttribute[List[(A, B)]](name, () => body().toList)
+class MetaMapAttribute[A, B](name: String, body: () => Future[IMap[A, B]])(implicit timeout: Duration, val executionContext: ExecutionContext)
+  extends MetaAttribute[List[(A, B)]](name, () => body().map(_.toList))(timeout)
   with ListCallback[(A, B), MetaMapAttribute[A, B]]
 
 class Attribute[A](val name: String, initValue: A) extends ReadAttribute[A] { self =>
@@ -236,14 +248,14 @@ class MapAttribute[A, B](name: String, initValue: IMap[A, B])
     update(_addTo(now, kv))
     this
   }
-  
+
   private def _addTo(map: List[(A, B)], kv: (A, B)): List[(A, B)] = {
     val r = map.filterNot(_._1 == kv._1) :+ kv
     r
   }
-  
+
   override def ++=(kvs: TraversableOnce[(A, B)]) = {
-    val v = kvs.foldLeft(now) { case (map, element) => _addTo(map, element)}
+    val v = kvs.foldLeft(now) { case (map, element) => _addTo(map, element) }
     update(v)
     this
   }

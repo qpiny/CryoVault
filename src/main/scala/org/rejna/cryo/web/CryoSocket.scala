@@ -54,6 +54,8 @@ object EventTypeHints extends TypeHints {
       //      classOf[SnapshotFiles] ::
       classOf[AttributeChange[_]] ::
       classOf[AttributeListChange[_]] ::
+      classOf[CryoError] ::
+      classOf[Log] ::
       Nil
 
   def hintFor(clazz: Class[_]) = clazz.getSimpleName
@@ -66,21 +68,6 @@ object EventSerialization {
     override val customSerializers = Json.customSerializers
     val dateFormat = Json.dateFormat
   }
-
-//  case class EventSender(channel: Channel) {
-//    private def sendIfOpen(message: Any) = {
-//      if (channel.isOpen)
-//        channel.write(message)
-//      else {
-//        //CryoWeb.unregisterWebSocket(channel)
-//        throw new ClosedChannelException()
-//      }
-//    }
-//    def send(message: CryoMessage) = sendIfOpen(new TextWebSocketFrame(Serialization.write(message)))
-//    def send(messageList: Iterable[CryoMessage]) = sendIfOpen(new TextWebSocketFrame(Serialization.write(messageList)))
-//  }
-//
-//  implicit def toEventSender(channel: Channel) = EventSender(channel)
 }
 
 class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
@@ -131,30 +118,8 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           cryoctx.inventory ! sr
         case ie: InventoryRequest =>
           cryoctx.inventory ! ie
-      }
-
-    case ArchiveIdList(date, status, archiveIds) =>
-      Future.sequence(archiveIds.map {
-        id =>
-          (cryoctx.datastore ? GetDataStatus(id)).map {
-            case ds: DataStatus => Some(ds)
-            case _: Any => None
-          }
-      }).onComplete {
-        case Success(msgList) => send(ArchiveList(date, status, msgList.flatten))
-        case e: Any => log.error(CryoError("Get archive list error", e))
-      }
-
-    case SnapshotIdList(date, status, snapshots) =>
-      log.debug(s"SnapshotIdList => ${snapshots} snapshot(s) found")
-      Future.sequence(snapshots.map {
-        case (id, _) => (cryoctx.datastore ? GetDataStatus(id)).map {
-          case ds: DataStatus => Some(ds)
-          case _: Any => None
-        }
-      }).onComplete {
-        case Success(msgList) => send(SnapshotList(date, status, msgList.flatten.toList))
-        case e: Any => log.error(CryoError("Get snapshot list error", e))
+        case cr: CryoRequest =>
+          cryoctx.cryo ! cr
       }
 
     case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore

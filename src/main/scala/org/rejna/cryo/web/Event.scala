@@ -20,8 +20,6 @@ case class Unsubscribe(subscription: String) extends Request
 case class AddIgnoreSubscription(subscription: String) extends Request
 case class RemoveIgnoreSubscription(subscription: String) extends Request
 
-case class SnapshotList(date: Date, status: InventoryStatus, snapshots: List[DataStatus]) extends Response
-case class ArchiveList(date: Date, status: InventoryStatus, archives: List[DataStatus]) extends Response
 //case class Archive(id: String, creationDate: DateTime, )
 //case class CreateSnapshot() extends RequestEvent
 //case class UploadSnapshot(snapshotId: String) extends RequestEvent

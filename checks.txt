@@ -1,0 +1,27 @@
+== at init ==
+[OK] get snapshot list
+[NC] create snapshot if there is no snapshot 
+[OK] select first snapshot
+[KO] create new snapshot
+	<< CreateSnapshot
+	[object Object] : Receive from websocket: CreateSnapshot()
+	>>"{\"type\":\"AttributeListChange\",\"path\":\"/cryo/inventory#snapshots\",\"addedValues\":[{\"8e76072f-3969-459a-868c-e5c545164d34\":{\"path\":{\"parent\":{\"parent\":{\"parent\":{\"address\":{\"protocol\":\"akka\",\"system\":\"cryo\"},\"name\":\"/\"},\"name\":\"user\",\"uid\":0},\"name\":\"inventory\",\"uid\":1041906512},\"name\":\"$c\",\"uid\":-1799330408}}}],\"removedValues\":[]}"
+	>>"{\"type\":\"SnapshotCreated\",\"id\":\"8e76072f-3969-459a-868c-e5c545164d34\"}"
+	<< Unsubscribe(/cryo/snapshots/NTGTdpaFplQJXa6JZhNh-sm35_ADbnZdf9maGwwmHbokjFB0CO-3DLsynfVjyrmuqHw0takd-DPD-uKn8Z6FRFXnji7o70FgqveDl_O1r4aO42hLLwZkZhhxNtfTbygjgJZ_G97LFg)
+	[object Object] : Receive from websocket: Unsubscribe(/cryo/snapshots/NTGTdpaFplQJXa6JZhNh-sm35_ADbnZdf9maGwwmHbokjFB0CO-3DLsynfVjyrmuqHw0takd-DPD-uKn8Z6FRFXnji7o70FgqveDl_O1r4aO42hLLwZkZhhxNtfTbygjgJZ_G97LFg)
+	<< Subscribe(/cryo/snapshots/)
+	<< getSnapshotFiles(, /)
+	[object Object] : Receive from websocket: Subscribe(/cryo/snapshots/)
+	[object Object] : Receive from websocket: SnapshotGetFiles(,/)
+	>>"{\"id\":\"\",\"message\":\"Snapshot was not found\",\"cause\":null}"
+[??] refresh inventory
+	
+	
+BUGS:
+ - Log level serialization :
+	"{\"type\":\"Log\",\"level\":{\"levelInt\":20000,\"levelStr\":\"INFO\"},\"marker\":\"\",\"message\":\"Notification messages have been removed\"}"
+	shoud be
+	"{\"type\":\"Log\",\"level\":\"INFO\",\"marker\":\"\",\"message\":\"Notification messages have been removed\"}"
+ - data status serialization : integer => string
+ - id is too long for web ui => hide overflow
+ 

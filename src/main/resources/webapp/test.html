@@ -1,79 +1,57 @@
-<!DOCTYPE html>
-
 <html>
 <head>
-<title>CryoVault</title>
-<link rel="shortcut icon" type="image/png" href="images/favicon.png">
-<link rel="stylesheet" href="jquery-ui-1.9.1.custom/css/ui-lightness/jquery-ui-1.9.1.custom.css" type="text/css" />
-<link rel="stylesheet" href="stylesheets/cryo.css" type="text/css" />
-<link rel="stylesheet" href="themes/default/style.css" type="text/css" />
+<title>Layout Example</title>
 
-<script type="text/javascript" src="javascripts/gettheme.js"></script>
+	<link type="text/css" rel="stylesheet" href="stylesheets/layout-default-latest.css">
 
-<script type="text/javascript" src="javascripts/jquery-2.0.0.js"></script>
-<script type="text/javascript" src="jquery-ui-1.10.3/ui/jquery-ui.js"></script>
-<script type="text/javascript" src="javascripts/jquery.layout-latest.js"></script>
-<script type="text/javascript" src="javascripts/jquery.jstree.js"></script>
-<script type="text/javascript" src="javascripts/jquery.hotkeys.js"></script>
-<script type="text/javascript" src="javascripts/jquery.json-2.4.js"></script>
-<script type="text/javascript"
-	src="javascripts/jquery.websocket-0.0.1.js"></script>
-<script type="text/javascript" src="javascripts/jquery.base64.js"></script>
+	<style type="text/css">
+	.container	{ padding: 0; overflow: hidden; }
+	.blue		{ background: #EEF; }
+	.green		{ background: #EFE; }
+	</style>
 
-<script type="text/javascript">
-	$(function() {
-		$('#snapshotFiles').jstree({
-			themes : { theme : "default" },
-			 types : {
-				 types : {
-					 file : {
-						 icon : {
-							 image : "images/icons.png",
-							 position : "-32px -96px"
-						 },
-						 valid_children : "none"
-					 },
-					 folder : {
-						 icon : {
-							 image : "images/icons.png",
-							 position : "-16px -96px"
-						 },
-						 valid_children : "all"
-					 }
-				 }
-			},
-			plugins : [ "themes", "html_data", "ui", "types" ]
-		});
-		$('#snapshotFiles').bind('open_node.jstree', function(event) {
-			$("#console").append("<div>expand</div>");
-		});
-		$("#addButton").bind("click", function(event) {
-			$("#snapshotFiles").jstree("create_node", -1, "last", {
-				attr : { rel: "file" },
-				state: false,
-				data: "plop<b>hehe</b>"
-			}, false, false);
-		});
+	<script type="text/javascript" src="javascripts/jquery-2.0.0.js"></script>
+	<script type="text/javascript" src="../jquery-ui-1.10.3/ui/jquery-ui.js"></script>
+	<script type="text/javascript" src="javascripts/jquery.layout-latest.js"></script>
+	<script type="text/javascript">
+
+	$(document).ready(function () {
+		 $('body').layout({
+			west__size:			.50
+		,	west__childOptions:	{
+				/*center__childOptions:	{
+					size:		.33
+				}*/
+			}
+		}); 
 	});
-</script>
+
+	</script>
 
 </head>
 <body>
-	<button id="addButton">Add</button>
-	<div id="snapshotFiles" class="ui-layout-content">
-		<ul>
-			<li rel="file"><a>File 1</a></li>
-			<li rel="folder" id="folder1">
-				<a>Folder 1</a>
-				<ul>
-					<li rel="file"><a>File 2</a></li>
-					<li rel="file"><a>File 3</a></li>
-				</ul>
-			</li>
-			<li rel="file"><a>File 4</a></li>
-		</ul>
+
+<div class="ui-layout-north">Outer North</div>
+
+<div class="ui-layout-center">Outer Center</div>
+
+<div class="ui-layout-south">Outer South</div>
+
+<div class="ui-layout-east">Outer East</div>
+
+<div class="ui-layout-west blue"><b><u>Outer West</u></b>
+	<div class="header"></div>
+	<div class="ui-layout-north">Middle North</div>
+	<div class="ui-layout-south">Middle South</div>
+	<div class="ui-layout-center green"><b><u>Middle Center</u></b>
+
+		<div class="ui-layout-west">Inner West</div>
+		<div class="ui-layout-east">Inner East</div>
+		<div class="ui-layout-center">Inner Center</div>
+
 	</div>
-	<div id="console"></div>
+
+</div>
 
 </body>
 </html>

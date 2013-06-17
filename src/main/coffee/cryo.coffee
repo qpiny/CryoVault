@@ -14,10 +14,6 @@ toIsoString = (value) ->
 	else
 		(value / Math.pow(2, 60)).toFixed(2) + 'Ei'
 
-#[{"id":"CP6-**","description":\"Index-2013-05-15T22:03:04+02:00\",
-#\"creationDate\":{},\"status\":{\"name\":null},\"size\":1040648,\"checksum\":\"1839a063dbe16b913c21e2568315bd324541a93b419552c3ad9b2c11ec1aef68\"},
-#{\"id\":\"NTGTdpaFplQJXa6JZhNh-sm35_ADbnZdf9maGwwmHbokjFB0CO-3DLsynfVjyrmuqHw0takd-DPD-uKn8Z6FRFXnji7o70FgqveDl_O1r4aO42hLLwZkZhhxNtfTbygjgJZ_G97LFg\",\"description\":\"Index-2013-05-15T22:15:43+02:00\",
-#\"creationDate\":{},\"status\":{\"name\":null},\"size\":821552,\"checksum\":\"e25217d32ffbef95eb66cf8adbdc5bda1648424cba295e8d090a021acdbf6fff\"}]"
 class Snapshot
 	constructor: (@cryo, init) ->
 		@id = init.id ? '<not_set>'
@@ -30,7 +26,7 @@ class Snapshot
 		
 	select: =>
 		@cryo.snapshotList.selectedSnapshot = this
-		@cryo.subscribe('/cryo/Index/' + @id)
+		@cryo.subscribe('/cryo/snapshots/' + @id)
 		@cryo._ui_snapshotId.text(@id)
 		@cryo._ui_snapshotDate.text(@date)
 		@cryo._ui_snapshotSize.text(toIsoString(@size) + 'B')
@@ -46,7 +42,7 @@ class Snapshot
 		undefined
 		
 	unselect: =>
-		@cryo.unsubscribe('/cryo/Index/' + @id)
+		@cryo.unsubscribe('/cryo/snapshots/' + @id)
 		undefined
 		
 	showFiles: (directory, files) =>
@@ -206,11 +202,11 @@ class Snapshot
 	@socket.send('CreateSnapshot')
 
 @getSnapshotList = =>
-	@log("GetSnapshotList")
+	@log("<< GetSnapshotList")
 	@socket.send('GetSnapshotList')
 
 @getSnapshotFiles = (snapshotId, directory) =>
-	@log("getSnapshotFiles(#{snapshotId}, #{directory})")
+	@log("<< getSnapshotFiles(#{snapshotId}, #{directory})")
 	@socket.send('SnapshotGetFiles', { id: snapshotId, directory: directory })
 
 @updateSnapshotFileFilter = (snapshotId, directory, filter) =>
@@ -229,7 +225,6 @@ $ =>
 			@log('connected')
 			@subscribe('/cryo#snapshots')
 			@subscribe('/cryo#archives')
-			@subscribe('/cryo/Data')
 			@subscribe('/cryo/inventory')
 			@subscribe('/cryo/manager')
 			@subscribe('/log/trace/debug/info')
@@ -238,8 +233,11 @@ $ =>
 			@getSnapshotList()
 			
 		message: (msg) =>
-			@log('=>' + $.toJSON(msg.originalEvent.data))
-		
+			@log('>>' + $.toJSON(msg.originalEvent.data))
+			
+		unhandled: (msg) =>
+			@log('**' + $.toJSON(msg.originalEvent.data))
+			
 		events:
 			SnapshotList: (e) =>
 				@_ui_inventoryDate.text(e.date)
@@ -254,7 +252,7 @@ $ =>
 			
 			AttributeChange: (e) =>
 				if (e.path.endsWith('#size'))
-					snapshotId = e.path.replace(new RegExp('/cryo/Index/(.*)#size'), '$1')
+					snapshotId = e.path.replace(new RegExp('/cryo/snapshots/(.*)#size'), '$1')
 					snapshot = @snapshotList.get(snapshotId)
 					snapshot.setSize(e.after)
 				else if (e.path is '/cryo/inventory#state')
@@ -263,7 +261,7 @@ $ =>
 					@_ui_inventoryDate.text(e.after)
 		
 			AttributeListChange: (e) =>
-				if (e.path is '/cryo#snapshots')
+				if (e.path is '/cryo/inventory#snapshots')
 					for kv in e.addedValues
 						for k of kv
 							@snapshotList.add(kv[k])
@@ -272,14 +270,13 @@ $ =>
 						for k of kv
 							@snapshotList.remove(kv[k])
 				else if (e.path.endsWith('#fileFilters'))
-					snapshotId = e.path.replace(new RegExp('/cryo/Index/(.*)#fileFilters'), '$1')
+					snapshotId = e.path.replace(new RegExp('/cryo/snapshots/(.*)#fileFilters'), '$1')
 					snapshot = @snapshotList.get(snapshotId)
 					for kv in e.addedValues
 						for k of kv
 							snapshot.updateFilter(k, kv[k])
 					for k of e.removedValues
 						snapshot.updateFilter(k, '')
-			
 			Log: (e) =>
 				@log(e.level + ' : ' + e.message)
 		)
@@ -310,6 +307,7 @@ $ =>
 	# Build UI
 	$('body').layout({
 		south__minSize: 100,
+		west__childOptions:	{ },
 		showDebugMessages: 100
 	})
 	

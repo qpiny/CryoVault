@@ -19,6 +19,7 @@
                 open: function(){},
                 close: function(){},
                 message: function(){},
+                unhandled: function(){},
                 options: {},
                 events: {}
             };
@@ -30,13 +31,12 @@
                 .bind('message', function(e){
                     var m = $.evalJSON(e.originalEvent.data);
                     var h = settings.events[m.type];
-                    if (h) h.call(this, m);
+                    if (h) h.call(this, m)
+                    else settings.unhandled(m)
                 });
             ws._send = ws.send;
             ws.send = function(type, data) {
                 var m = {type: type};
-                //m = $.extend(true, m, $.extend(true, {}, settings.options, m));
-                //if (data) m['data'] = data;
                 m = $.extend(true, m, data);
                 return this._send($.toJSON(m));
             }

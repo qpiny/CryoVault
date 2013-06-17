@@ -1,5 +1,7 @@
 package org.rejna.cryo.models
 
+import akka.actor.ActorRef
+
 import java.util.Date
 
 import net.liftweb.json._
@@ -18,7 +20,6 @@ object Json extends Formats {
       JsonInventoryEntrySerialization ::
       JsonInventorySerialization ::
       new EnumSerializer(EntryStatus) ::
-//      JsonDateTimeSerialization ::
       Nil
   val fractionOfSecondFormat = new DateTimeFormatterBuilder()
     .appendLiteral('.')

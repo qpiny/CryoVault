@@ -5,19 +5,23 @@ import scala.concurrent.Future
 import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConversions._
 import scala.util.{ Success, Failure }
-
 import akka.actor.{ ActorRef, Props }
 import akka.util.ByteString
-
 import java.io.FileOutputStream
 import java.nio.file.{ Files, Path }
 import java.nio.file.StandardOpenOption._
 import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
 import java.util.Date
-
 import net.liftweb.json.Serialization
 import net.liftweb.json.JsonDSL._
+
+object InventoryStatus extends Enumeration {
+  type InventoryStatus = Value
+  val Unknown, Refreshing, Cached, Error = Value
+}
+
+import InventoryStatus._
 
 sealed abstract class InventoryInternalMessage
 sealed abstract class InventoryRequest extends Request
@@ -30,23 +34,20 @@ case class AddSnapshot(id: String) extends InventoryInternalMessage
 case class CreateArchive() extends InventoryRequest
 case class ArchiveCreated(id: String) extends InventoryResponse
 case class CreateSnapshot() extends InventoryRequest
-case class SnapshotCreated(id: String, aref: ActorRef) extends InventoryResponse
+case class SnapshotCreated(id: String) extends InventoryResponse
 case class GetArchiveList() extends InventoryRequest
-case class ArchiveIdList(date: Date, status: InventoryStatus.InventoryStatus, archiveIds: List[String]) extends InventoryResponse
+case class ArchiveList(date: Date, status: InventoryStatus, archives: List[DataStatus]) extends InventoryResponse
+
 case class GetSnapshotList() extends InventoryRequest
-case class SnapshotIdList(date: Date, status: InventoryStatus.InventoryStatus, snapshots: Map[String, ActorRef]) extends InventoryResponse
+case class SnapshotList(date: Date, status: InventoryStatus, snapshots: List[DataStatus]) extends InventoryResponse
 case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 
 case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)
 case class InventoryMessage(date: Date, entries: List[InventoryEntry])
 
-object InventoryStatus extends Enumeration {
-  type InventoryStatus = Value
-  val Unknown, Refreshing, Cached, Error = Value
-}
-
 class Inventory(val cryoctx: CryoContext) extends CryoActor {
   import InventoryStatus._
+  private var isDying = false
 
   val attributeBuilder = AttributeBuilder("/cryo/inventory")
   val inventoryDataId = "inventory"
@@ -59,8 +60,13 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
-  val snapshots = attributeBuilder.map("snapshots", Map[String, ActorRef]())
-  val archiveIds = attributeBuilder.list("archives", List[String]())
+  val snapshotIds = attributeBuilder.map("snapshotIds", Map[String, ActorRef]())
+  val archiveIds = attributeBuilder.list("archiveIds", List[String]())
+  attributeBuilder.futureList("snapshots", () => {
+    Future.sequence(snapshotIds.keys.map {
+      case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
+    } toList
+  )})
 
   CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
 
@@ -107,6 +113,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
 
   private def loadFromDataStore(size: Long): Future[InventoryStatus] = {
     implicit val formats = Json
+    
     cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
       case DataRead(id, position, buffer) =>
         val message = buffer.decodeString("UTF-8")
@@ -163,8 +170,9 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
 
   def receive = cryoReceive {
     case PrepareToDie() =>
+      isDying = true
       val requester = sender
-      Future.sequence(snapshots.values map { _ ? PrepareToDie() }) andThen {
+      Future.sequence(snapshots.values map { _ ? PrepareToDie() }) flatMap {
         case _ => save()
       } onComplete {
         case Success(_) =>
@@ -175,28 +183,28 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
           requester ! ReadyToDie()
       }
 
-    case UpdateInventoryDate(d) =>
-      date = d
-
-    case AddArchive(id) =>
-      archiveIds += id
-
+    ////// private messages //////////////
+    case UpdateInventoryDate(d) => date = d
+    case AddArchive(id) => archiveIds += id
     case AddSnapshot(id) =>
       if (!snapshots.contains(id))
         snapshots += id -> context.actorOf(Props(classOf[RemoteSnapshot], cryoctx, id))
-
+    //////////////////////////////////////
+        
     case AttributeChange(path, attribute) =>
-      path match {
+      if (!isDying) path match {
         case AttributePath("datastore", `inventoryDataId`, "status") =>
           CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
           if (attribute.now == EntryStatus.Created) {
             reload
           }
         case AttributePath("datastore", id, attr) =>
-          if (archiveIds.contains(id))
+          if (archiveIds contains id)
             CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", attribute))
-        // idem for snapshots ?
+          else if (snapshots contains id)
+            CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", attribute))
       }
+      
     case CreateArchive() =>
       val requester = sender
       (cryoctx.datastore ? CreateData(None, "Data")).onComplete { // TODO set better description
@@ -214,16 +222,24 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
           val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx))
           snapshots += id -> aref
           // TODO watch aref
-          requester ! SnapshotCreated(id, aref)
+          requester ! SnapshotCreated(id)
         case e: Any =>
           requester ! CryoError("Error while creating a new snapshot", e)
       }
 
     case GetArchiveList() =>
-      sender ! ArchiveIdList(date, status, archiveIds.toList)
+      Future.sequence(archiveIds.toList.map {
+        case aid => (cryoctx.datastore ? GetDataStatus(aid)).mapTo[DataStatus]
+      }) map {
+        case dsl => sender ! ArchiveList(date, status, dsl)
+      }
 
     case GetSnapshotList() =>
-      sender ! SnapshotIdList(date, status, snapshots.toMap)
+      Future.sequence(snapshots.keys.map {
+        case aid => (cryoctx.datastore ? GetDataStatus(aid)).mapTo[DataStatus]
+      }) map {
+        case dsl => sender ! SnapshotList(date, status, dsl.toList)
+      }
 
     case sr: SnapshotRequest =>
       snapshots.get(sr.id) match {
