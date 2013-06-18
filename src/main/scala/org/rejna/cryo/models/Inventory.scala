@@ -60,13 +60,13 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
-  val snapshotIds = attributeBuilder.map("snapshotIds", Map[String, ActorRef]())
+  val snapshots = attributeBuilder.map("snapshotIds", Map[String, ActorRef]())
   val archiveIds = attributeBuilder.list("archiveIds", List[String]())
-  attributeBuilder.futureList("snapshots", () => {
-    Future.sequence(snapshotIds.keys.map {
-      case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
-    } toList
-  )})
+//  attributeBuilder.futureList("snapshots", () => {
+//    Future.sequence(snapshotIds.keys.map {
+//      case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
+//    } toList
+//  )})
 
   CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
 
@@ -191,18 +191,18 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         snapshots += id -> context.actorOf(Props(classOf[RemoteSnapshot], cryoctx, id))
     //////////////////////////////////////
         
-    case AttributeChange(path, attribute) =>
+    case AttributeChange(path, previous, now) =>
       if (!isDying) path match {
         case AttributePath("datastore", `inventoryDataId`, "status") =>
-          CryoEventBus.publish(AttributeChange("/cryo/inventory#status", attribute))
-          if (attribute.now == EntryStatus.Created) {
+          CryoEventBus.publish(AttributeChange("/cryo/inventory#status", previous, now))
+          if (now == EntryStatus.Created) {
             reload
           }
         case AttributePath("datastore", id, attr) =>
           if (archiveIds contains id)
-            CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", attribute))
+            CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", previous, now))
           else if (snapshots contains id)
-            CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", attribute))
+            CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", previous, now))
       }
       
     case CreateArchive() =>

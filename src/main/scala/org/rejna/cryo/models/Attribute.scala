@@ -8,40 +8,49 @@ import scala.concurrent.duration._
 
 object AttributePath extends Regex("/cryo/([^/]*)/([^/]*)#(.*)", "service", "object", "attribute")
 
-case class AttributeChange[A](path: String, attribute: ReadAttribute[A]) extends Event
+case class AttributeChange[A](path: String, previous: A, now: A) extends Event
 case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event
 
 class AttributeBuilder(path: List[String]) extends LoggingClass {
   object callback extends AttributeChangeCallback {
-    override def onChange[A](attribute: ReadAttribute[A]) = {
-      log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), attribute.name, attribute.previous, attribute.now))
-      for (p <- path) CryoEventBus.publish(AttributeChange(p + '#' + attribute.name, attribute))
+    override def onChange[A](name: String, previous: A, now: A) = {
+      log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), name, previous, now))
+      for (p <- path) CryoEventBus.publish(AttributeChange(p + '#' + name, previous, now))
     }
   }
   object listCallback extends AttributeListCallback {
-    override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit = {
-      log.debug("attribute[%s#%s] add: %s remove: %s".format(path.mkString("(", ",", ")"), attribute.name, addedValues.take(10), removedValues.take(10)))
-      for (p <- path) CryoEventBus.publish(AttributeListChange(p + '#' + attribute.name, addedValues, removedValues))
+    override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit = {
+      log.debug("attribute[%s#%s] add: %s remove: %s".format(path.mkString("(", ",", ")"), name, addedValues.take(10), removedValues.take(10)))
+      for (p <- path) CryoEventBus.publish(AttributeListChange(p + '#' + name, addedValues, removedValues))
     }
   }
 
-  def apply[A](name: String, initValue: A) = new Attribute(name, initValue) <+> callback
+  def apply[A](name: String, initValue: A): Attribute[A] =
+    new SimpleAttribute(name, initValue) <+> callback
 
-  def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaAttribute(name, () => Future(body())) <+> callback
+  def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[A] =
+    new MetaAttribute(name, () => Future(body())) <+> callback
 
-  def future[A](name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaAttribute(name, body) <+> callback
+  def future[A](name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[A] =
+    new MetaAttribute(name, body) <+> callback
 
-  def list[A](name: String, initValue: List[A]) = new ListAttribute[A](name, initValue) <+> listCallback
+  def list[A](name: String, initValue: List[A]): Attribute[List[A]] =
+    new ListAttribute[A](name, initValue) <+> listCallback
 
-  def list[A](name: String, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaListAttribute(name, () => Future(body())) <+> listCallback
-  
-  def futureList[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaListAttribute(name, body) <+> listCallback
+  def list[A](name: String, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[List[A]] =
+    new MetaListAttribute(name, () => Future(body())) <+> listCallback
 
-  def map[A, B](name: String, initValue: IMap[A, B]) = new MapAttribute[A, B](name, initValue) <+> listCallback
+  def futureList[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[List[A]] =
+    new MetaListAttribute(name, body) <+> listCallback
 
-  def map[A, B](name: String, body: () => IMap[A, B])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaMapAttribute(name, () => Future(body())) <+> listCallback
-  
-  def futureMap[A, B](name: String, body: () => Future[IMap[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration) = new MetaMapAttribute(name, body) <+> listCallback
+  def map[A, B](name: String, initValue: IMap[A, B]): Attribute[List[(A, B)]] =
+    new MapAttribute[A, B](name, initValue) <+> listCallback
+
+  def map[A, B](name: String, body: () => IMap[A, B])(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[List[(A, B)]] =
+    new MetaMapAttribute(name, () => Future(body())) <+> listCallback
+
+  def futureMap[A, B](name: String, body: () => Future[IMap[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[List[(A, B)]] =
+    new MetaMapAttribute(name, body) <+> listCallback
 
   def /(subpath: String) = AttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
 
@@ -53,14 +62,14 @@ object AttributeBuilder {
 }
 
 trait AttributeChangeCallback {
-  def onChange[A](attribute: ReadAttribute[A]) = {}
+  def onChange[A](name: String, previous: A, now: A) = {}
 }
 
 trait AttributeListCallback {
-  def onListChange[A](attribute: ReadAttribute[List[A]], addedValues: List[A], removedValues: List[A]) = {}
+  def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {}
 }
 
-trait ReadAttribute[A] {
+trait Attribute[A] {
   protected var callbacks = List[AttributeChangeCallback]()
   val name: String
   def now: A
@@ -79,7 +88,7 @@ trait ReadAttribute[A] {
 
   def onChange(cb: (=> Unit) => Unit) = {
     lazy val ac: AttributeChangeCallback = new AttributeChangeCallback {
-      override def onChange[B](attribute: ReadAttribute[B]): Unit = cb { removeCallback(ac) }
+      override def onChange[B](name: String, previous: B, now: B): Unit = cb { removeCallback(ac) }
     }
     addCallback(ac)
   }
@@ -87,12 +96,12 @@ trait ReadAttribute[A] {
   override def toString = s"${name}(${now})"
 }
 
-class MetaAttribute[A](val name: String, body: () => Future[A])(implicit val timeout: Duration) extends ReadAttribute[A] { self =>
+class MetaAttribute[A](val name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration) extends ReadAttribute[A] { self =>
   var _now: Option[Future[A]] = Some(body())
   var _previous: Option[Future[A]] = _now
 
   object Invalidate extends AttributeChangeCallback {
-    override def onChange[C](attribute: ReadAttribute[C]) = {
+    override def onChange[C](name: String, previous: C, now: C) = {
       if (callbacks.isEmpty) {
         if (_now.isDefined) {
           _previous = _now
@@ -101,8 +110,13 @@ class MetaAttribute[A](val name: String, body: () => Future[A])(implicit val tim
       } else {
         _previous = _now
         _now = Some(body())
-        if (_previous != _now)
-          for (c <- callbacks) c.onChange(self)
+        for (
+          p <- _previous.get;
+          n <- _now.get
+        ) {
+          if (n != p)
+            for (c <- callbacks) c.onChange(name, p, n)
+        }
       }
     }
   }
@@ -126,15 +140,15 @@ class MetaAttribute[A](val name: String, body: () => Future[A])(implicit val tim
   def <*[C] = link[C] _
 }
 
-class MetaListAttribute[A](name: String, body: () => Future[List[A]])(implicit timeout: Duration)
-  extends MetaAttribute[List[A]](name, body)(timeout)
+class MetaListAttribute[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration)
+  extends MetaAttribute[List[A]](name, body)(executionContext, timeout)
   with ListCallback[A, MetaListAttribute[A]]
 
-class MetaMapAttribute[A, B](name: String, body: () => Future[IMap[A, B]])(implicit timeout: Duration, val executionContext: ExecutionContext)
-  extends MetaAttribute[List[(A, B)]](name, () => body().map(_.toList))(timeout)
+class MetaMapAttribute[A, B](name: String, body: () => Future[IMap[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration)
+  extends MetaAttribute[List[(A, B)]](name, () => body().map(_.toList))(executionContext, timeout)
   with ListCallback[(A, B), MetaMapAttribute[A, B]]
 
-class Attribute[A](val name: String, initValue: A) extends ReadAttribute[A] { self =>
+class SimpleAttribute[A](val name: String, initValue: A) extends ReadAttribute[A] { self =>
   private var _now = initValue
   private var _previous = initValue
 
@@ -142,7 +156,7 @@ class Attribute[A](val name: String, initValue: A) extends ReadAttribute[A] { se
     if (_now != newValue) {
       _previous = _now
       _now = newValue
-      for (c <- callbacks) c.onChange(this)
+      for (c <- callbacks) c.onChange(name, _previous, _now)
     }
   }
 
@@ -166,17 +180,17 @@ trait ListCallback[A, B <: ReadAttribute[List[A]]] { self: B =>
   def <->(attributeCallback: AttributeListCallback) = removeCallback(attributeCallback)
 
   addCallback(new AttributeChangeCallback {
-    override def onChange[B](attribute: ReadAttribute[B]): Unit = {
+    override def onChange[C](name: String, _previous: C, _now: C): Unit = {
       val add = now diff previous
       val remove = previous diff now
       for (c <- listCallbacks)
-        c.onListChange(self, add, remove)
+        c.onListChange(name, add, remove)
     }
   })
 
   def onAdd(cb: (=> Unit) => Unit) = {
     lazy val ac: AttributeListCallback = new AttributeListCallback {
-      override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit =
+      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
         cb { removeCallback(ac) }
     }
     addCallback(ac)
@@ -184,7 +198,7 @@ trait ListCallback[A, B <: ReadAttribute[List[A]]] { self: B =>
 
   def onRemove(cb: (=> Unit) => Unit) = {
     lazy val ac: AttributeListCallback = new AttributeListCallback {
-      override def onListChange[B](attribute: ReadAttribute[List[B]], addedValues: List[B], removedValues: List[B]): Unit =
+      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
         cb { removeCallback(ac) }
     }
     addCallback(ac)
@@ -192,7 +206,7 @@ trait ListCallback[A, B <: ReadAttribute[List[A]]] { self: B =>
 }
 
 class ListAttribute[A](name: String, initValue: List[A])
-  extends Attribute[List[A]](name, initValue)
+  extends SimpleAttribute[List[A]](name, initValue)
   with Buffer[A]
   with ListCallback[A, ListAttribute[A]] { self =>
 
@@ -240,7 +254,7 @@ class ListAttribute[A](name: String, initValue: List[A])
 }
 
 class MapAttribute[A, B](name: String, initValue: IMap[A, B])
-  extends Attribute[List[(A, B)]](name, initValue.toList)
+  extends SimpleAttribute[List[(A, B)]](name, initValue.toList)
   with Map[A, B]
   with ListCallback[(A, B), MapAttribute[A, B]] { self =>
 
