@@ -1,6 +1,6 @@
 == at init ==
 [OK] get snapshot list
-[NC] create snapshot if there is no snapshot 
+[OK] create snapshot if there is no snapshot 
 [OK] select first snapshot
 [KO] create new snapshot
 	<< CreateSnapshot
@@ -18,10 +18,5 @@
 	
 	
 BUGS:
- - Log level serialization :
-	"{\"type\":\"Log\",\"level\":{\"levelInt\":20000,\"levelStr\":\"INFO\"},\"marker\":\"\",\"message\":\"Notification messages have been removed\"}"
-	shoud be
-	"{\"type\":\"Log\",\"level\":\"INFO\",\"marker\":\"\",\"message\":\"Notification messages have been removed\"}"
- - data status serialization : integer => string
- - id is too long for web ui => hide overflow
+  - id is too long for web ui => hide overflow
  

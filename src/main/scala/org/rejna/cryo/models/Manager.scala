@@ -139,7 +139,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
 
   def receive = cryoReceive {
     case PrepareToDie() =>
-      val requester = sender
+      val _sender = sender
       implicit val formats = Json
       cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
         case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs))))
@@ -149,10 +149,10 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
         case o: Any => throw CryoError("Fail to write finalizedJobs data", o)
       } onComplete {
         case Success(DataClosed(_)) =>
-          requester ! ReadyToDie()
+          _sender ! ReadyToDie()
           log.info("FinalizedJobs data has been stored")
         case o: Any =>
-          requester ! ReadyToDie()
+          _sender ! ReadyToDie()
           log.error("Fail to save finalized jobs", o)
       }
     case AddJobs(addedJobs) =>
@@ -174,8 +174,8 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
       if (jobUpdated.isCompleted) {
         sender ! JobList(jobs.values.toList)
       } else {
-        val requester = sender
-        jobUpdated.future.onSuccess { case _ => requester ! JobList(jobs.values.toList) }
+        val _sender = sender
+        jobUpdated.future.onSuccess { case _ => _sender ! JobList(jobs.values.toList) }
       }
 
     case FinalizeJob(jobIds) =>

@@ -77,7 +77,7 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
     val files = attributeBuilder.list("files", List.empty[String])
 
     fileFilters <+> new AttributeListCallback {
-      override def onListChange[A](attribute: ReadAttribute[List[A]], addedValues: List[A], removedValues: List[A]) = {
+      override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
         var newSize = size
         var addedFiles = LinkedList.empty[String]
         if (removedValues.isEmpty) {
@@ -104,7 +104,7 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
       // TODO
 
       case SnapshotUpload(id) =>
-        val requester = sender
+        val _sender = sender
         var archiveUploader = new ArchiveUploader
         for (f <- files()) {
           archiveUploader.addFile(f, splitFile(f))
@@ -124,14 +124,14 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
           case bs: ByteString =>
             cryoctx.datastore ? WriteData(id, bs) map {
               case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
-                case DataUploaded(sid) => requester ! SnapshotUploaded(sid)
+                case DataUploaded(sid) => _sender ! SnapshotUploaded(sid)
                 case e: Any => throw CryoError("Fail to upload data", e)
               }
               case e: Any => throw CryoError("Fail to write data", e)
             }
         }.onFailure {
-          case e: CryoError => requester ! e
-          case o: Any => requester ! CryoError("Unexpected message", o)
+          case e: CryoError => _sender ! e
+          case o: Any => _sender ! CryoError("Unexpected message", o)
         }
     }
     f

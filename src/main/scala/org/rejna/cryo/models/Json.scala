@@ -6,7 +6,7 @@ import java.util.Date
 
 import net.liftweb.json._
 import net.liftweb.json.JsonDSL._
-import net.liftweb.json.ext.EnumSerializer
+import net.liftweb.json.ext.EnumNameSerializer
 
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormatterBuilder
@@ -19,7 +19,8 @@ object Json extends Formats {
       JsonNotificationSerialization ::
       JsonInventoryEntrySerialization ::
       JsonInventorySerialization ::
-      new EnumSerializer(EntryStatus) ::
+      new EnumNameSerializer(EntryStatus) ::
+      JsonLogSerialization ::
       Nil
   val fractionOfSecondFormat = new DateTimeFormatterBuilder()
     .appendLiteral('.')
@@ -193,6 +194,22 @@ object JsonDataStatusSerialization extends Serializer[DataStatus] {
       ("checksum" -> ds.checksum) ~
       ("size" -> ds.size) ~
       ("status" -> Extraction.decompose(ds.status))
+  }
+}
+
+object JsonLogSerialization extends Serializer[Log] {
+  val LogClass = classOf[Log]
+  
+  def deserialize(implicit format: Formats) = new PartialFunction[(TypeInfo, JValue), Log] {
+    def isDefinedAt(a: (TypeInfo, JValue)) = false
+    def apply(a: (TypeInfo, JValue)) = null
+  }
+  
+  def serialize(implicit format: Formats) = {
+    case log: Log =>
+      ("type" -> "Log") ~
+      ("level" -> log.level.levelStr) ~
+      ("message" -> log.message)
   }
 }
 

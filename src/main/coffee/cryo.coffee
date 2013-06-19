@@ -223,8 +223,6 @@ $ =>
 	@socket = $.websocket('ws://' + document.location.host + '/websocket/',
 		open: =>
 			@log('connected')
-			@subscribe('/cryo#snapshots')
-			@subscribe('/cryo#archives')
 			@subscribe('/cryo/inventory')
 			@subscribe('/cryo/manager')
 			@subscribe('/log/trace/debug/info')

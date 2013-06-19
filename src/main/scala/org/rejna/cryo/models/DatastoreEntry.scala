@@ -33,11 +33,11 @@ sealed abstract class DataEntry(
   val checksum: String) {
   val file = cryoctx.workingDirectory.resolve(id)
 
-  val statusAttribute: Attribute[EntryStatus]
+  val statusAttribute: SimpleAttribute[EntryStatus]
   def size = sizeAttribute()
   def size_= = sizeAttribute() = _
 
-  val sizeAttribute: Attribute[Long]
+  val sizeAttribute: SimpleAttribute[Long]
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
@@ -155,8 +155,8 @@ class DataEntryCreated(
   id: String,
   description: String,
   creationDate: Date,
-  val statusAttribute: Attribute[EntryStatus],
-  val sizeAttribute: Attribute[Long],
+  val statusAttribute: SimpleAttribute[EntryStatus],
+  val sizeAttribute: SimpleAttribute[Long],
   checksum: String) extends DataEntry(cryoctx, id, description, creationDate, checksum) with LoggingClass {
 
   status = Created

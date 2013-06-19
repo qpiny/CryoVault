@@ -40,7 +40,7 @@ class HashCatalog(val cryoctx: CryoContext) extends CryoActor {
       }
 
     case GetBlockLocation(block) =>
-      val requester = sender
+      val _sender = sender
       hashVersions.get(block.hash) match {
         case None => sender ! BlockLocationNotFound(HashVersion(block.hash.value, 1))
         case Some(hvs) =>
@@ -59,15 +59,15 @@ class HashCatalog(val cryoctx: CryoContext) extends CryoActor {
                 }
             }
           } onComplete {
-            case Success(Left(bl)) => requester ! bl
+            case Success(Left(bl)) => _sender ! bl
             case Success(Right(bls)) =>
-              if (bls.size == 1) requester ! bls.head // we are optimistic
+              if (bls.size == 1) _sender ! bls.head // we are optimistic
               else {
                 val maxVersion = hashVersions(block.hash).map(_.version).max
-                requester ! BlockLocationNotFound(HashVersion(block.hash.value, maxVersion + 1))
+                _sender ! BlockLocationNotFound(HashVersion(block.hash.value, maxVersion + 1))
               }
-            case Failure(e: CryoError) => requester ! e
-            case Failure(e) => requester ! new CryoError("", e)
+            case Failure(e: CryoError) => _sender ! e
+            case Failure(e) => _sender ! new CryoError("", e)
           }
       }
     case AddBlockLocation(blockLocations @ _*) =>
