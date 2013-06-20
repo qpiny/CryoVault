@@ -68,6 +68,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   implicit val timeout = 10 seconds
   val snapshotIds = attributeBuilder.map("snapshotIds", Map[String, ActorRef]()) 
   val snapshots = attributeBuilder.futureList("snapshots", () => {
+    log.info(s"attribute snapshots content computation is starting ...")
     Future.sequence(snapshotIds.keys.map {
       case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
     } toList)
@@ -246,7 +247,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
           _sender ! CryoError("Error while creating a new archive", e)
       }
 
-    case CreateSnapshot() =>
+    case CreateSnapshot() => // FIXME who register id ? Inventory or SnapshotBuilder ?
       val _sender = sender
       (cryoctx.datastore ? CreateData(None, "Index")).onComplete { // TODO set better description
         case Success(DataCreated(id)) =>

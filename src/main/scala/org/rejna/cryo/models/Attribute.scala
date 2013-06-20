@@ -77,8 +77,8 @@ trait Attribute[A] {
   override def toString = s"${name}(${now})"
 }
 
-trait SimpleCallbackable {
-  protected var callbacks = List[AttributeSimpleCallback]()
+trait SimpleCallbackable extends LoggingClass {
+  private var callbacks = List[AttributeSimpleCallback]()
 
   def addCallback(attributeCallback: AttributeSimpleCallback): this.type = {
     callbacks = attributeCallback +: callbacks
@@ -97,12 +97,20 @@ trait SimpleCallbackable {
     }
     addCallback(ac)
   }
+
+  def processCallbacks[A](name: String, previous: A, now: A) = {
+    log.info(s"attribute(${name}).processCallbacks (${callbacks.length})")
+    callbacks foreach { _.onChange(name, previous, now) }
+    log.info(s"attribute(${name}).processCallbacks (${callbacks.length}) : OK")
+  }
 }
 
 class MetaAttribute[A](val name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration)
   extends Attribute[A] with SimpleCallbackable with LoggingClass {
   var value: Future[(A, A)] = body().map(v => (v, v))
-  var callbackChain: Future[Unit] = Future.successful()
+  var callbackChain: Future[Unit] = Future.successful {
+    log.info(s"XXX ==> callback chain initialized")
+  }
 
   object Invalidate extends AttributeSimpleCallback {
     override def onChange[C](name: String, previous: C, now: C) = invalidate
@@ -124,14 +132,23 @@ class MetaAttribute[A](val name: String, body: () => Future[A])(implicit executi
   def <*(attribute: SimpleCallbackable): MetaAttribute[A] = link(attribute)
 
   def invalidate = {
-    log.info(s"MetaAttribute ${this} has been invalidated")
+    log.info(s"MetaAttribute ${this.name} has been invalidated")
     value = value flatMap {
-      case (p, n) =>
-        body().map(x => (n, x))
+      case (p, n) => body().map(x => (n, x))
     } map {
       case (p, n) =>
-        if (p != n)
-          callbackChain = callbackChain map { _ => callbacks foreach { _.onChange(name, p, n) } }
+        log.info(s"${this.name}: change check")
+        if (p != n) {
+          log.info(s"${this.name}: add callback(s) for execution")
+          callbackChain = callbackChain map { _ =>
+            log.info(s"XXX ${name} ==> Executing callbacks : start")
+            processCallbacks(name, p, n)
+            log.info(s"XXX ${name} ==> Executing callbacks : stop")
+          }
+        }
+        callbackChain = callbackChain map { _ =>
+          log.info(s"XXX ${name} ==> End of callback executing")
+        }
         (p, n)
     }
   }
@@ -153,7 +170,7 @@ class SimpleAttribute[A](val name: String, initValue: A) extends Attribute[A] wi
     if (_now != newValue) {
       _previous = _now
       _now = newValue
-      for (c <- callbacks) c.onChange(name, _previous, _now)
+      processCallbacks(name, _previous, _now)
     }
   }
 
@@ -163,7 +180,7 @@ class SimpleAttribute[A](val name: String, initValue: A) extends Attribute[A] wi
 }
 
 trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
-  protected var listCallbacks = List[AttributeListCallback]()
+  private var listCallbacks = List[AttributeListCallback]()
 
   def addCallback(attributeCallback: AttributeListCallback): self.type = {
     listCallbacks = attributeCallback +: listCallbacks
@@ -178,8 +195,10 @@ trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
 
   addCallback(new AttributeSimpleCallback {
     override def onChange[C](name: String, _previous: C, _now: C): Unit = {
+      log.info(s"listAttribute(${name}) has changed; computing changes")
       val add = now diff previous
       val remove = previous diff now
+      log.info(s"listAttribute(${name}) executing ${listCallbacks.length} callbacks")
       for (c <- listCallbacks)
         c.onListChange(name, add, remove)
     }
