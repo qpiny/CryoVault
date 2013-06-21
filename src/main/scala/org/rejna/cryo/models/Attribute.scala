@@ -11,10 +11,6 @@ object AttributePath extends Regex("/cryo/([^/]*)/([^/]*)#(.*)", "service", "obj
 case class AttributeChange[A](path: String, previous: A, now: A) extends Event
 case class AttributeListChange[A](path: String, addedValues: List[A], removedValues: List[A]) extends Event
 
-object AttributeBuilder {
-  def apply(path: String*) = new AttributeBuilder(path.toList)
-}
-
 trait AttributeSimpleCallback {
   def onChange[A](name: String, previous: A, now: A)
 }
@@ -23,50 +19,33 @@ trait AttributeListCallback {
   def onListChange[A](name: String, addedValues: List[A], removedValues: List[A])
 }
 
-class AttributeBuilder(path: List[String]) extends LoggingClass {
-  object callback extends AttributeSimpleCallback {
-    override def onChange[A](name: String, previous: A, now: A) = {
-      log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), name, previous, now))
-      for (p <- path) CryoEventBus.publish(AttributeChange(p + '#' + name, previous, now))
-    }
-  }
-  object listCallback extends AttributeListCallback {
-    override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit = {
-      log.debug("attribute[%s#%s] add: %s remove: %s".format(path.mkString("(", ",", ")"), name, addedValues.take(10), removedValues.take(10)))
-      for (p <- path) CryoEventBus.publish(AttributeListChange(p + '#' + name, addedValues, removedValues))
-    }
-  }
-
+object Attribute {
   def apply[A](name: String, initValue: A): SimpleAttribute[A] =
-    new SimpleAttribute(name, initValue) <+> callback
+    new SimpleAttribute(name, initValue)
 
-  def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[A] =
-    new MetaAttribute(name, () => Future(body())) <+> callback
+  def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration) =
+    new MetaAttribute(name, () => Future(body()))
 
-  def future[A](name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration): Attribute[A] =
-    new MetaAttribute(name, body) <+> callback
+  def future[A](name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    new MetaAttribute(name, body)
 
   def list[A](name: String, initValue: List[A]): ListAttribute[A] =
-    new ListAttribute[A](name, initValue) <+> listCallback
+    new ListAttribute[A](name, initValue)
 
   def list[A](name: String, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    new MetaListAttribute(name, () => Future(body())) <+> listCallback
+    new MetaListAttribute(name, () => Future(body()))
 
   def futureList[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    new MetaListAttribute(name, body) <+> listCallback
+    new MetaListAttribute(name, body)
 
   def map[A, B](name: String, initValue: IMap[A, B]): MapAttribute[A, B] =
-    new MapAttribute[A, B](name, initValue) <+> listCallback
+    new MapAttribute[A, B](name, initValue)
 
   def map[A, B](name: String, body: () => IMap[A, B])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    new MetaMapAttribute(name, () => Future(body())) <+> listCallback
+    new MetaMapAttribute(name, () => Future(body()))
 
   def futureMap[A, B](name: String, body: () => Future[IMap[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    new MetaMapAttribute(name, body) <+> listCallback
-
-  def /(subpath: String) = AttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
-
-  def withAlias(alias: String) = AttributeBuilder(alias :: path: _*)
+    new MetaMapAttribute(name, body)
 }
 
 trait Attribute[A] {
@@ -98,19 +77,15 @@ trait SimpleCallbackable extends LoggingClass {
     addCallback(ac)
   }
 
-  def processCallbacks[A](name: String, previous: A, now: A) = {
-    log.info(s"attribute(${name}).processCallbacks (${callbacks.length})")
-    callbacks foreach { _.onChange(name, previous, now) }
-    log.info(s"attribute(${name}).processCallbacks (${callbacks.length}) : OK")
-  }
+  def processCallbacks[A](name: String, previous: A, now: A) = for (c <- callbacks) { c.onChange(name, previous, now) }
 }
 
 class MetaAttribute[A](val name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration)
   extends Attribute[A] with SimpleCallbackable with LoggingClass {
   var value: Future[(A, A)] = body().map(v => (v, v))
-  var callbackChain: Future[Unit] = Future.successful {
-    log.info(s"XXX ==> callback chain initialized")
-  }
+  var callbackChain: Future[Unit] = Future.successful()
+
+  value.onFailure { case t => log.error(s"MetaAttribute ${name} computation fails", t) }
 
   object Invalidate extends AttributeSimpleCallback {
     override def onChange[C](name: String, previous: C, now: C) = invalidate
@@ -133,23 +108,21 @@ class MetaAttribute[A](val name: String, body: () => Future[A])(implicit executi
 
   def invalidate = {
     log.info(s"MetaAttribute ${this.name} has been invalidated")
+    // TODO add lock on value (if invalidate method is execute twice in the same time) ?
     value = value flatMap {
       case (p, n) => body().map(x => (n, x))
     } map {
       case (p, n) =>
-        log.info(s"${this.name}: change check")
         if (p != n) {
-          log.info(s"${this.name}: add callback(s) for execution")
-          callbackChain = callbackChain map { _ =>
-            log.info(s"XXX ${name} ==> Executing callbacks : start")
-            processCallbacks(name, p, n)
-            log.info(s"XXX ${name} ==> Executing callbacks : stop")
-          }
-        }
-        callbackChain = callbackChain map { _ =>
-          log.info(s"XXX ${name} ==> End of callback executing")
+          callbackChain = callbackChain // lock is not needed here as in value map sequence (not parallel)
+            .map { _ => processCallbacks(name, p, n) }
+            .recover { case t => log.error(s"MetaAttribute ${name} callback fails", t) }
         }
         (p, n)
+    } recoverWith {
+      case t =>
+        log.error(s"MetaAttribute ${name} computation fails", t)
+        body().map(v => (v, v))
     }
   }
 }
@@ -182,6 +155,7 @@ class SimpleAttribute[A](val name: String, initValue: A) extends Attribute[A] wi
 trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
   private var listCallbacks = List[AttributeListCallback]()
 
+  // add and remove callback are not thread safe
   def addCallback(attributeCallback: AttributeListCallback): self.type = {
     listCallbacks = attributeCallback +: listCallbacks
     this
@@ -195,10 +169,10 @@ trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
 
   addCallback(new AttributeSimpleCallback {
     override def onChange[C](name: String, _previous: C, _now: C): Unit = {
-      log.info(s"listAttribute(${name}) has changed; computing changes")
-      val add = now diff previous
-      val remove = previous diff now
-      log.info(s"listAttribute(${name}) executing ${listCallbacks.length} callbacks")
+      val n = _now.asInstanceOf[List[A]]
+      val p = _previous.asInstanceOf[List[A]]
+      val add = n diff p
+      val remove = p diff n
       for (c <- listCallbacks)
         c.onListChange(name, add, remove)
     }

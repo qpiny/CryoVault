@@ -1,22 +1,14 @@
 == at init ==
 [OK] get snapshot list
-[OK] create snapshot if there is no snapshot 
+[??] create snapshot if there is no snapshot 
 [OK] select first snapshot
-[KO] create new snapshot
-	<< CreateSnapshot
-	[object Object] : Receive from websocket: CreateSnapshot()
-	>>"{\"type\":\"AttributeListChange\",\"path\":\"/cryo/inventory#snapshots\",\"addedValues\":[{\"8e76072f-3969-459a-868c-e5c545164d34\":{\"path\":{\"parent\":{\"parent\":{\"parent\":{\"address\":{\"protocol\":\"akka\",\"system\":\"cryo\"},\"name\":\"/\"},\"name\":\"user\",\"uid\":0},\"name\":\"inventory\",\"uid\":1041906512},\"name\":\"$c\",\"uid\":-1799330408}}}],\"removedValues\":[]}"
-	>>"{\"type\":\"SnapshotCreated\",\"id\":\"8e76072f-3969-459a-868c-e5c545164d34\"}"
-	<< Unsubscribe(/cryo/snapshots/NTGTdpaFplQJXa6JZhNh-sm35_ADbnZdf9maGwwmHbokjFB0CO-3DLsynfVjyrmuqHw0takd-DPD-uKn8Z6FRFXnji7o70FgqveDl_O1r4aO42hLLwZkZhhxNtfTbygjgJZ_G97LFg)
-	[object Object] : Receive from websocket: Unsubscribe(/cryo/snapshots/NTGTdpaFplQJXa6JZhNh-sm35_ADbnZdf9maGwwmHbokjFB0CO-3DLsynfVjyrmuqHw0takd-DPD-uKn8Z6FRFXnji7o70FgqveDl_O1r4aO42hLLwZkZhhxNtfTbygjgJZ_G97LFg)
-	<< Subscribe(/cryo/snapshots/)
-	<< getSnapshotFiles(, /)
-	[object Object] : Receive from websocket: Subscribe(/cryo/snapshots/)
-	[object Object] : Receive from websocket: SnapshotGetFiles(,/)
-	>>"{\"id\":\"\",\"message\":\"Snapshot was not found\",\"cause\":null}"
+[OK] create new snapshot
 [??] refresh inventory
 	
 	
 BUGS:
   - id is too long for web ui => hide overflow
- 
+  - EntryState doesn't seem to be immutable:
+		15:39:16.065 DEBUG CryoAttributeBuilder - attribute[(/cryo/datastore)#repository]
+			add:    List((finalizedJobs,EntryState(Created,finalizedJobs,Finalized jobs,Fri Jun 21 15:39:15 CEST 2013,286,d639b9f071594d4c66781a2bd862e05cb7f0690d132c95689edd1df94f1812f9)))
+			remove: List((finalizedJobs,EntryState(Created,finalizedJobs,Finalized jobs,Fri Jun 21 15:39:15 CEST 2013,286,)))

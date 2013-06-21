@@ -260,13 +260,11 @@ $ =>
 		
 			AttributeListChange: (e) =>
 				if (e.path is '/cryo/inventory#snapshots')
-					for kv in e.addedValues
-						for k of kv
-							@snapshotList.add(kv[k])
-						
-					for kv in e.removedValues
-						for k of kv
-							@snapshotList.remove(kv[k])
+					for a in e.addedValues
+						@snapshotList.add(a)
+					
+					for r in e.removedValues
+						@snapshotList.remove(r)
 				else if (e.path.endsWith('#fileFilters'))
 					snapshotId = e.path.replace(new RegExp('/cryo/snapshots/(.*)#fileFilters'), '$1')
 					snapshot = @snapshotList.get(snapshotId)

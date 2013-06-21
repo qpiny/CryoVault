@@ -46,7 +46,7 @@ sealed abstract class DataEntry(
 }
 
 object DataEntry {
-  def apply(cryoctx: CryoContext, attributeBuilder: AttributeBuilder, state: EntryState) = {
+  def apply(cryoctx: CryoContext, attributeBuilder: CryoAttributeBuilder, state: EntryState) = {
     val entryAttributeBuilder = attributeBuilder / state.id
     state.status match {
       //case Creating => // not supported
@@ -82,7 +82,7 @@ class DataEntryRemote(
   creationDate: Date,
   initSize: Long,
   checksum: String,
-  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
+  entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
 
   val statusAttribute = entryAttributeBuilder("status", Remote)
   val sizeAttribute = entryAttributeBuilder("size", initSize)
@@ -95,7 +95,7 @@ class DataEntryCreating(
   id: String,
   description: String,
   initSize: Long,
-  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, new Date, "") with LoggingClass {
+  entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, description, new Date, "") with LoggingClass {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".creating")
   val statusAttribute = entryAttributeBuilder("status", Creating)
@@ -186,7 +186,7 @@ class DataEntryLoading(
   creationDate: Date,
   val expectedSize: Long,
   checksum: String,
-  entryAttributeBuilder: AttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
+  entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".loading")
   val statusAttribute = entryAttributeBuilder("status", Loading)

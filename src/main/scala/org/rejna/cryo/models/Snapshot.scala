@@ -18,10 +18,6 @@ import akka.util.{ ByteString, ByteStringBuilder }
 
 import com.typesafe.config.Config
 
-import sbinary._
-import sbinary.DefaultProtocol._
-import sbinary.Operations._
-
 class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
   def this(path: String) = this(FileSystems.getDefault.getPath(path))
 
@@ -68,7 +64,7 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
   }
 
   def ready(id: String): PartialFunction[Any, Unit] = {
-    val attributeBuilder = AttributeBuilder(s"/cryo/snapshot/${id}")
+    val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
 
     val sizeAttribute = attributeBuilder("size", 0L)
     def size = sizeAttribute()

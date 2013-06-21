@@ -43,7 +43,7 @@ case class InvalidDataStatus(message: String, cause: Throwable = null) extends D
 class Datastore(val cryoctx: CryoContext) extends CryoActor {
   import EntryStatus._
 
-  val attributeBuilder = AttributeBuilder("/cryo/datastore")
+  val attributeBuilder = CryoAttributeBuilder("/cryo/datastore")
   val data = attributeBuilder.map("repository", Map.empty[String, DataEntry])
 
   override def postStop = {

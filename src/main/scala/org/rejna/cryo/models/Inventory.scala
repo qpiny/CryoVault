@@ -54,7 +54,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   import InventoryStatus._
   private var isDying = false
 
-  val attributeBuilder = AttributeBuilder("/cryo/inventory")
+  val attributeBuilder = CryoAttributeBuilder("/cryo/inventory")
   val inventoryDataId = "inventory"
 
   val dateAttribute = attributeBuilder("date", new Date())
@@ -65,8 +65,20 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
+  val updateArchiveSubscription = new AttributeListCallback {
+    def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
+      log.info(s"MetaAttribute(${name}).updateArchiveSubscription")
+      addedValues foreach {
+        case ds: DataStatus => CryoEventBus.subscribe(self, s"/cryo/datastore/${ds.id}")
+      }
+      removedValues foreach {
+        case ds: DataStatus => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${ds.id}")
+      }
+    }
+  }
+
   implicit val timeout = 10 seconds
-  val snapshotIds = attributeBuilder.map("snapshotIds", Map[String, ActorRef]()) 
+  val snapshotIds = attributeBuilder.map("snapshotIds", Map[String, ActorRef]())
   val snapshots = attributeBuilder.futureList("snapshots", () => {
     log.info(s"attribute snapshots content computation is starting ...")
     Future.sequence(snapshotIds.keys.map {
@@ -85,16 +97,6 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   archives <* archiveIds
   archives <+> updateArchiveSubscription
 
-  val updateArchiveSubscription = new AttributeListCallback {
-    def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
-      addedValues foreach {
-        case ds: DataStatus => CryoEventBus.subscribe(self, s"/cryo/datastore/${ds.id}")
-      }
-      removedValues foreach {
-        case ds: DataStatus => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${ds.id}")
-      }
-    }
-  }
   CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
 
   override def preStart = {
@@ -111,12 +113,12 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
           a <- archives.futureNow
         } yield {
           (a ++ s).map {
-          case ds: DataStatus =>
-            ("ArchiveId" -> ds.id) ~
-              ("ArchiveDescription" -> ds.description) ~
-              ("CreationDate" -> Json.dateFormat.format(ds.creationDate)) ~
-              ("Size" -> ds.size) ~
-              ("SHA256TreeHash" -> ds.checksum)
+            case ds: DataStatus =>
+              ("ArchiveId" -> ds.id) ~
+                ("ArchiveDescription" -> ds.description) ~
+                ("CreationDate" -> Json.dateFormat.format(ds.creationDate)) ~
+                ("Size" -> ds.size) ~
+                ("SHA256TreeHash" -> ds.checksum)
           }
         }
         fArchList flatMap {
@@ -231,10 +233,10 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         case AttributePath("datastore", id, attr) =>
           if (archiveIds contains id)
             archives.invalidate
-            //CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", previous, now))
+          //CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", previous, now))
           else if (snapshotIds contains id)
             snapshots.invalidate
-            //CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", previous, now))
+        //CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", previous, now))
       }
 
     case CreateArchive() =>

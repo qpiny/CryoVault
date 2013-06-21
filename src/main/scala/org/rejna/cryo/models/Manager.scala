@@ -104,7 +104,7 @@ object FinalizeJob { def apply(jobIds: String*): FinalizeJob = FinalizeJob(jobId
 case class JobFinalized(jobIds: List[String]) extends ManagerResponse
 
 class Manager(val cryoctx: CryoContext) extends CryoActor {
-  val attributeBuilder = AttributeBuilder("/cryo/manager")
+  val attributeBuilder = CryoAttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
   val finalizedJobs = HashSet.empty[String]
   val jobUpdated = Promise[Unit]()
