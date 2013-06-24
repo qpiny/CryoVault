@@ -27,8 +27,8 @@ object AttributeTest extends App {
     }
   }
 
-  val simple = new SimpleAttribute("simple", 0)
-  val list = new ListAttribute("list", List[Int]())
+  val simple = new SimpleAttribute("simple")(0, 0)
+  val list = new ListAttribute("list")(List.empty[Int], List.empty[Int])
   val metalist = new MetaListAttribute("metalist", () => {
     println("## start asynchronous metalist computation")
     Future {

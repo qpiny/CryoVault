@@ -10,7 +10,7 @@ import org.slf4j.Logger
 
 class CryoAskableActorRef(cryoctx: CryoContext, log: Logger, actorRef: ActorRef)(implicit executionContext: ExecutionContext) {
   def ?(message: Any) = {
-    log.debug(s"Sending ${message} to ${actorRef}")
+    log.debug(s"[<>] ${message} - ${actorRef}")
     val timeout = cryoctx.getTimeout(message.getClass)
     actorRef.ask(message)(timeout).recover {
       case e =>
@@ -29,9 +29,9 @@ trait CryoActor extends Actor with LoggingClass {
     def isDefinedAt(o: Any): Boolean = {
       val handled = f.isDefinedAt(o)
       o match {
-        case a: Any if handled => log.debug(s"Receive handled message ${a}")
-        case t: Throwable => log.info(s"Receive unhandled error", t)
-        case a: Any => log.info(s"Receive unhandled message ${a}")
+        case a: Any if handled => log.debug(s"[>>] ${a}")
+        case t: Throwable => log.warn(s"[**]", t)
+        case a: Any => log.warn(s"[??] ${a}")
       }
       handled
     }
@@ -39,10 +39,10 @@ trait CryoActor extends Actor with LoggingClass {
       val sender = context.sender
       try {
         f(o)
-        log.debug(s"Message ${o} has been successfully handled")
+        log.debug(s"[^^] ${o}")
       } catch {
         case t: Throwable =>
-          val e = CryoError(s"Message ${o} has generated an exception", t)
+          val e = CryoError(s"[EE] ${o}", t)
           sender ! e
           log.error(e)
       }

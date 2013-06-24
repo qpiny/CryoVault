@@ -176,7 +176,13 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         log.info("Waiting for inventory download completion")
         Future(Refreshing)
       case DataNotFoundError(id, _, _) =>
-        (cryoctx.manager ? GetJobList()) flatMap {
+        log.info("No inventory found in datastore")
+        (cryoctx.notification ? GetNotification) map {
+          case NotificationGotten() =>
+          case e: Any => log.warn(CryoError("Fail to get notification", e))
+        } flatMap { _ =>
+          (cryoctx.manager ? GetJobList())
+        } flatMap {
           case JobList(jl) if !jl.exists(_.isInstanceOf[InventoryJob]) =>
             (cryoctx.cryo ? RefreshInventory()) map {
               case RefreshInventoryRequested(job) =>
@@ -249,13 +255,13 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
           _sender ! CryoError("Error while creating a new archive", e)
       }
 
-    case CreateSnapshot() => // FIXME who register id ? Inventory or SnapshotBuilder ?
+    case CreateSnapshot() =>
       val _sender = sender
-      (cryoctx.datastore ? CreateData(None, "Index")).onComplete { // TODO set better description
-        case Success(DataCreated(id)) =>
-          val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx))
+      val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx))
+      // TODO watch aref
+      (aref ? GetID) onComplete {
+        case Success(ID(id)) =>
           snapshotIds += id -> aref
-          // TODO watch aref
           _sender ! SnapshotCreated(id)
         case e: Any =>
           _sender ! CryoError("Error while creating a new snapshot", e)

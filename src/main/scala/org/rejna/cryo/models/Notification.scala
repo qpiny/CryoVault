@@ -19,6 +19,7 @@ sealed abstract class NotificationResponse extends Response
 sealed class NotificationError(message: String, cause: Throwable) extends CryoError(message, cause)
 
 case class GetNotification() extends NotificationRequest
+case class NotificationGotten() extends NotificationResponse 
 case class GetNotificationARN() extends NotificationRequest
 case class NotificationARN(arn: String) extends NotificationResponse
 
@@ -61,9 +62,7 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(sqs)
   sqs.setEndpoint("sqs." + cryoctx.region + ".amazonaws.com")
-  log.debug("getQueue(url&arn)")
   val (queueUrl, queueArn) = getOrCreateQueue
-  log.debug("getQueue(url&arn) done")
 
   private def getOrCreateQueue: (String, String) = {
     sqs.listQueues(new ListQueuesRequest(cryoctx.sqsQueueName)).getQueueUrls.headOption match {
@@ -126,7 +125,9 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
   }
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
+    
     case GetNotification() =>
+      val _sender = sender
       val messages = getMessages.distinct
       log.debug(s"${messages.size} message(s) read from SQS")
       if (!messages.isEmpty) {
@@ -138,14 +139,13 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
             Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
         } toMap
 
-        log.debug("Creating jobs for each message")
         cryoctx.manager ? AddJobs(jobsReceipt.keySet.toList) map {
           case JobsAdded(addedJobs) =>
             removeMessage(addedJobs.map(jobsReceipt))
-          case o: Any => throw CryoError("Fail to add job", o)
+          case o: Any => _sender ! CryoError("Fail to add job", o)
         } onComplete {
-          case Success(_) => log.info("Notification messages have been removed")
-          case Failure(e) => log.info("An error has occured while removing notification message", e)
+          case Success(_) => _sender ! NotificationGotten
+          case Failure(e) => _sender ! CryoError("Fail to remove notification message", e)
         }
       }
 

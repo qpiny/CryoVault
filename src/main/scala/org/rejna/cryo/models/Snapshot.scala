@@ -19,7 +19,7 @@ import akka.util.{ ByteString, ByteStringBuilder }
 import com.typesafe.config.Config
 
 class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
-  def this(path: String) = this(FileSystems.getDefault.getPath(path))
+  //def this(path: String) = this(FileSystems.getDefault.getPath(path))
 
   def foreach[U](f: ((Path, BasicFileAttributes)) => U) {
     class Visitor extends SimpleFileVisitor[Path] {
@@ -41,9 +41,15 @@ sealed class SnapshotError(message: String, cause: Option[Throwable]) extends Cr
 
 case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) extends SnapshotRequest
 case class SnapshotGetFiles(id: String, directory: String) extends SnapshotRequest
+case class SnapshotFiles(id: String, directory: String, files: List[FileElement])
+case class FileElement(name: Path, isDirectory: Boolean, filter: Option[FileFilter], count: Int, size: Long)
+//case class FileElement(file: Path, count: Int, size: Long, filter: Option[FileFilter])
+//new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
 case class FilterUpdated() extends SnapshotResponse
 case class SnapshotUpload(id: String) extends SnapshotRequest
 case class SnapshotUploaded(id: String) extends SnapshotResponse
+case class GetID() extends Request
+case class ID(id: String) extends SnapshotResponse
 
 //case class ArchiveCreated(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
@@ -69,15 +75,16 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
     val sizeAttribute = attributeBuilder("size", 0L)
     def size = sizeAttribute()
     def size_= = sizeAttribute() = _
-    val fileFilters = attributeBuilder.map("fileFilters", Map.empty[String, FileFilter])
-    val files = attributeBuilder.list("files", List.empty[String])
+    // all files are relative to config.baseDirectory
+    val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
+    val files = attributeBuilder.list("files", List.empty[Path])
 
     fileFilters <+> new AttributeListCallback {
       override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
         var newSize = size
-        var addedFiles = LinkedList.empty[String]
         if (removedValues.isEmpty) {
-          val (addedFiles, addedSize) = walkFileSystem(addedValues.asInstanceOf[List[(String, FileFilter)]])
+          val addedFileFilters = addedValues.asInstanceOf[List[(Path, FileFilter)]]
+          val (addedFiles, addedSize) = walkFileSystem(addedFileFilters)
           files ++= addedFiles
           size_=(size + addedSize)
         } else {
@@ -88,16 +95,36 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
       }
     }
 
-    val f: PartialFunction[Any, Unit] = {
+    {
       case PrepareToDie() =>
         sender ! ReadyToDie()
 
+      case GetID() => sender ! ID(id)
+
       case SnapshotUpdateFilter(id, file, filter) =>
-        fileFilters += file -> filter
+        fileFilters += FileSystems.getDefault.getPath(file) -> filter
         sender ! FilterUpdated
 
       case SnapshotGetFiles(id, directory) =>
-      // TODO
+        val absoluteDirectory = cryoctx.baseDirectory.resolve(directory).normalize
+        if (!absoluteDirectory.startsWith(cryoctx.baseDirectory))
+          sender ! SnapshotFiles(id, directory, List[FileElement]())
+        else try {
+          val dirContent = Files.newDirectoryStream(absoluteDirectory)
+          val fileElements = for (f <- dirContent) yield {
+            val filePath = cryoctx.baseDirectory.relativize(f)
+            val fileSize = for (
+              fs <- files;
+              if fs.startsWith(filePath)
+            ) yield Files.size(cryoctx.baseDirectory.resolve(fs))
+            new FileElement(filePath, Files.isDirectory(f), fileFilters.get(filePath), fileSize.size, fileSize.sum)
+          }
+          sender ! SnapshotFiles(id, directory, fileElements.toList)
+        } catch {
+          case e: AccessDeniedException =>
+            sender ! SnapshotFiles(id, directory, List(new FileElement(
+              FileSystems.getDefault.getPath(directory).resolve("_Access_denied_"), false, None, 0, 0)))
+        }
 
       case SnapshotUpload(id) =>
         val _sender = sender
@@ -129,18 +156,21 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
           case e: CryoError => _sender ! e
           case o: Any => _sender ! CryoError("Unexpected message", o)
         }
-    }
-    f
+    }: PartialFunction[Any, Unit]
   }
 
-  private def walkFileSystem(filters: Iterable[(String, FileFilter)]) = {
+  // path are relative to baseDirectory
+  private def walkFileSystem(filters: Iterable[(Path, FileFilter)]) = {
     var size = 0L
-    var files = LinkedList.empty[String]
+    var files = LinkedList.empty[Path]
     for ((path, filter) <- filters) {
-      new TraversePath(path).foreach {
+      new TraversePath(cryoctx.baseDirectory.relativize(path)).foreach {
         case (f, attrs) =>
-          if (attrs.isRegularFile && filter.accept(path)) {
-            files = LinkedList(cryoctx.baseDirectory.relativize(f).toString) append files
+          if (attrs.isRegularFile && filter.accept(f)) {
+            val normf = cryoctx.baseDirectory.relativize(f).normalize
+            if (!normf.startsWith(cryoctx.baseDirectory))
+              throw new CryoError(s"Directory traversal attempt ! (${f} -> ${normf})")
+            files = LinkedList(normf) append files
             size += attrs.size
           }
       }
@@ -148,7 +178,7 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
     (files, size)
   }
 
-  private def splitFile(f: String) = new Traversable[Block] {
+  private def splitFile(f: Path) = new Traversable[Block] {
     def foreach[U](func: Block => U) = {
       val input = FileChannel.open(cryoctx.baseDirectory.resolve(f), READ)
       try {
@@ -171,10 +201,10 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
       case o: Any => throw CryoError("Fail to create data", o)
     }
 
-    def addFile(filename: String, blocks: TraversableOnce[Block]) = {
+    def addFile(filename: Path, blocks: TraversableOnce[Block]) = {
       state = state.map {
         case UploaderState(out, aid, len) =>
-          out.putString(filename)
+          out.putString(filename.toString)
           UploaderState(out, aid, len)
       }
       for (b <- blocks)

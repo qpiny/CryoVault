@@ -8,7 +8,12 @@
 	
 BUGS:
   - id is too long for web ui => hide overflow
+  
+SOLVED BUGS:
   - EntryState doesn't seem to be immutable:
 		15:39:16.065 DEBUG CryoAttributeBuilder - attribute[(/cryo/datastore)#repository]
 			add:    List((finalizedJobs,EntryState(Created,finalizedJobs,Finalized jobs,Fri Jun 21 15:39:15 CEST 2013,286,d639b9f071594d4c66781a2bd862e05cb7f0690d132c95689edd1df94f1812f9)))
 			remove: List((finalizedJobs,EntryState(Created,finalizedJobs,Finalized jobs,Fri Jun 21 15:39:15 CEST 2013,286,)))
+
+TODO:
+  - show jobs and datastore repository in webui

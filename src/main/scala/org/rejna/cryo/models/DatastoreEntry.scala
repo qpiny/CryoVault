@@ -146,7 +146,7 @@ class DataEntryCreating(
     if (blockSize > 0)
       checksums += digest.digest
     Files.move(file, cryoctx.workingDirectory.resolve(id), REPLACE_EXISTING)
-    new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
+    new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute.duplicate, sizeAttribute.duplicate, TreeHashGenerator.calculateTreeHash(checksums))
   }
 }
 
@@ -207,7 +207,7 @@ class DataEntryLoading(
   def close: DataEntryCreated = {
     channel.close
     Files.move(file, cryoctx.workingDirectory.resolve(id), REPLACE_EXISTING)
-    new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute, sizeAttribute, checksum)
+    new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute.duplicate, sizeAttribute.duplicate, checksum)
   }
 
   //override def state = EntryState(status, id, description, creationDate, expectedSize, checksum, Some(range))

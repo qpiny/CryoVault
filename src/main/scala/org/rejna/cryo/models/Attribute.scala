@@ -21,7 +21,7 @@ trait AttributeListCallback {
 
 object Attribute {
   def apply[A](name: String, initValue: A): SimpleAttribute[A] =
-    new SimpleAttribute(name, initValue)
+    new SimpleAttribute(name)(initValue, initValue)
 
   def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration) =
     new MetaAttribute(name, () => Future(body()))
@@ -30,7 +30,7 @@ object Attribute {
     new MetaAttribute(name, body)
 
   def list[A](name: String, initValue: List[A]): ListAttribute[A] =
-    new ListAttribute[A](name, initValue)
+    new ListAttribute[A](name)(initValue, initValue)
 
   def list[A](name: String, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
     new MetaListAttribute(name, () => Future(body()))
@@ -38,8 +38,10 @@ object Attribute {
   def futureList[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration) =
     new MetaListAttribute(name, body)
 
-  def map[A, B](name: String, initValue: IMap[A, B]): MapAttribute[A, B] =
-    new MapAttribute[A, B](name, initValue)
+  def map[A, B](name: String, initValue: IMap[A, B]): MapAttribute[A, B] = {
+    val ivlist = initValue.toList
+    new MapAttribute[A, B](name)(ivlist, ivlist)
+  }
 
   def map[A, B](name: String, body: () => IMap[A, B])(implicit executionContext: ExecutionContext, timeout: Duration) =
     new MetaMapAttribute(name, () => Future(body()))
@@ -135,9 +137,7 @@ class MetaMapAttribute[A, B](name: String, body: () => Future[IMap[A, B]])(impli
   extends MetaAttribute[List[(A, B)]](name, () => body().map(_.toList))(executionContext, timeout)
   with ListCallbackable[(A, B)]
 
-class SimpleAttribute[A](val name: String, initValue: A) extends Attribute[A] with SimpleCallbackable {
-  private var _now = initValue
-  private var _previous = initValue
+class SimpleAttribute[A](val name: String)(private var _now: A, var _previous: A) extends Attribute[A] with SimpleCallbackable {
 
   def update(newValue: A) = {
     if (_now != newValue) {
@@ -150,6 +150,7 @@ class SimpleAttribute[A](val name: String, initValue: A) extends Attribute[A] wi
   def now = _now
   def now_= = update _
   def previous = _previous
+  def duplicate = new SimpleAttribute(name)(_now, _previous)
 }
 
 trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
@@ -195,8 +196,8 @@ trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
   }
 }
 
-class ListAttribute[A](name: String, initValue: List[A])
-  extends SimpleAttribute[List[A]](name, initValue)
+class ListAttribute[A](name: String)(previous: List[A], now: List[A])
+  extends SimpleAttribute[List[A]](name)(previous, now)
   with Buffer[A]
   with ListCallbackable[A] {
 
@@ -241,10 +242,12 @@ class ListAttribute[A](name: String, initValue: List[A])
   def apply(n: Int) = now(n)
 
   def iterator = now.iterator
+
+  override def duplicate = new ListAttribute(name)(previous, now)
 }
 
-class MapAttribute[A, B](name: String, initValue: IMap[A, B])
-  extends SimpleAttribute[List[(A, B)]](name, initValue.toList)
+class MapAttribute[A, B](name: String)(previous: List[(A, B)], now: List[(A, B)])
+  extends SimpleAttribute[List[(A, B)]](name)(previous, now)
   with Map[A, B]
   with ListCallbackable[(A, B)] {
 
@@ -272,4 +275,6 @@ class MapAttribute[A, B](name: String, initValue: IMap[A, B])
   def get(k: A) = now.find(_._1 == k).map(_._2)
 
   def iterator = now.iterator
+
+  override def duplicate = new MapAttribute(name)(previous, now)
 }
