@@ -4,7 +4,7 @@ import scala.language.implicitConversions
 
 import akka.actor.{ Actor, ActorContext }
 
-import org.slf4j.{ Marker, LoggerFactory }
+import org.slf4j.{ Marker, LoggerFactory, MarkerFactory }
 import org.slf4j.helpers.MessageFormatter
 import ch.qos.logback.classic.turbo.TurboFilter
 import ch.qos.logback.classic.{ Level, Logger, LoggerContext }
@@ -18,6 +18,12 @@ object Log {
   lc.addTurboFilter(LogDispatcher)
 
   def getLogger(clazz: Class[_]) = LoggerFactory.getLogger(clazz)
+  private def getMarker(markerNames: String*) = {
+    val markers = markerNames.map(MarkerFactory.getMarker)
+    val marker = markers.head
+    markers.tail.foreach(marker.add)
+    marker
+  }
 
   def trace(message: String) = Log(Level.TRACE, "", message)
   def debug(message: String) = Log(Level.DEBUG, "", message)
@@ -32,6 +38,13 @@ object Log {
     Level.INFO -> "/log/trace/debug/info",
     Level.WARN -> "/log/trace/debug/info/warn",
     Level.ERROR -> "/log/trace/debug/info/warn/error")
+  
+  val msgMarker = getMarker("message")
+  val askMsgMarker = getMarker("message", "ask")
+  val errMsgMarker = getMarker("message", "error")
+  val unhandledMshMarker = getMarker("message", "unhandled")
+  val handledMsgMarker = getMarker("message", "handled")
+  val successMsgMarker = getMarker("message", "success")
 }
 
 trait LoggingClass {
@@ -39,18 +52,22 @@ trait LoggingClass {
   implicit def l2rl(l: org.slf4j.Logger) = RichLog(l)
   case class RichLog(log: org.slf4j.Logger) {
     def apply(l: Log) = l.level match {
-      case Level.TRACE => log.trace(l.message)
-      case Level.DEBUG => log.debug(l.message)
-      case Level.INFO => log.info(l.message)
-      case Level.WARN => log.warn(l.message)
-      case Level.ERROR => log.error(l.message)
+      case Level.TRACE => log.trace(l.marker, l.message)
+      case Level.DEBUG => log.debug(l.marker, l.message)
+      case Level.INFO => log.info(l.marker, l.message)
+      case Level.WARN => log.warn(l.marker, l.message)
+      case Level.ERROR => log.error(l.marker, l.message)
     }
-    def trace(e: CryoError) = log.trace(e.getMessage, e.getCause) 
-    def debug(e: CryoError) = log.debug(e.getMessage, e.getCause)
-    def info(e: CryoError) = log.info(e.getMessage, e.getCause)
-    def warn(e: CryoError) = log.warn(e.getMessage, e.getCause)
-    def error(e: CryoError) = log.error(e.getMessage, e.getCause)
-    
+    def trace(e: CryoError) = log.trace(e.marker, e.getMessage, e.getCause) 
+    def debug(e: CryoError) = log.debug(e.marker, e.getMessage, e.getCause)
+    def info(e: CryoError) = log.info(e.marker, e.getMessage, e.getCause)
+    def warn(e: CryoError) = log.warn(e.marker, e.getMessage, e.getCause)
+    def error(e: CryoError) = log.error(e.marker, e.getMessage, e.getCause)
+//    def trace(marker: Marker, e: CryoError) = log.trace(marker, e.getMessage, e.getCause) 
+//    def debug(marker: Marker, e: CryoError) = log.debug(marker, e.getMessage, e.getCause)
+//    def info(marker: Marker, e: CryoError) = log.info(marker, e.getMessage, e.getCause)
+//    def warn(marker: Marker, e: CryoError) = log.warn(marker, e.getMessage, e.getCause)
+//    def error(marker: Marker, e: CryoError) = log.error(marker, e.getMessage, e.getCause)
   }
 }
 

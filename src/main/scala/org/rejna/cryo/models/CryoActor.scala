@@ -6,11 +6,12 @@ import scala.concurrent.{ ExecutionContext, Future }
 import akka.actor.{ Actor, ActorRef }
 import akka.pattern.{ ask, AskTimeoutException }
 
-import org.slf4j.Logger
+import org.slf4j.{ Logger, MarkerFactory }
 
 class CryoAskableActorRef(cryoctx: CryoContext, log: Logger, actorRef: ActorRef)(implicit executionContext: ExecutionContext) {
+  
   def ?(message: Any) = {
-    log.debug(s"[<>] ${message} - ${actorRef}")
+    log.debug(Log.askMsgMarker, s"${message} - ${actorRef}")
     val timeout = cryoctx.getTimeout(message.getClass)
     actorRef.ask(message)(timeout).recover {
       case e =>
@@ -29,9 +30,9 @@ trait CryoActor extends Actor with LoggingClass {
     def isDefinedAt(o: Any): Boolean = {
       val handled = f.isDefinedAt(o)
       o match {
-        case a: Any if handled => log.debug(s"[>>] ${a}")
-        case t: Throwable => log.warn(s"[**]", t)
-        case a: Any => log.warn(s"[??] ${a}")
+        case a: Any if handled => log.debug(Log.handledMsgMarker, s"Receiving message: ${a}")
+        case t: Throwable => log.warn(Log.errMsgMarker, s"Unhandled error", t)
+        case a: Any => log.warn(Log.unhandledMshMarker, s"Unhandled message: ${a}")
       }
       handled
     }
@@ -39,10 +40,10 @@ trait CryoActor extends Actor with LoggingClass {
       val sender = context.sender
       try {
         f(o)
-        log.debug(s"[^^] ${o}")
+        log.debug(Log.successMsgMarker, s"${o}")
       } catch {
         case t: Throwable =>
-          val e = CryoError(s"[EE] ${o}", t)
+          val e = CryoError(s"Message ${o} has generated an error", t)
           sender ! e
           log.error(e)
       }

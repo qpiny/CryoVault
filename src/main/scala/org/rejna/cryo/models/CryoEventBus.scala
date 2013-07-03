@@ -11,20 +11,25 @@ import akka.actor.ActorRef
 import akka.event.{ EventBus, SubchannelClassification }
 import akka.util.Subclassification
 
+import org.slf4j.Marker
+
 trait CryoMessage
 
 abstract class Event extends CryoMessage { val path: String }
 abstract class Request extends CryoMessage
 abstract class Response extends CryoMessage
-class CryoError(message: String, cause: Throwable = null) extends Exception(message, cause) with CryoMessage
+class CryoError(val marker: Marker, message: String, cause: Throwable = null) extends Exception(message, cause) with CryoMessage {
+  def this(message: String, cause: Throwable = null) = this(Log.errMsgMarker, message, cause)
+}
 object CryoError {
-  def apply(message: String, a: Any): CryoError = a match {
-    //case e: CryoError => e
-    case Failure(e) => CryoError(s"${message}: failure", e)
-    case Success(e) => CryoError(s"${message}: success", e)
-    case e: Throwable => new CryoError(message, e)
-    case e: Any => new CryoError(s"${message}: unexpected message: ${e}")
+  private def apply(marker: Marker, message: String, a: Any): CryoError = a match {
+    case Failure(e) => CryoError(marker, s"${message}: failure", e)
+    case Success(e) => CryoError(marker, s"${message}: success", e)
+    case e: Throwable => new CryoError(marker, message, e)
+    case e: Any => new CryoError(marker, s"${message}: unexpected message: ${e}")
   }
+  def apply(message: String, a: Any): CryoError = apply(Log.errMsgMarker, message, a)
+  def apply(message: String): CryoError = new CryoError(Log.errMsgMarker, message)
 }
 
 object CryoEventBus extends EventBus with SubchannelClassification {

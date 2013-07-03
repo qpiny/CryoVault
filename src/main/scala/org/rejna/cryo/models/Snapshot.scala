@@ -66,7 +66,7 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
 
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
-    case m: Any => sender ! new CryoError(s"Snapshot actor is not ready, can't process message ${m}")
+    case m: Any => sender ! CryoError(s"Snapshot actor is not ready, can't process message ${m}")
   }
 
   def ready(id: String): PartialFunction[Any, Unit] = {
@@ -169,7 +169,7 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
           if (attrs.isRegularFile && filter.accept(f)) {
             val normf = cryoctx.baseDirectory.relativize(f).normalize
             if (!normf.startsWith(cryoctx.baseDirectory))
-              throw new CryoError(s"Directory traversal attempt ! (${f} -> ${normf})")
+              throw CryoError(s"Directory traversal attempt ! (${f} -> ${normf})")
             files = LinkedList(normf) append files
             size += attrs.size
           }
@@ -224,10 +224,10 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
               case DataUploaded(_) => (cryoctx.datastore ? CreateArchive) map {
                 case ArchiveCreated(newId) => UploaderState(out, newId, 0)
                 case e: CryoError => throw e
-                case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+                case o: Any => throw CryoError(s"Unexpected message: ${o}")
               }
               case e: CryoError => throw e
-              case o: Any => throw new CryoError(s"Unexpected message: ${o}")
+              case o: Any => throw CryoError(s"Unexpected message: ${o}")
             }
           } else
             Future(us)
