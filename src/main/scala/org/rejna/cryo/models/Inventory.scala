@@ -177,7 +177,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         Future(Refreshing)
       case DataNotFoundError(id, _, _) =>
         log.info("No inventory found in datastore")
-        (cryoctx.notification ? GetNotification) map {
+        (cryoctx.notification ? GetNotification()) map {
           case NotificationGotten() =>
           case e: Any => log.warn(CryoError("Fail to get notification", e))
         } flatMap { _ =>
@@ -259,11 +259,13 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx))
       // TODO watch aref
-      (aref ? GetID) onComplete {
+      (aref ? GetID()) onComplete {
         case Success(ID(id)) =>
           snapshotIds += id -> aref
           _sender ! SnapshotCreated(id)
         case e: Any =>
+          log.debug("Error while creating a new snapshot")
+          (aref ? GetID()) onComplete { case a => log.debug(s"on second request I get : ${a}") }
           _sender ! CryoError("Error while creating a new snapshot", e)
       }
 

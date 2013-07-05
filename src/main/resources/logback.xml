@@ -1,21 +1,24 @@
 <configuration debug="false">
+	<turboFilter class="ch.qos.logback.classic.turbo.MarkerFilter">
+		<Marker>handled</Marker>
+		<OnMatch>DENY</OnMatch>
+	</turboFilter>
+		
 	<appender name="FILE" class="ch.qos.logback.core.FileAppender">
 		<file>log/cryo.log</file>
 
 		<encoder>
-			<pattern>%d{HH:mm:ss.SSS} %-5level %-20logger{0} - %msg%n</pattern>
+			<pattern>%d{HH:mm:ss.SSS} %-5level %-20logger{0} - %marker %msg%n</pattern>
 		</encoder>
 	</appender>
 
 	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
 		<encoder>
-			<pattern>%d{HH:mm:ss.SSS} %-5level %-20logger{0} - %msg%n</pattern>
+			<pattern>%d{HH:mm:ss.SSS} %-5level %-20logger{0} - %marker %msg%n</pattern>
 		</encoder>
 	</appender>
 	
 	<logger name="org.apache.http" level="INFO" />
-	<logger name="o.a.h" level="INFO" />
-	<logger name="o.m.socko.webserver.RequestHandler" level="INFO" />
 	<logger name="com.amazonaws" level="INFO" />
 	<logger name="org.rejna" level="DEBUG" />
 

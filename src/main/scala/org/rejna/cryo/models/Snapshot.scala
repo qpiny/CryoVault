@@ -14,6 +14,7 @@ import java.nio.file.StandardOpenOption._
 import java.nio.file.attribute._
 import java.nio.channels.FileChannel
 
+import akka.actor.Stash
 import akka.util.{ ByteString, ByteStringBuilder }
 
 import com.typesafe.config.Config
@@ -55,21 +56,27 @@ case class ID(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
 //case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
 
-class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
+class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor with Stash {
 
   override def preStart = {
     cryoctx.datastore ? CreateData(None, "Index") onComplete {
-      case Success(DataCreated(id)) => context.become(cryoReceive(ready(id)))
+      case Success(DataCreated(id)) =>
+        log.debug(s"Snapshot get ID ${id}, become ready and unstash message")
+        context.become(cryoReceive(ready(id)))
+        unstashAll()
       case e: Any => log.error(CryoError("Snapshot creation failed", e))
     }
   }
 
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
-    case m: Any => sender ! CryoError(s"Snapshot actor is not ready, can't process message ${m}")
+    case m: Any =>
+      log.debug(s"Stashing message ${m}")
+      stash()
   }
 
   def ready(id: String): PartialFunction[Any, Unit] = {
+    log.debug("Creating snapshot attributes")
     val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
 
     val sizeAttribute = attributeBuilder("size", 0L)
@@ -95,11 +102,15 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
       }
     }
 
+    log.debug("Creating snapshot behaviour")
+    
     {
       case PrepareToDie() =>
         sender ! ReadyToDie()
 
-      case GetID() => sender ! ID(id)
+      case GetID() =>
+        log.debug(s"From: ${sender} Message: GetID")
+        sender ! ID(id)
 
       case SnapshotUpdateFilter(id, file, filter) =>
         fileFilters += FileSystems.getDefault.getPath(file) -> filter
@@ -156,6 +167,8 @@ class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor {
           case e: CryoError => _sender ! e
           case o: Any => _sender ! CryoError("Unexpected message", o)
         }
+      
+      case a: Any => log.error(s"unknown message : ${a}")
     }: PartialFunction[Any, Unit]
   }
 

@@ -44,7 +44,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   import EntryStatus._
 
   val attributeBuilder = CryoAttributeBuilder("/cryo/datastore")
-  val data = attributeBuilder.map("repository", Map.empty[String, DataEntry])
+  val repository = attributeBuilder.map("repository", Map.empty[String, DataEntry])
 
   override def postStop = {
     implicit val formats = Json
@@ -54,11 +54,11 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
         channel.truncate(0)
         
         log.debug("Writting repository :")
-        data.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}")}
-        val repository = data.values
+        repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}")}
+        val repo = repository.values
           .filter { d => d.status == Created || d.status == Remote }
           .map { _.state }
-        channel.write(ByteBuffer.wrap(Serialization.write(repository).getBytes))
+        channel.write(ByteBuffer.wrap(Serialization.write(repo).getBytes))
       }
     } catch {
       case t: Throwable => println(s"Datastore has failed to store its state", t)
@@ -71,12 +71,12 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), READ))) {
         val buffer = ByteBuffer.allocate(channel.size.toInt)
         channel.read(buffer)
-        val repository = new String(buffer.array, "UTF-8")
-        log.debug("Repository: " + repository)
-        val entries = Serialization.read[List[EntryState]](repository) map {
+        val repoData = new String(buffer.array, "UTF-8")
+        log.debug("Repository: " + repoData)
+        val entries = Serialization.read[List[EntryState]](repoData) map {
           case state => DataEntry(cryoctx, attributeBuilder, state)
         }
-        data ++= entries.map(e => e.id -> e)
+        repository ++= entries.map(e => e.id -> e)
         log.info("Repository loaded : " + entries.map(_.id).mkString(","))
       }
     } catch {
@@ -92,31 +92,31 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
       val id = idOption.getOrElse {
         var i = ""
         do { i = UUID.randomUUID.toString }
-        while (data contains i)
+        while (repository contains i)
         i
       }
-      data.get(id) match {
+      repository.get(id) match {
         case Some(d: DataEntryCreated) =>
           d.close
-          data += id -> new DataEntryCreating(cryoctx, id, description, size, attributeBuilder / id)
+          repository += id -> new DataEntryCreating(cryoctx, id, description, size, attributeBuilder / id)
           sender ! DataCreated(id)
         case None =>
-          data += id -> new DataEntryCreating(cryoctx, id, description, size, attributeBuilder / id)
+          repository += id -> new DataEntryCreating(cryoctx, id, description, size, attributeBuilder / id)
           sender ! DataCreated(id)
         case Some(d) =>
           sender ! OpenError(s"Data ${id} can't be created (${d.status})")
       }
 
     case DefineData(id, description, creationDate, size, checksum) =>
-      data.get(id) match {
+      repository.get(id) match {
         case Some(_) => // data already defined, ignore it
         case None =>
-          data += id -> new DataEntryRemote(cryoctx, id, description, creationDate, size, checksum, attributeBuilder / id)
+          repository += id -> new DataEntryRemote(cryoctx, id, description, creationDate, size, checksum, attributeBuilder / id)
       }
       sender ! DataDefined(id)
 
     case WriteData(id, position, buffer) =>
-      data.get(id) match {
+      repository.get(id) match {
         case Some(de: DataEntryLoading) if position >= 0 =>
           sender ! DataWritten(id, position, de.write(position, buffer))
         case Some(de: DataEntryCreating) if position == -1 =>
@@ -128,7 +128,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
       }
 
     case GetDataStatus(id) =>
-      data.get(id) match {
+      repository.get(id) match {
         case None =>
           sender ! DataNotFoundError(id, s"Data ${id} not found")
         case Some(de: DataEntry) =>
@@ -136,7 +136,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
       }
 
     case ReadData(id, position, length) =>
-      data.get(id) match {
+      repository.get(id) match {
         case Some(de: DataEntryCreated) =>
           sender ! DataRead(id, position, de.read(position, length))
         case None =>
@@ -146,14 +146,14 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
       }
 
     case CloseData(id) =>
-      data.get(id) match {
+      repository.get(id) match {
         case Some(de: DataEntryCreating) =>
           val newde = de.close
-          data += id -> newde
+          repository += id -> newde
           sender ! DataClosed(id)
         case Some(de: DataEntryLoading) =>
           val newde = de.close
-          data += id -> newde
+          repository += id -> newde
           sender ! DataClosed(id)
         case Some(de: DataEntryCreated) =>
           sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for close")

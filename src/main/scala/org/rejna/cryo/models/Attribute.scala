@@ -196,8 +196,8 @@ trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
   }
 }
 
-class ListAttribute[A](name: String)(previous: List[A], now: List[A])
-  extends SimpleAttribute[List[A]](name)(previous, now)
+class ListAttribute[A](name: String)(__previous: List[A], __now: List[A])
+  extends SimpleAttribute[List[A]](name)(__previous, __now)
   with Buffer[A]
   with ListCallbackable[A] {
 
@@ -246,20 +246,19 @@ class ListAttribute[A](name: String)(previous: List[A], now: List[A])
   override def duplicate = new ListAttribute(name)(previous, now)
 }
 
-class MapAttribute[A, B](name: String)(previous: List[(A, B)], now: List[(A, B)])
-  extends SimpleAttribute[List[(A, B)]](name)(previous, now)
+class MapAttribute[A, B](name: String)(__previous: List[(A, B)], __now: List[(A, B)])
+  extends SimpleAttribute[List[(A, B)]](name)(__previous, __now)
   with Map[A, B]
-  with ListCallbackable[(A, B)] {
+  with ListCallbackable[(A, B)]
+  with LoggingClass {
 
   def +=(kv: (A, B)) = {
     update(_addTo(now, kv))
     this
   }
 
-  private def _addTo(map: List[(A, B)], kv: (A, B)): List[(A, B)] = {
-    val r = map.filterNot(_._1 == kv._1) :+ kv
-    r
-  }
+  private def _addTo(map: List[(A, B)], kv: (A, B)): List[(A, B)] =
+    map.filterNot(_._1 == kv._1) :+ kv
 
   override def ++=(kvs: TraversableOnce[(A, B)]) = {
     val v = kvs.foldLeft(now) { case (map, element) => _addTo(map, element) }

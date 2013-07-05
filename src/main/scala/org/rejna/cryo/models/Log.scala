@@ -19,7 +19,7 @@ object Log {
 
   def getLogger(clazz: Class[_]) = LoggerFactory.getLogger(clazz)
   private def getMarker(markerNames: String*) = {
-    val markers = markerNames.map(MarkerFactory.getMarker)
+    val markers = markerNames.map(MarkerFactory.getDetachedMarker)
     val marker = markers.head
     markers.tail.foreach(marker.add)
     marker
@@ -41,6 +41,7 @@ object Log {
   
   val msgMarker = getMarker("message")
   val askMsgMarker = getMarker("message", "ask")
+  val replyMsgMarker = getMarker("message", "reply")
   val errMsgMarker = getMarker("message", "error")
   val unhandledMshMarker = getMarker("message", "unhandled")
   val handledMsgMarker = getMarker("message", "handled")

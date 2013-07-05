@@ -13,11 +13,15 @@ class CryoAskableActorRef(cryoctx: CryoContext, log: Logger, actorRef: ActorRef)
   def ?(message: Any) = {
     log.debug(Log.askMsgMarker, s"${message} - ${actorRef}")
     val timeout = cryoctx.getTimeout(message.getClass)
-    actorRef.ask(message)(timeout).recover {
+    actorRef.ask(message)(timeout) map {
+      case x =>
+        log.debug(Log.replyMsgMarker, s"${message} - ${actorRef} - ${x}")
+        x
+    } recover {
       case e =>
         log.error(s"${actorRef} has failed to process message ${message} in ${timeout}", e)
         Future.failed(e)
-    }
+    } 
   }
 }
 

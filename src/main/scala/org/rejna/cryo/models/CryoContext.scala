@@ -122,14 +122,14 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   val deadLetterMonitor = system.actorOf(Props(classOf[DeadLetterMonitor], this), "deadletter")
   children = deadLetterMonitor :: children
 
-  val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
-  children = cryo :: children
-
   val datastore = system.actorOf(Props(classOf[Datastore], this), "datastore")
   children = datastore :: children
 
   val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
   children = notification :: children
+
+  val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
+  children = cryo :: children
 
   val manager = system.actorOf(Props(classOf[Manager], this), "manager")
   children = manager :: children
