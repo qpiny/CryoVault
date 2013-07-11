@@ -206,6 +206,17 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
     }
   }
 
+  private def createSnapshot = {
+    cryoctx.datastore ? CreateData(None, "Index") map {
+      case DataCreated(id) =>
+        val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx, id))
+        // TODO watch aref
+        (id, aref)
+      case e: Any =>
+        throw CryoError("Error while creating a new snapshot", e)
+    }
+  }
+
   def receive = cryoReceive {
     case PrepareToDie() =>
       isDying = true
@@ -257,16 +268,12 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
 
     case CreateSnapshot() =>
       val _sender = sender
-      val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx))
-      // TODO watch aref
-      (aref ? GetID()) onComplete {
-        case Success(ID(id)) =>
+      createSnapshot onComplete {
+        case Success((id, aref)) =>
           snapshotIds += id -> aref
           _sender ! SnapshotCreated(id)
-        case e: Any =>
-          log.debug("Error while creating a new snapshot")
-          (aref ? GetID()) onComplete { case a => log.debug(s"on second request I get : ${a}") }
-          _sender ! CryoError("Error while creating a new snapshot", e)
+        case Failure(e) => 
+          _sender ! e
       }
 
     case GetArchiveList() =>

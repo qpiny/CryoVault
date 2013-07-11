@@ -55,7 +55,7 @@ object CryoAttributeBuilder {
 
 class CryoAttributeBuilder(path: List[String]) extends LoggingClass {
   object callback extends AttributeSimpleCallback {
-    override def onChange[A](name: String, previous: A, now: A) = {
+    override def onChange[A](name: String, previous: Option[A], now: A) = {
       log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), name, previous, now))
       for (p <- path) CryoEventBus.publish(AttributeChange(p + '#' + name, previous, now))
     }

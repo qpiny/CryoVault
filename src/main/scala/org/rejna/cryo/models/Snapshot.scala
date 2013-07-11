@@ -56,120 +56,97 @@ case class ID(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
 //case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
 
-class SnapshotBuilder(val cryoctx: CryoContext) extends CryoActor with Stash {
+class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor with Stash {
+  val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
 
-  override def preStart = {
-    cryoctx.datastore ? CreateData(None, "Index") onComplete {
-      case Success(DataCreated(id)) =>
-        log.debug(s"Snapshot get ID ${id}, become ready and unstash message")
-        context.become(cryoReceive(ready(id)))
-        unstashAll()
-      case e: Any => log.error(CryoError("Snapshot creation failed", e))
+  val sizeAttribute = attributeBuilder("size", 0L)
+  def size = sizeAttribute()
+  def size_= = sizeAttribute() = _
+  // all files are relative to config.baseDirectory
+  val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
+  val files = attributeBuilder.list("files", List.empty[Path])
+
+  fileFilters <+> new AttributeListCallback {
+    override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
+      var newSize = size
+      if (removedValues.isEmpty) {
+        val addedFileFilters = addedValues.asInstanceOf[List[(Path, FileFilter)]]
+        val (addedFiles, addedSize) = walkFileSystem(addedFileFilters)
+        files ++= addedFiles
+        size_=(size + addedSize)
+      } else {
+        val (newFiles, newSize) = walkFileSystem(fileFilters)
+        files() = newFiles.toList
+        size_=(newSize) // TODO why "size = newSize" doesn't work ?!
+      }
     }
   }
 
   def receive = cryoReceive {
-    case PrepareToDie() => sender ! ReadyToDie()
-    case m: Any =>
-      log.debug(s"Stashing message ${m}")
-      stash()
-  }
+    case PrepareToDie() =>
+      sender ! ReadyToDie()
 
-  def ready(id: String): PartialFunction[Any, Unit] = {
-    log.debug("Creating snapshot attributes")
-    val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
+    case GetID() =>
+      log.debug(s"From: ${sender} Message: GetID")
+      sender ! ID(id)
 
-    val sizeAttribute = attributeBuilder("size", 0L)
-    def size = sizeAttribute()
-    def size_= = sizeAttribute() = _
-    // all files are relative to config.baseDirectory
-    val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
-    val files = attributeBuilder.list("files", List.empty[Path])
+    case SnapshotUpdateFilter(id, file, filter) =>
+      fileFilters += FileSystems.getDefault.getPath(file) -> filter
+      sender ! FilterUpdated
 
-    fileFilters <+> new AttributeListCallback {
-      override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
-        var newSize = size
-        if (removedValues.isEmpty) {
-          val addedFileFilters = addedValues.asInstanceOf[List[(Path, FileFilter)]]
-          val (addedFiles, addedSize) = walkFileSystem(addedFileFilters)
-          files ++= addedFiles
-          size_=(size + addedSize)
-        } else {
-          val (newFiles, newSize) = walkFileSystem(fileFilters)
-          files() = newFiles.toList
-          size_=(newSize) // TODO why "size = newSize" doesn't work ?!
+    case SnapshotGetFiles(id, directory) =>
+      val absoluteDirectory = cryoctx.baseDirectory.resolve(directory).normalize
+      if (!absoluteDirectory.startsWith(cryoctx.baseDirectory))
+        sender ! SnapshotFiles(id, directory, List[FileElement]())
+      else try {
+        val dirContent = Files.newDirectoryStream(absoluteDirectory)
+        val fileElements = for (f <- dirContent) yield {
+          val filePath = cryoctx.baseDirectory.relativize(f)
+          val fileSize = for (
+            fs <- files;
+            if fs.startsWith(filePath)
+          ) yield Files.size(cryoctx.baseDirectory.resolve(fs))
+          new FileElement(filePath, Files.isDirectory(f), fileFilters.get(filePath), fileSize.size, fileSize.sum)
         }
+        sender ! SnapshotFiles(id, directory, fileElements.toList)
+      } catch {
+        case e: AccessDeniedException =>
+          sender ! SnapshotFiles(id, directory, List(new FileElement(
+            FileSystems.getDefault.getPath(directory).resolve("_Access_denied_"), false, None, 0, 0)))
       }
-    }
 
-    log.debug("Creating snapshot behaviour")
-    
-    {
-      case PrepareToDie() =>
-        sender ! ReadyToDie()
-
-      case GetID() =>
-        log.debug(s"From: ${sender} Message: GetID")
-        sender ! ID(id)
-
-      case SnapshotUpdateFilter(id, file, filter) =>
-        fileFilters += FileSystems.getDefault.getPath(file) -> filter
-        sender ! FilterUpdated
-
-      case SnapshotGetFiles(id, directory) =>
-        val absoluteDirectory = cryoctx.baseDirectory.resolve(directory).normalize
-        if (!absoluteDirectory.startsWith(cryoctx.baseDirectory))
-          sender ! SnapshotFiles(id, directory, List[FileElement]())
-        else try {
-          val dirContent = Files.newDirectoryStream(absoluteDirectory)
-          val fileElements = for (f <- dirContent) yield {
-            val filePath = cryoctx.baseDirectory.relativize(f)
-            val fileSize = for (
-              fs <- files;
-              if fs.startsWith(filePath)
-            ) yield Files.size(cryoctx.baseDirectory.resolve(fs))
-            new FileElement(filePath, Files.isDirectory(f), fileFilters.get(filePath), fileSize.size, fileSize.sum)
+    case SnapshotUpload(id) =>
+      val _sender = sender
+      var archiveUploader = new ArchiveUploader
+      for (f <- files()) {
+        archiveUploader.addFile(f, splitFile(f))
+      }
+      archiveUploader.flatMap {
+        case UploaderState(out, aid, len) =>
+          (cryoctx.hashcatalog ? GetCatalogContent) map {
+            case CatalogContent(catalog) =>
+              //out.putCatalog(catalog)
+              UploaderState(out, aid, len)
+            case e: Any => throw CryoError("Fail to get block location", e)
           }
-          sender ! SnapshotFiles(id, directory, fileElements.toList)
-        } catch {
-          case e: AccessDeniedException =>
-            sender ! SnapshotFiles(id, directory, List(new FileElement(
-              FileSystems.getDefault.getPath(directory).resolve("_Access_denied_"), false, None, 0, 0)))
-        }
+      }
+      // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
+      //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
+      archiveUploader.upload.map {
+        case bs: ByteString =>
+          cryoctx.datastore ? WriteData(id, bs) map {
+            case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
+              case DataUploaded(sid) => _sender ! SnapshotUploaded(sid)
+              case e: Any => throw CryoError("Fail to upload data", e)
+            }
+            case e: Any => throw CryoError("Fail to write data", e)
+          }
+      }.onFailure {
+        case e: CryoError => _sender ! e
+        case o: Any => _sender ! CryoError("Unexpected message", o)
+      }
 
-      case SnapshotUpload(id) =>
-        val _sender = sender
-        var archiveUploader = new ArchiveUploader
-        for (f <- files()) {
-          archiveUploader.addFile(f, splitFile(f))
-        }
-        archiveUploader.flatMap {
-          case UploaderState(out, aid, len) =>
-            (cryoctx.hashcatalog ? GetCatalogContent) map {
-              case CatalogContent(catalog) =>
-                //out.putCatalog(catalog)
-                UploaderState(out, aid, len)
-              case e: Any => throw CryoError("Fail to get block location", e)
-            }
-        }
-        // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
-        //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
-        archiveUploader.upload.map {
-          case bs: ByteString =>
-            cryoctx.datastore ? WriteData(id, bs) map {
-              case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
-                case DataUploaded(sid) => _sender ! SnapshotUploaded(sid)
-                case e: Any => throw CryoError("Fail to upload data", e)
-              }
-              case e: Any => throw CryoError("Fail to write data", e)
-            }
-        }.onFailure {
-          case e: CryoError => _sender ! e
-          case o: Any => _sender ! CryoError("Unexpected message", o)
-        }
-      
-      case a: Any => log.error(s"unknown message : ${a}")
-    }: PartialFunction[Any, Unit]
+    case a: Any => log.error(s"unknown message : ${a}")
   }
 
   // path are relative to baseDirectory

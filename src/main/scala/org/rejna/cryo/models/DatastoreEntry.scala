@@ -33,13 +33,11 @@ sealed abstract class DataEntry(
   val checksum: String) {
   val file = cryoctx.workingDirectory.resolve(id)
 
-  val statusAttribute: SimpleAttribute[EntryStatus]
+  val sizeAttribute: SimpleAttribute[Long]
   def size = sizeAttribute()
   def size_= = sizeAttribute() = _
 
-  val sizeAttribute: SimpleAttribute[Long]
-  def status = statusAttribute()
-  def status_= = statusAttribute() = _
+  def status: EntryStatus
 
   def state = EntryState(status, id, description, creationDate, size, checksum)
   override def toString = state.toString
@@ -57,7 +55,6 @@ object DataEntry {
           state.id,
           state.description,
           state.creationDate,
-          entryAttributeBuilder("status", Created),
           entryAttributeBuilder("size", state.size),
           state.checksum)
       case Remote =>
@@ -84,7 +81,7 @@ class DataEntryRemote(
   checksum: String,
   entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
 
-  val statusAttribute = entryAttributeBuilder("status", Remote)
+  def status = Remote
   val sizeAttribute = entryAttributeBuilder("size", initSize)
 
   def prepareForDownload = new DataEntryLoading(cryoctx, id, description, creationDate, size, checksum, entryAttributeBuilder)
@@ -98,7 +95,7 @@ class DataEntryCreating(
   entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, description, new Date, "") with LoggingClass {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".creating")
-  val statusAttribute = entryAttributeBuilder("status", Creating)
+  def status = Creating
   val sizeAttribute = entryAttributeBuilder("size", initSize)
 
   val digest = MessageDigest.getInstance("SHA-256")
@@ -146,7 +143,7 @@ class DataEntryCreating(
     if (blockSize > 0)
       checksums += digest.digest
     Files.move(file, cryoctx.workingDirectory.resolve(id), REPLACE_EXISTING)
-    new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute.duplicate, sizeAttribute.duplicate, TreeHashGenerator.calculateTreeHash(checksums))
+    new DataEntryCreated(cryoctx, id, description, creationDate, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
   }
 }
 
@@ -155,14 +152,14 @@ class DataEntryCreated(
   id: String,
   description: String,
   creationDate: Date,
-  val statusAttribute: SimpleAttribute[EntryStatus],
   val sizeAttribute: SimpleAttribute[Long],
   checksum: String) extends DataEntry(cryoctx, id, description, creationDate, checksum) with LoggingClass {
 
-  status = Created
   if (size == 0)
     size = Files.size(file)
   val channel = FileChannel.open(file, READ)
+
+  def status = Created
 
   def read(position: Long, length: Int) = {
     val buffer = ByteBuffer.allocate(length)
@@ -189,7 +186,7 @@ class DataEntryLoading(
   entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".loading")
-  val statusAttribute = entryAttributeBuilder("status", Loading)
+  def status = Loading
   val sizeAttribute = entryAttributeBuilder("size", 0L)
   val channel = FileChannel.open(file, WRITE, CREATE)
   var range = MultiRange.empty[Long] // TODO Resume
@@ -207,7 +204,7 @@ class DataEntryLoading(
   def close: DataEntryCreated = {
     channel.close
     Files.move(file, cryoctx.workingDirectory.resolve(id), REPLACE_EXISTING)
-    new DataEntryCreated(cryoctx, id, description, creationDate, statusAttribute.duplicate, sizeAttribute.duplicate, checksum)
+    new DataEntryCreated(cryoctx, id, description, creationDate, sizeAttribute, checksum)
   }
 
   //override def state = EntryState(status, id, description, creationDate, expectedSize, checksum, Some(range))

@@ -150,10 +150,12 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
         case Some(de: DataEntryCreating) =>
           val newde = de.close
           repository += id -> newde
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(EntryStatus.Creating), EntryStatus.Created))
           sender ! DataClosed(id)
         case Some(de: DataEntryLoading) =>
           val newde = de.close
           repository += id -> newde
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(EntryStatus.Loading), EntryStatus.Created))
           sender ! DataClosed(id)
         case Some(de: DataEntryCreated) =>
           sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for close")

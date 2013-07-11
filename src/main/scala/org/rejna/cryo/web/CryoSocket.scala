@@ -125,6 +125,7 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
     case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore
 
     case msg: CryoMessage =>
+      log.debug(s"Sending message to websocket : ${msg}")
       send(msg)
   }
 

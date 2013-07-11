@@ -9,7 +9,7 @@ object AttributeTest extends App {
   implicit val timeout = 10 seconds
 
   object AddSimpleCallback extends AttributeSimpleCallback {
-    def onChange[A](name: String, previous: A, now: A) = {
+    def onChange[A](name: String, previous: Option[A], now: A) = {
       println(s"## AddSimpleCallback(${name}) ${previous} -> ${now}")
       list += now.asInstanceOf[Int]
     }
@@ -27,8 +27,8 @@ object AttributeTest extends App {
     }
   }
 
-  val simple = new SimpleAttribute("simple")(0, 0)
-  val list = new ListAttribute("list")(List.empty[Int], List.empty[Int])
+  val simple = new SimpleAttribute("simple")(None, 0)
+  val list = new ListAttribute("list")(None, List.empty[Int])
   val metalist = new MetaListAttribute("metalist", () => {
     println("## start asynchronous metalist computation")
     Future {

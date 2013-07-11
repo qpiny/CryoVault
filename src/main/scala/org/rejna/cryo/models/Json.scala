@@ -22,6 +22,7 @@ object Json extends Formats {
       new EnumNameSerializer(EntryStatus) ::
       JsonLogSerialization ::
       Nil
+
   val fractionOfSecondFormat = new DateTimeFormatterBuilder()
     .appendLiteral('.')
     .appendFractionOfSecond(2, 9)
@@ -85,22 +86,21 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
   }
 
   def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
-    //    case s: Snapshot =>
-    //      ("date" -> s.date.getMillis) ~
-    //        ("id" -> s.id) ~
-    //        ("size" -> s.size) ~
-    //        ("status" -> s.state.toString) ~
-    //        ("fileSelection" -> s.fileFilters.map { case (file, filter) => (file, filter.toString) })
-    case (k, v) =>
-      (k.toString -> Extraction.decompose(v))
-    //    case fe: FileElement =>
-    //      ("file" -> fe.file.getFileName.toString) ~
-    //        ("isDirectory" -> Files.isDirectory(fe.file)) ~
-    //        ("count" -> fe.count) ~
-    //        ("size" -> fe.size) ~
-    //        ("filter" -> fe.filter.toString)
-    //    case ac: AttributeChange[_] =>
-    //      ("type" -> "AttributeChange") ~
+    case j: InventoryJob =>
+      ("id" -> j.id) ~
+        ("jobType" -> "InventoryJob") ~
+        ("description" -> j.description) ~
+        ("creationDate" -> Extraction.decompose(j.creationDate)) ~
+        ("status" -> j.status.toString) ~
+        ("completedDate" -> Extraction.decompose(j.completedDate))
+    case j: ArchiveJob =>
+      ("id" -> j.id) ~
+        ("jobType" -> "ArchiveJob") ~
+        ("description" -> j.description) ~
+        ("creationDate" -> Extraction.decompose(j.creationDate)) ~
+        ("status" -> j.status.toString) ~
+        ("completedDate" -> Extraction.decompose(j.completedDate)) ~
+        ("archiveId" -> j.archiveId)
 
   }
 }
@@ -180,36 +180,36 @@ object JsonInventorySerialization extends Serializer[InventoryMessage] with Logg
 
 object JsonDataStatusSerialization extends Serializer[DataStatus] {
   val DataStatusClass = classOf[DataStatus]
-  
+
   def deserialize(implicit format: Formats) = new PartialFunction[(TypeInfo, JValue), DataStatus] {
     def isDefinedAt(a: (TypeInfo, JValue)) = false
     def apply(a: (TypeInfo, JValue)) = null
   }
-  
+
   def serialize(implicit format: Formats) = {
     case ds: DataStatus =>
       ("id" -> ds.id) ~
-      ("description" -> ds.description) ~
-      ("creationDate" -> Extraction.decompose(ds.creationDate)) ~
-      ("checksum" -> ds.checksum) ~
-      ("size" -> ds.size) ~
-      ("status" -> Extraction.decompose(ds.status))
+        ("description" -> ds.description) ~
+        ("creationDate" -> Extraction.decompose(ds.creationDate)) ~
+        ("checksum" -> ds.checksum) ~
+        ("size" -> ds.size) ~
+        ("status" -> Extraction.decompose(ds.status))
   }
 }
 
 object JsonLogSerialization extends Serializer[Log] {
   val LogClass = classOf[Log]
-  
+
   def deserialize(implicit format: Formats) = new PartialFunction[(TypeInfo, JValue), Log] {
     def isDefinedAt(a: (TypeInfo, JValue)) = false
     def apply(a: (TypeInfo, JValue)) = null
   }
-  
+
   def serialize(implicit format: Formats) = {
     case log: Log =>
       ("type" -> "Log") ~
-      ("level" -> log.level.levelStr) ~
-      ("message" -> log.message)
+        ("level" -> log.level.levelStr) ~
+        ("message" -> log.message)
   }
 }
 

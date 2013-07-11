@@ -119,6 +119,7 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
     for (rh <- receiptHandles)
       try {
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, rh))
+        log.debug(s"Message ${rh} removed")
       } catch {
         case e: Exception => log.warn("Fail to remove message in queue", e)
       }

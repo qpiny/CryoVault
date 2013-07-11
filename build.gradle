@@ -22,7 +22,7 @@ mainClassName = "org.rejna.cryo.web.CryoWeb"
 ext {
 	majorScalaVersion = '2.10'
 	scalaVersion = '2.10.2'
-	akkaVersion = '2.2.0-RC2'
+	akkaVersion = '2.2.0'
 }
 
 configurations {
@@ -68,6 +68,7 @@ tasks.withType(ScalaCompile) {
 	scalaCompileOptions.deprecation = true
 	
 	scalaCompileOptions.useCompileDaemon = false
+	scalaCompileOptions.useAnt = true
 	
 	
 	configure(scalaCompileOptions.forkOptions) {

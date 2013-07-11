@@ -234,7 +234,7 @@ $ =>
 			@log('>>' + $.toJSON(msg.originalEvent.data))
 			
 		unhandled: (msg) =>
-			@log('**' + $.toJSON(msg.originalEvent.data))
+			@log('**' + $.toJSON(msg))
 			
 		events:
 			SnapshotList: (e) =>
@@ -265,14 +265,29 @@ $ =>
 					
 					for r in e.removedValues
 						@snapshotList.remove(r)
+						
 				else if (e.path.endsWith('#fileFilters'))
 					snapshotId = e.path.replace(new RegExp('/cryo/snapshots/(.*)#fileFilters'), '$1')
 					snapshot = @snapshotList.get(snapshotId)
 					for kv in e.addedValues
-						for k of kv
-							snapshot.updateFilter(k, kv[k])
+						for k, v of kv
+							snapshot.updateFilter(k, v)
 					for k of e.removedValues
 						snapshot.updateFilter(k, '')
+						
+				else if (e.path is '/cryo/manager#jobs')
+					for jid in e.addedValues
+						for i, j of jid
+							@log('jobs.add : ' + $.toJSON(j))
+							item = $('<li>' + j.creationDate + ' ' + j.jobType + '(' + j.status + ')</li>')
+							$.data(item, 'job', j)
+							@_ui_jobList.append(item)
+					for jid in e.removedValues
+						for i, j of jid
+							@log('jobs.remove : ' + $.toJSON(j))
+							$.grep(@_ui_jobList.children, (i, n) =>
+								if ($.data(i, 'job').id is j.id)
+									i.remove)
 			Log: (e) =>
 				@log(e.level + ' : ' + e.message)
 		)
@@ -313,7 +328,7 @@ $ =>
 		unselected: (event, ui) ->
 			$.data(ui.unselected, 'snapshot').unselect()
 		})
-		
+	
 	@_ui_snapshotNew.bind('click', => @newSnapshot())
 	
 	@_ui_snapshotUpload.bind('click', => @uploadSnapshot(@snapshotList.selectedSnapshot.id))
