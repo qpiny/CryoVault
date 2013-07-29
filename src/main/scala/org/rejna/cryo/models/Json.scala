@@ -21,6 +21,7 @@ object Json extends Formats {
       JsonInventorySerialization ::
       new EnumNameSerializer(EntryStatus) ::
       JsonLogSerialization ::
+      JsonTupleSerialization ::
       Nil
 
   val fractionOfSecondFormat = new DateTimeFormatterBuilder()
@@ -53,6 +54,18 @@ object Json extends Formats {
   }
 }
 
+object JsonTupleSerialization extends Serializer[Null] {
+  
+  def deserialize(implicit format: Formats) = new PartialFunction[(TypeInfo, JValue), Null] {
+    def isDefinedAt(a: (TypeInfo, JValue)) = false
+    def apply(a: (TypeInfo, JValue)) = null
+  }
+  
+  def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
+    case (k, v)  => (k.toString -> Extraction.decompose(v))
+  }
+}
+  
 object JsonJobSerialization extends Serializer[Job] with LoggingClass {
   val JobClass = classOf[Job]
 

@@ -141,7 +141,7 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
         } toMap
 
         cryoctx.manager ? AddJobs(jobsReceipt.keySet.toList) map {
-          case JobsAdded(addedJobs) => removeMessage(addedJobs.map(jobsReceipt))
+          case JobsAdded(addedJobs) => removeMessage(addedJobs.map(jobsReceipt.apply(_)))
           case o: Any => _sender ! CryoError("Fail to add job", o)
         } onComplete {
           case Success(_) => if (_sender != context.system.deadLetters) _sender ! NotificationGotten()

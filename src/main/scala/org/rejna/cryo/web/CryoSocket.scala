@@ -56,6 +56,8 @@ object EventTypeHints extends TypeHints {
       classOf[AttributeListChange[_]] ::
       classOf[CryoError] ::
       classOf[Log] ::
+      classOf[GetJobList] ::
+      classOf[JobList] ::
       Nil
 
   def hintFor(clazz: Class[_]) = clazz.getSimpleName
@@ -120,6 +122,8 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           cryoctx.inventory ! ie
         case cr: CryoRequest =>
           cryoctx.cryo ! cr
+        case mr: ManagerRequest =>
+          cryoctx.manager ! mr
       }
 
     case event: Event if ignore.exists(_.findFirstIn(event.path).isDefined) => // ignore

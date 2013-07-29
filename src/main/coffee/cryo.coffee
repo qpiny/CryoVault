@@ -215,6 +215,10 @@ class Snapshot
 @uploadSnapshot = (snapshotId) =>
 	@socket.send('UploadSnapshot', { snapshotId: snapshotId })
 
+@getJobList = =>
+	@log('<< GetJobList')
+	@socket.send('GetJobList')
+
 @refreshInventory = =>
 	@log("RefreshInventory")
 	@socket.send('RefreshInventory', { age: 0 })
@@ -229,6 +233,7 @@ $ =>
 			@addIgnoreSubscription('#files$')
 			# update Inventory Information
 			@getSnapshotList()
+			@getJobList()
 			
 		message: (msg) =>
 			@log('>>' + $.toJSON(msg.originalEvent.data))
@@ -247,6 +252,12 @@ $ =>
 			
 			SnapshotFiles: (e) =>
 				@snapshotList.selectedSnapshot.showFiles(e.directory, e.files)
+			
+			JobList: (e) =>
+				for j in e.jobs
+					item = $('<li>' + j.creationDate + ' ' + j.jobType + '(' + j.status + ')</li>')
+					$.data(item, 'job', j)
+					@_ui_jobList.append(item)
 			
 			AttributeChange: (e) =>
 				if (e.path.endsWith('#size'))
