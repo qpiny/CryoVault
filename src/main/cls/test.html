@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>goog.ui.SplitPane</title>
+  <style class="text/css">
+    .goog-splitpane-handle {
+      border-left: 1px solid gray;
+      border-right: 1px solid gray;
+      background: #ccc;
+      position: absolute;
+    }
+
+    .goog-splitpane-handle-horizontal {
+      cursor: col-resize;
+    }
+
+    .goog-splitpane-handle-vertical {
+      cursor: row-resize;
+    }
+
+    .goog-splitpane-first-container,
+    .goog-splitpane-second-container {
+      border: 1px solid black;
+      overflow: auto;
+      position: absolute;
+    }
+
+    /* The rest of these styles are for the splitpane demo, splitpane.html */
+
+    /* Example of styling a particular handle */
+    #another-splitpane .goog-splitpane-handle {
+      background: gray;
+    }
+  </style>
+</head>
+<body>
+  <div class='goog-splitpane' id='anotherSplitter'>
+    <div class='goog-splitpane-first-container'>
+      Left Frame
+    </div>
+    <div class='goog-splitpane-second-container'>
+      Right frame
+    </div>
+    <div class='goog-splitpane-handle'></div>
+  </div>
+  <script src="out/goog/base.js"></script>
+  <script src="cryo.js"></script>
+  <script>
+    goog.require('cryo');
+  </script>
+  <script>
+    cryo.build();
+  </script>
+</body>
+</html>
