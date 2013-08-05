@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>CryoVault</title>
+<style class="text/css">
+.goog-splitpane-handle {
+	border-left: 1px solid gray;
+	border-right: 1px solid gray;
+	background: #ccc;
+	position: absolute;
+}
+
+.goog-splitpane-handle-horizontal {
+	cursor: col-resize;
+}
+
+.goog-splitpane-handle-vertical {
+	cursor: row-resize;
+}
+
+.goog-splitpane-first-container,.goog-splitpane-second-container {
+	border: 1px solid black;
+	overflow: auto;
+	position: absolute;
+}
+
+#another-splitpane .goog-splitpane-handle {
+	background: gray;
+}
+</style>
+</head>
+<body>
+	<script src="../target/main.js" type="text/javascript"></script>
+	<script type="text/javascript">
+		goog.require("cryo");
+	</script>
+</body>
+</html>
+
+
+<!-- 
+<div class="goog-splitpane-first-container"></div>
+<div class="goog-splitpane-second-container"></div>
+<div class="goog-splitpane-handle"></div>
+ -->
+ <!-- 
+	<div id="logSplitter" class="goog-splitpane">
+		<div class="goog-splitpane-first-container">
+			<div id="zipSplitter" class="goog-splitpane">
+				<div class="agoog-splitpane-first-container">
+					<h2 id="inventoryHeader">Inventory</h2>
+					<div id="inventoryContent">
+						<div>
+							Date <span id="inventoryDate">unknown</span>
+						</div>
+						<div>
+							Status <span id="inventoryState">unknown</span>
+							<div id="inventoryRefresh"></div>
+						</div>
+					</div>
+
+					<h2 id="snapshotHeader">Snapshots</h2>
+					<div id="snapshotContent">
+						<div id="snapshotNew"></div>
+						<div id="snapshotList"></div>
+					</div>
+
+					<h2 id="jobHeader">Jobs</h2>
+					<div id="jobContent"></div>
+
+					<h2 id="archiveHeader">Archives</h2>
+					<div id="archiveContent"></div>
+
+					<h2 id="repositoryHeader">Repository</h2>
+					<div id="repositoryContent"></div>
+				</div>
+				<div class="agoog-splitpane-second-container">
+					<table>
+						<tbody>
+							<tr>
+								<th>ID</th>
+								<td id="snapshotId"></td>
+							</tr>
+							<tr>
+								<th>Date</th>
+								<td id="snapshotDate"></td>
+							</tr>
+							<tr>
+								<th>Size</th>
+								<td id="snapshotSize"></td>
+							</tr>
+							<tr>
+								<th>Status</th>
+								<td id="snapshotStatus"></td>
+							</tr>
+						</tbody>
+					</table>
+					<div style="float: right; margin: 0">
+						<div id="snapshotDelete"></div>
+						<div id="snapshotDownload"></div>
+						<div id="snapshotUpload"></div>
+						<div id="snapshotDuplicate"></div>
+					</div>
+					<div id="fileTree"></div>
+				</div>
+				<div class="goog-splitpane-handle"></div>
+			</div>
+		</div>
+		<div class="goog-splitpane-second-container">
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+			<div>logs blah blah blah</div>
+		</div>
+		<div class="goog-splitpane-handle"></div>
+	</div>
+	 -->

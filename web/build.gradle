@@ -1,0 +1,33 @@
+configurations {
+	cljs
+}
+
+repositories {
+    mavenCentral()
+    mavenRepo name: "clojars", url: "http://clojars.org/repo"
+}
+
+dependencies {
+	cljs "leiningen:leiningen:2.2.0"
+}
+
+task wrapper(type: Wrapper) {
+	gradleVersion = '1.6'
+}
+
+class Lein extends DefaultTask {
+    def List<String> largs = ['help']
+
+    @TaskAction
+    def lein() {
+        project.javaexec {
+            classpath = project.configurations.cljs
+            main = "clojure.main"
+            args = ["-m", "leiningen.core.main"] + largs
+        }
+    }
+}
+
+task cljsbuild(type: Lein) {
+	largs = ["cljsbuild", "once"]
+}
