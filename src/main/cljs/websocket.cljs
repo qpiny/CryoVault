@@ -1,6 +1,5 @@
 (ns websocket
   (:require [logger]
-;            [goog.json :as json]
             [goog.events :as events]
             [goog.net.WebSocket :as websocket]
             [goog.net.WebSocket.EventType :as websocket-event]
