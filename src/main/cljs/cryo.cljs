@@ -10,9 +10,20 @@
             [messages :as msg]
             [logger]
             [ui]
+            [dommy.core :as dc]
             ))
 
 ; Build user interface
+(ui/append! (sel1 :body)
+            (ui/mysplit orientation/VERTICAL 0
+                        (ui/mysplit orientation/HORIZONTAL 0
+                                    (ui/myzip (node [:h2.zip-header Inventory])
+                                              (node [:div
+                                                     [:div "Date "   [:span#inv-date "unknown"]]
+                                                     [:div "Status " [:span#inv-status "unknown"] [:div#inv-refresh]]
+                                                     [:div#snapshot-list]]))
+                                    (node [:div "coucou2"])))
+
 (def main-splitter (ui/add-split (sel1 :body) orientation/VERTICAL (/ (.-height (goog.dom.getViewportSize)) 3)))
 (def top-panel (.getElement (.getChildAt main-splitter 0)))
 (logger/configure (.getElement (.getChildAt main-splitter 1)))
@@ -27,6 +38,14 @@
 (.render (goog.ui.Button. "Refresh") (sel1 :#inv-refresh))
 (ui/add-zip left-panel "Jobs"
           (node [:div#job-list]))
+
+;(let [s (ui/mysplit orientation/VERTICAL 0 (node [:div "coucou"]) (node [:div "coucou2"]))]
+;  (logger/log (type s))
+;  (logger/log (type (.getElement s)))
+;  (logger/log (type (.getContentElement s))))
+;(logger/log (str "component == " (ui/mysplit (goog.ui.Component.))))
+;(logger/log (str "other == " (ui/mysplit "okio")))
+;(logger/log (str "other == " (ui/mysplit (node [:div]))))
 
 ; Interface actions
 (defn- update-splitter-size
