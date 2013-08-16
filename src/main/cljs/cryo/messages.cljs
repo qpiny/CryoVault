@@ -1,4 +1,4 @@
-(ns messages
+(ns cryo.messages
   (:use-macros
     [dommy.macros :only [sel1]])
   (:require

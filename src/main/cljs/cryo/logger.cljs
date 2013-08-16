@@ -1,4 +1,4 @@
-(ns logger
+(ns cryo.logger
   (:use-macros [dommy.macros :only [node]])
   (:require [goog.dom :as dom]))
 
