@@ -1,5 +1,5 @@
 (ns cryo.websocket
-  (:require [logger]
+  (:require [cryo.logger]
             [goog.events :as events]
             [goog.net.WebSocket :as websocket]
             [goog.net.WebSocket.EventType :as websocket-event]

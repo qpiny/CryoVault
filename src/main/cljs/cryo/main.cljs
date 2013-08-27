@@ -1,19 +1,21 @@
 (ns cryo.main
-  (:use-macros [cryo.macros :only [myNode myZip]])
+  (:use-macros
+     [dommy.macros :only [sel1]])
   (:require [goog.style :as goog-style]
             [goog.events :as goog-events]
             [goog.events.EventType :as event-type]
             [goog.dom.ViewportSizeMonitor :as viewport-size]
             [goog.ui.Button]
             [goog.ui.SplitPane.Orientation :as orientation]
-            [websocket :as ws]
-            [messages :as msg]
-            [logger]
-            [ui]
+            [cryo.websocket :as ws]
+            [cryo.messages :as msg]
+            [cryo.logger]
+            [cryo.ui :as ui]
             [dommy.core :as dc]
             ))
 
 ; Build user interface
+(dc/append! (sel1 :body) (ui/main-panel))
 ;(ui/append! (sel1 :body)
 ;(ui/mysplit orientation/VERTICAL 0
 ;            (ui/mysplit orientation/HORIZONTAL 0
@@ -89,11 +91,12 @@
 (defn- websocket-closed [soc msg]
   (logger/log "INFO" "ws-c" (ws/jsonerate msg)))
 
-(let [location-host (.. js/document -location -host)
-      host (if (empty? location-host) "localhost:8888" location-host)]
-  (ws/configure
-    (str "ws://" host "/websocket/") 
-    websocket-opened
-    websocket-message
-    websocket-error
-    websocket-closed))
+
+;(let [location-host (.. js/document -location -host)
+;      host (if (empty? location-host) "localhost:8888" location-host)]
+;  (ws/configure
+;    (str "ws://" host "/websocket/") 
+;    websocket-opened
+;    websocket-message
+;    websocket-error
+;    websocket-closed))

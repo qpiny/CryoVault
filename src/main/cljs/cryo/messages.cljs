@@ -2,9 +2,9 @@
   (:use-macros
     [dommy.macros :only [sel1]])
   (:require
-    [logger]
+    [cryo.logger]
     [dommy.core :as dc]
-    [ui]
+    [cryo.ui]
     ))
 
 (defn snapshot-list [message]

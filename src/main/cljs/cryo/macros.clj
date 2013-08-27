@@ -10,10 +10,10 @@
 (defn get-comp [x] (if-let [d (:comp x)] d x))
 
 (defn dom->comp [d]
-  (let [s (gensym "d2c")]
-    `(do (let [~s (goog.ui.Component.)]
-           (.createDom ~s)
-           (dc/append! (.getContentElement ~s) ~d)))))
+  `(do (let [c# (goog.ui.Component.)]
+         (.createDom c#)
+         (dc/append! (.getContentElement c#) ~d)
+         c#)))
 
 (defn comp->dom [c]
   `(.getContentElement ~c))
@@ -27,17 +27,27 @@
              {:dom dom
               :comp (dom->comp dom)})
       :split (let [[_ opt first-pane second-pane] args
+                   sym (gensym "split")
                    fp (get-comp first-pane)
                    sp (get-comp second-pane)
-                   comp `(goog.ui.SplitPane. ~fp ~sp)]
+                   options [(if-let [id (:id opt)] `(def ~(symbol id) ~sym))
+                            (if-let [orientation (:orientation opt)] `(.setOrientation ~sym ~orientation))
+                            (if-let [initial-size (:initial-size opt)] `(.setInitialSize ~sym ~initial-size))
+                            (if-let [size (:size opt)] `(.setSize ~sym ~size))]
+                   comp `(let [~sym (goog.ui.SplitPane. ~fp ~sp)]
+                           (.createDom ~sym)
+                           ~@options
+                           ~sym)]
                {:dom (comp->dom comp)
                 :comp comp})
       :zip (let [[_ opt header content] args
-                 h (get-dom header)
-                 c (get-dom content)
-                 dom `(do
-                        (dommy.macros/node [:div ~h ~c])
-                        (goog.ui.Zippy. ~h ~c))]
+                 sym (if-let [id (:id opt)] (symbol id) (gensym "zip"))
+                 dom `(let [h# ~(get-dom header)
+                            c# ~(get-dom content)
+                            d# (dommy.macros/node [:div h# c#])]
+                        (def ~sym (goog.ui.Zippy. h# c#))
+                        ;(goog.ui.Zippy. h# c#)
+                        d#)]
              {:dom dom
               :comp (dom->comp dom)})
       args)
@@ -49,58 +59,4 @@
 
 (defmacro widget [args]
   (let [w (rmap build-widget args)]
-    ;`(js/alert (str ~@w))))
-    `(do ~@(:dom w))))
-                       
-
-;(defmacro widget [args]
-;  (rmap #(do
-;           ;(println (str % " => " (and (coll? %) (first %)) ":" (if (and (coll? %) (first %)) "YES" "NO")))
-;           (if-let [a (and (coll? %) (first %))]
-;           (do ;(binding [*err* *out*] (println (str % " -> " a)))
-;             (condp = a
-;               :split `(let [[_ opt# first-pane# second-pane#] ~args
-;                           orientation# (get opt# :orientation "vertical")
-;                           first-component# (.-component first-pane#)
-;                           second-component# (.-component second-pane#)
-;                           splitpane# (goog.ui.SplitPane. first-component# second-component#)]
-;                         (println "split!")
-;                         (doto splitpane#
-;                           (.createDom)
-;                           (.setHandleSize 2))
-;                         (ClosureWidget. splitpane#))
-;               :zip `(let [[_ opt# title# content#] ~args
-;                         n (node [:div title# content#])]
-;                     (goog.ui.Zippy. (.-elem title#) (.-elem content#))
-;                     n)
-;             :node `(let [[dummy# & param#] ~args]
-;                      (dommy.macros/node param#))
-;             `[:default %]) ;(println "invalid token :" a))
-;             )
-;           %)) args))
-;  `(str ~(rmap #(if (= % :node) "NODE" %) args)))
-
-;    :node (if 
-;    "node" `(let [debug1# '~args
-;                  debug2# '~wtype
-;                  debug3# '~a1]
-;              ~(if (empty? args)
-;                  `(str (str "js/alert" "plop"))
-;                  `(do
-;                     (.createElement js/document ~wtype)
-;                     (dommy.macros/node ~a1)
-;                    ;(str (str "js/alert" ">>" ~wtype "|" ~a1 "--"))
-;                    (widget ~@args)
-;                    )
-;                  ;`(str "empty args > " ~wtype ":" ~a1)
-;                  ;`(str "non-empty args > " ~wtype ":" ~a1 " / " (widget ~@args))
-;                 ))
-;    `(str "invalid type : " ~wtype)))
-;
-;(defmacro aa [a & b]
-;  `(str "aa" ~a "bb"))
-
-;(defn anode [t a & o] 
-;  (let [[nt na & no] o
-;        r (if (and nt na) (widget nt na) "")]
-;    (str t "/" a  " : " r)))
+    `~(:dom w)))
