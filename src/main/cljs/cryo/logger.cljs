@@ -11,8 +11,8 @@
   ([message] (log "INFO" message))
   ([level message] (log level "" message)) 
   ([level marker message]
-    (when log-container
-      (let [msg (str marker ":" message)
-            element (node [:div {:class (str "log-line level" level)} msg])
-            ]
-        (dom/appendChild log-container element)))))
+    (let [msg (str marker ":" message)]
+      (.log js/console msg)
+      (when log-container
+        (let [element (node [:div {:class (str "log-line level" level)} msg])]
+          (dom/appendChild log-container element))))))

@@ -9,13 +9,18 @@
             [goog.ui.SplitPane.Orientation :as orientation]
             [cryo.websocket :as ws]
             [cryo.messages :as msg]
-            [cryo.logger]
+            [cryo.logger :as logger]
             [cryo.ui :as ui]
             [dommy.core :as dc]
             ))
 
 ; Build user interface
 (dc/append! (sel1 :body) (ui/main-panel))
+(logger/configure (sel1 :.console))
+(goog-events/listen (goog.dom.ViewportSizeMonitor.)
+                    event-type/RESIZE
+                    #(ui/update-main-panel-size (.getSize (.-target %))))
+  
 ;(ui/append! (sel1 :body)
 ;(ui/mysplit orientation/VERTICAL 0
 ;            (ui/mysplit orientation/HORIZONTAL 0
