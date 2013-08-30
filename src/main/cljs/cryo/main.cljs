@@ -3,6 +3,7 @@
      [dommy.macros :only [sel1]])
   (:require [goog.style :as goog-style]
             [goog.events :as goog-events]
+            [goog.dom]
             [goog.events.EventType :as event-type]
             [goog.dom.ViewportSizeMonitor :as viewport-size]
             [goog.ui.Button]
@@ -20,6 +21,7 @@
 (goog-events/listen (goog.dom.ViewportSizeMonitor.)
                     event-type/RESIZE
                     #(ui/update-main-panel-size (.getSize (.-target %))))
+(ui/update-main-panel-size (goog.dom.getViewportSize))
   
 ;(ui/append! (sel1 :body)
 ;(ui/mysplit orientation/VERTICAL 0

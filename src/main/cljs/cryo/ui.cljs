@@ -20,6 +20,10 @@
       (update-splitter-size splitter width height)))
   ([splitter width height]
     (logger/log (str "(update-splitter-size " (.getId splitter) " " width " " height ")"))
+;    (try
+;      (throw (js/Error. "Houston, we have a problem."))
+;      (catch js/Object e
+;        (if-let [stack (.-stack e)] (logger/log (str "stack: " stack)))))
     (let [splitter-size (goog.math.Size. (- width 20) (- height 20))]
       (.setSize splitter splitter-size))))
 
@@ -50,7 +54,7 @@
                         #(do
                            (logger/log "main-split/CHANGE")
                            (update-splitter-size sub-split
-                                               (goog-style/getContentBoxSize (.getElement (.getChildAt (.-target %) 0))))))
+                                               (goog-style/getContentBoxSize (.getChildAt (.-target %) 0)))))
                                                ;(.-width viewport-size)
                                                ;(.-width (goog-style/getContentBoxSize (.-target %)))
                                                ;(.getFirstComponentSize (.-target %))))
