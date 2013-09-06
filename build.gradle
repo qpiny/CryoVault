@@ -25,6 +25,7 @@ ext {
 configurations {
 	fmpp
 	cljs
+	js
 }
 
 //targetCompatibility = 1.6
@@ -39,6 +40,12 @@ repositories {
 	maven { url 'http://repo.spray.io/' }
 	mavenRepo name: 'Gradle', url: 'http://repo.gradle.org/gradle/repo'
 	mavenRepo name: 'clojars', url: 'http://clojars.org/repo'
+	mavenRepo (name: "Bootstrap", url: "http://netdna.bootstrapcdn.com") {
+		pattern = "bootstrap/[revision]/[ext]/bootstrap(.[classifier]).[ext]"
+	}
+	mavenRepo (name: "JQuery", url: "http://code.jquery.com") {
+        pattern = "[module]-[revision](.[classifier]).[ext]"
+    }
 }
 
 dependencies {
@@ -54,7 +61,12 @@ dependencies {
 	fmpp group: 'net.sourceforge.fmpp', name: 'fmpp', version: '0.9.14'
 	cljs 'leiningen:leiningen:2.2.0'
 	cljs 'org.slf4j:slf4j-simple:1.7.5'
+	js group: 'bootstrap', name: 'bootstrap', version: '3.0.0', ext: 'js'
+	js group: 'bootstrap', name: 'bootstrap', version: '3.0.0', ext: 'css'
+	js group: 'jquery', name: 'jquery', version: '1.6.4', classifier: 'min', ext: "js"
+	# http://origin.bootstrapcdn.com/bootstrap/3.0.0/fonts/glyphicons-halflings-regular.svg
 }
+
 configurations.all {
 	resolutionStrategy.eachDependency { DependencyResolveDetails details ->
 		if (details.requested.name == 'commons-logging') {
@@ -161,4 +173,9 @@ task webdevelant {
 		}
 	}
 	finalizedBy "run"
+}
+
+task fetchJs(type: Copy) {
+    from configurations.js
+    into "$buildDir/js"
 }

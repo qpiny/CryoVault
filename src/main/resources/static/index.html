@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<title>Insert title here</title>
+<link href="http://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css" rel="stylesheet">
+<link href="css/bootstrap.css" rel="stylesheet" media="screen">
+<style type="text/css">
+#content {
+	float: left;
+}
+
+#mapCanvas img {
+	max-width: none;
+}
+
+#maincont {
+	margin-top: 42px;
+}
+
+#toggleSidebar {
+	float: left;
+	color: #779DD7;
+	padding: 2px 4px;
+}
+
+#sidebar {
+	float: left;
+}
+
+#content {
+	float: left;
+}
+
+#mapCanvas img {
+	max-width: none;
+}
+
+#maincont {
+	margin-top: 42px;
+}
+
+#toggleSidebar {
+	float: left;
+	color: #779DD7;
+	padding: 2px 4px;
+}
+
+#sidebar {
+	float: left;
+}
+
+.accordion-heading .accordion-toggle-small {
+	display: block;
+	padding: 4px 8px; /*8px 15px;*/
+}
+
+.accordion-inner-small {
+	padding: 4px 8px; /*9px 15px;*/
+	border-top: 1px solid #e5e5e5;
+}
+
+.no-sidebar {
+	margin-left: 0 !important;
+}
+
+.scrollDiv {
+	overflow-y: scroll;
+	display: inline-block;
+	float: none; /* Very important */
+}
+</style>
+<script src="js/jquery-2.0.3.js" type="text/javascript"></script>
+<script src="js/bootstrap.js" type="text/javascript"></script>
+<script type="text/javascript">
+	$(window).load(function() {
+		$.asm = {};
+		$.asm.panels = 1;
+		function sidebar(panels) {
+			if (panels === 1) {
+				$('#content').removeClass('span9');
+				$('#content').addClass('span12 no-sidebar');
+				$('#sidebar').hide();
+			} else if (panels === 2) {
+				$('#content').removeClass('span12 no-sidebar');
+				$('#content').addClass('span9');
+				$('#sidebar').show();
+			}
+		}
+
+		$('#toggleSidebar').click(function() {
+			if ($.asm.panels === 1) {
+				$('#toggleSidebar i').addClass('icon-chevron-left');
+				$('#toggleSidebar i').removeClass('icon-chevron-right');
+				return sidebar(2);
+			} else {
+				$('#toggleSidebar i').removeClass('icon-chevron-left');
+				$('#toggleSidebar i').addClass('icon-chevron-right');
+				return sidebar(1);
+			}
+		})
+	})
+</script>
+</head>
+<body>
+	<div class="container-fluid">
+		<div class="row-fluid">
+			<div id="sidebar" class="span3 scrollDiv" style="display: none;">
+				<!--Sidebar content-->
+				Menu
+			</div>
+			<div id="content" class="span12">
+				<!--Main content-->
+				Main content
+			</div>
+			<a id="toggleSidebar" href="#" class="toggles"><i
+				class="glyphicon glyphicon-chevron-right"></i></a>
+		</div>
+	</div>
+</body>
+</html>
