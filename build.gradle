@@ -41,11 +41,14 @@ repositories {
 	mavenRepo name: 'Gradle', url: 'http://repo.gradle.org/gradle/repo'
 	mavenRepo name: 'clojars', url: 'http://clojars.org/repo'
 	mavenRepo (name: "Bootstrap", url: "http://netdna.bootstrapcdn.com") {
-		pattern = "bootstrap/[revision]/[ext]/bootstrap(.[classifier]).[ext]"
+		pattern = "bootstrap/[revision]/[ext]/[module](.[classifier]).[ext]"
 	}
 	mavenRepo (name: "JQuery", url: "http://code.jquery.com") {
-        pattern = "[module]-[revision](.[classifier]).[ext]"
-    }
+		pattern = "[module]-[revision](.[classifier]).[ext]"
+	}
+	//mavenRepo (name: "AngularJS", url: "https://ajax.googleapis.com") {
+	//	pattern = "ajax/libs/angularjs/[version]/[module](.[classifier]).js
+	//}
 }
 
 dependencies {
@@ -64,7 +67,8 @@ dependencies {
 	js group: 'bootstrap', name: 'bootstrap', version: '3.0.0', ext: 'js'
 	js group: 'bootstrap', name: 'bootstrap', version: '3.0.0', ext: 'css'
 	js group: 'jquery', name: 'jquery', version: '1.6.4', classifier: 'min', ext: "js"
-	# http://origin.bootstrapcdn.com/bootstrap/3.0.0/fonts/glyphicons-halflings-regular.svg
+	// http://origin.bootstrapcdn.com/bootstrap/3.0.0/fonts/glyphicons-halflings-regular.svg
+	//js group: 'angular', name: 'angular', version '1.0.8'
 }
 
 configurations.all {
@@ -104,8 +108,11 @@ sourceSets {
 }
 
 lesscss {
-	source = fileTree('src/main/less')
-	dest = 'build/less/webapp/stylesheets'
+	source = fileTree('src/main/less') {
+		include 'cryo.less'
+	}
+	//dest = 'build/less/webapp/stylesheets'
+	dest = 'build/cljs/webapp/stylesheets'
 	compress = true
 }
 processResources.dependsOn 'lesscss'

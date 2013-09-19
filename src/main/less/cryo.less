@@ -1,94 +1,43 @@
+@import "bootstrap.less";
 
-
-html,body {
-	height: 100%;
-	min-heigth: 100%
-	width: 100%;
-	margin: 0px;
-	padding: 0px;
-}
-
-table {
-	width: 100%;
-}
-
-#snapshots {
-	overflow: hidden;
-}
-
-#archives {
-	overflow: hidden;
-}
-
-#console {
-	font-size: 12px;
-	white-space: nowrap;
-}
-
-#snapshotId {
-	white-space: nowrap;
-}
-
-.ui-selectable .ui-selecting { background: #FECA40; }
-.ui-selectable .ui-selected { background: #F39814; color: white; }
-.ui-selectable { list-style-type: none; margin: 0; padding: 0; width: 100%; }
-.ui-layout-pane { padding: 0; }
-
-.cryo-icon(@x, @y) {
-	height: 16px;
-	width: 16px;
-	background-repeat: no-repeat;
-	overflow: hidden;
-	background-image: url("../images/icons.png");
-	padding: 0;
+#sidebar {
+	overflow-y: scroll;
 	display: inline-block;
-	background-position: @x @y;
+	float: left;
+	.col-md-3;
 }
 
-.cryo-icon-new {
-	.cryo-icon(-16px, -128px);
+#sidebar.without-sidebar {
+	display: none;
 }
 
-.cryo-icon-delete {
-	.cryo-icon(-176px, -96px);
+#sidebar.with-sidebat {
+	display: block;
 }
 
-.cryo-icon-duplicate {
-	.cryo-icon(-48px, -80px);
+#content {
+	float: left;
 }
 
-.cryo-icon-download {
-	.cryo-icon(-224px, -48px);
+#content.without-sidebar {
+	.col-md-12;
 }
 
-.cryo-icon-upload {
-	.cryo-icon(-192px, -48px);
+#content.with-sidebar {
+	.col-md-9;
 }
 
-.cryo-icon-folder {
-	.cryo-icon(-16px, -96px);
+#handle {
+	cursor: pointer;
+	float: left;
 }
 
-.cryo-icon-folder-collapsed {
-	.cryo-icon(0, -96px);
+#handle.without-sidebar {
+	.glyphicon;
+	.glyphicon-chevron-right;
 }
 
-.cryo-icon-file {
-	.cryo-icon(-32px, -96px);	
-}
-
-.cryo-icon-loading {
-	.cryo-icon(-144px, -64px);
-}
-
-.cryo-icon-refresh {
-	.cryo-icon(-64px, -80px);
-}
-
-.cryo-icon-gear {
-	.cryo-icon(-192px, -112px);
-}
-
-.cryo-icon-home {
-	.cryo-icon(0, -112px);
+#handle.with-sidebar {
+	.glyphicon;
+	.glyphicon-chevron-left;
 }

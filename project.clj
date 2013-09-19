@@ -3,7 +3,7 @@
   :source-paths ["src/main/clj"]
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [prismatic/dommy "0.1.1"]
-                 ]
+                 [clang "0.1.0-SNAPSHOT"]]
   :plugins [[lein-cljsbuild "0.3.2"]]
   :cljsbuild {
     :builds [{:source-paths ["src/main/cljs"]

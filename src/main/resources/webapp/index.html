@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<title>CryoVault web interface</title>
+<link href="stylesheets/cryo.css" rel="stylesheet">
+</head>
+<body x-ng-app="CryoApp" x-ng-controller="CryoCtrl">
+
+	<div class="container">
+		<div class="row">
+			<div id="sidebar" class="{{sidebar}}">
+				<div class="accordion-group">
+					<div class="accordion-heading">
+						<a class="accordion-toggle-small" href="#"
+							x-ng-click="(toggle :showSnapshots))">Snapshots</a>
+					</div>
+					<div class="{{(accordion :showSnapshots)}}">
+						<ul class="accordion-inner-small nav nav-pills nav-stacked">
+							<li x-clang-repeat="snapshot in snapshots"><a href="#">
+							<!-- <span
+									class="{{(status-icon snapshot)}}"></span> {{(:id snapshot)}}<br />
+									{{(:description snapshot)}} </a></li>
+							-->
+							{{(snapshot-item snapshot)}}
+						</ul>
+					</div>
+				</div>
+
+				<div class="accordion-group">
+					<div class="accordion-heading">
+						<a class="accordion-toggle-small" href="#"
+							x-ng-click="(toggle :showArchives))">Archives</a>
+					</div>
+					<div class="{{(accordion :showArchives)}}">
+						<div class="accordion-inner-small">
+							blah2<br /> blah2<br /> blah2<br /> blah2<br />
+						</div>
+					</div>
+				</div>
+			</div>
+			
+			<span id="handle" x-ng-click="(toggle-sidebar)" class="{{sidebar}}"></span>
+
+			<div id="content" class="{{sidebar}}">
+				Main content<br /> Main content<br /> Main content<br /> Main
+				content<br /> Main content<br /> Main content<br /> Main content<br />
+				Main content<br /> Main content<br /> Main content<br /> Main
+				content<br /> Main content<br /> Main content<br /> Main content<br />
+				Main content<br /> Main content
+			</div>
+		</div>
+	</div>
+	<!--
+	<script type="text/javascript" src="javascript/jquery-2.0.3.js"></script>
+	<script type="text/javascript" src="javascript/bootstrap.js"></script>
+	 -->
+
+	<script type="text/javascript" src="javascript/angular.js"></script>
+	<script type="text/javascript" src="javascript/main.js"></script>
+	<script type="text/javascript">
+		// goog.require("cryo.main");
+		goog.require("cryo.ctrl");
+	</script>
+</body>
+</html>

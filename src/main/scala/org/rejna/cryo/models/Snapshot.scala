@@ -14,7 +14,6 @@ import java.nio.file.StandardOpenOption._
 import java.nio.file.attribute._
 import java.nio.channels.FileChannel
 
-import akka.actor.Stash
 import akka.util.{ ByteString, ByteStringBuilder }
 
 import com.typesafe.config.Config
@@ -56,7 +55,7 @@ case class ID(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
 //case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
 
-class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor with Stash {
+class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
 
   val sizeAttribute = attributeBuilder("size", 0L)
