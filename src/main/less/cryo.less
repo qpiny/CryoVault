@@ -1,10 +1,9 @@
 @import "bootstrap.less";
-
 #sidebar {
-	overflow-y: scroll;
+	overflow-y: auto;
 	display: inline-block;
 	float: left;
-	.col-md-3;
+	.span(4);
 }
 
 #sidebar.without-sidebar {
@@ -20,11 +19,11 @@
 }
 
 #content.without-sidebar {
-	.col-md-12;
+	.span(12);
 }
 
 #content.with-sidebar {
-	.col-md-9;
+	.span(8);
 }
 
 #handle {
@@ -33,11 +32,9 @@
 }
 
 #handle.without-sidebar {
-	.glyphicon;
-	.glyphicon-chevron-right;
+	.icon-chevron-right;
 }
 
 #handle.with-sidebar {
-	.glyphicon;
-	.glyphicon-chevron-left;
+	.icon-chevron-left;
 }

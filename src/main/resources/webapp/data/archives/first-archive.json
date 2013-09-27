@@ -1,0 +1,8 @@
+{
+	"id":"first-archive",
+	"description": "first-description",
+	"creationDate": "2013-09-19",
+	"status": "remote",
+	"size": "1024",
+	"checksum": "first-checksum"
+}

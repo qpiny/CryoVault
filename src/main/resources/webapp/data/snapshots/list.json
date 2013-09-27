@@ -1,0 +1,34 @@
+[
+	{
+		"id": "first-id",
+		"description": "first-description",
+		"creationDate": "2013-09-19",
+		"status": "remote",
+		"size": 1024,
+		"checksum": "first-checksum"
+	},
+	{
+		"id": "second-id",
+		"description": "second-description",
+		"creationDate": "2013-09-19",
+		"status": "loading",
+		"size": 1024,
+		"checksum": "second-checksum"
+	},
+	{
+		"id": "third-id",
+		"description": "third-description",
+		"creationDate": "2013-09-19",
+		"status": "created",
+		"size": 1024,
+		"checksum": "third-checksum"
+	},
+	{
+		"id": "fourth-id",
+		"description": "fourth-description",
+		"creationDate": "2013-09-19",
+		"status": "creating",
+		"size": 1024,
+		"checksum": "fourth-checksum"
+	}
+]
