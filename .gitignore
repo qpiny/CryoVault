@@ -10,3 +10,4 @@
 /log
 /.lein-plugins
 /.lein-repl-history
+/.repl
