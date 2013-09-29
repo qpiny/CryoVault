@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html x-ng-app="cryo">
+<head>
+	<meta charset="UTF-8">
+	<title>Angular with ClojureScript experiments</title>
+	<link href="stylesheets/cryo.css" rel="stylesheet">
+</head>
+<body x-ng-controller="cryo.controllers.mainCtrl">
+	<div class="container-fluid">
+		<div class="row-fluid">
+			<div id="sidebar" class="{{sidebarStatus}}">
+				<accordion close-others="false">
+					<accordion-group heading="Snapshots">
+						<ul class="nav nav-tabs nav-stacked">
+							<li x-ng-repeat="snapshot in snapshots" x-ng-class="{active: snapshot.id==params.snapshotId}"">
+								<a href="#/snapshots/{{snapshot.id}}">
+									{{snapshot.id}}<br/>
+									{{snapshot.creationDate}}
+								</a>
+							</li>
+						</ul>
+					</accordion-group>
+					<accordion-group heading="Archives">
+						<ul class="nav nav-tabs nav-stacked">
+							<li x-ng-repeat="archive in archives" x-ng-class="{active: archive.id==params.archiveId}"">
+								<a href="#/archives/{{archive.id}}">
+									{{archive.id}}<br/>
+									{{archive.creationDate}}
+								</a>
+							</li>
+						</ul>
+					</accordion-group>
+					<accordion-group heading="jobs">
+						<ul class="nav nav-tabs nav-stacked">
+							<li x-ng-repeat="job in jobs" x-ng-class="{active: job.id==params.jobId}"">
+								<a href="#/jobs/{{job.id}}">
+									{{job.id}}<br/>
+									{{job.creationDate}}
+								</a>
+							</li>
+						</ul>
+					</accordion-group>
+				</accordion>
+			</div>
+			
+			<span><i id="handle" x-ng-click="toggleSidebar()" class="icon- {{sidebarStatus}}"></i></span>
+	
+			<div id="content" class="{{sidebarStatus}}">
+				<div x-ng-view></div>
+			</div>
+		</div>
+	</div>
+	<script type="text/javascript" src="javascript/angular.js"></script>
+	<script type="text/javascript" src="javascript/angular-resource.js"></script>
+	<script type="text/javascript" src="javascript/ui-bootstrap-tpls-0.6.0.js"></script>
+	<script type="text/javascript" src="javascript/main.js"></script>
+	<script type="text/javascript">
+		goog.require("cryo.app");
+	</script>
+</body>
+</html>
