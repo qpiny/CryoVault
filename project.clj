@@ -6,7 +6,7 @@
   :plugins [[lein-cljsbuild "0.3.2"]]
   :cljsbuild {
     :builds [{:source-paths ["src/main/cljs"]
-              :compiler {:output-to "build/generated-resources/webapp/javascript/main.js"
+              :compiler {:output-to "src/main/resources/webapp/javascript/main.js"
                          :output-dir "build/cljs-temp"
                          :optimizations :whitespace
                          :pretty-print true}}]})
