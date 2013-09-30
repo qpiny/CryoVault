@@ -20,10 +20,27 @@
 		<td>{{snapshot.checksum}}</td>
 	</tr>
 </table>
-<div data-angular-treeview="true"
+<div x-dyntree="true"
+     x-tree-model="filesystem"
+     x-node-path="$opt"></div>
+<hr/>
+<div x-dyntree="true"
+     x-node-path="$opt$d1"
+     x-tree-model="filesystem"></div>
+<hr/>
+<ul>
+	<li x-ng-repeat="node in filesystem['path$opt']">
+		<span x-ng-class="node.selected" x-ng-click="filesystem.selectnode(node.path)">{{node.name}}</span>
+		<div x-dyntree="true" x-tree-model="filesystem" x-node-path="{{'$opt$'+node.name}}"></div>
+	</li>
+</ul>
+<!-- 
+<div data-angular-treeview="false"
     data-tree-id="abc"
     data-tree-model="filesystem"
     data-node-id="id"
     data-node-label="label"
     data-node-children="children" >
 </div>
+-->
+<button x-ng-click="addnode()" value="plop">pl</button>

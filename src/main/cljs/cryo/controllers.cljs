@@ -25,16 +25,14 @@
   (aset $scope "snapshot"
         (.get SnapshotSrv
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
+  
   (aset $scope "filesystem"
-        (clj->js [
-                  {:label "User" :id "role1" :children
-                   [{:label "subUser1" :id "role11" :children []}
-                    {:label "subUser2" :id "role12" :children
-                     [{:label "subUser2-1" :id "role121" :children
-                       [{:label "subUser2-1-1" :id "role1211" :children []}
-                        {:label "subUser2-1-2" :id "role1212" :children []}]}]}]}
-                  {:label "Admin" :id "role2" :children []}
-                  {:label "Guest" :id "role3" :children []}])))
+        (clj->js {:path$opt [{:name "f1" :type "file" :path "$opt$f1"}
+                             {:name "d1" :type "folder" :path "$opt$d1"}]
+                  :path$opt$d1 [{:name "f2" :type "file" :path "$opt$d1$f2"}
+                            {:name "d2" :type "folder" :path "$opt$d1$d2"}]
+                  :selectnode (fn [node] "k")}))
+  (aset $scope "welcome" "welcome"))
 
 (aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv"))
 
