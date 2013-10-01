@@ -13,69 +13,32 @@
              (clj->js
                {:restrict "A"
                 :link (fn [scope elem attrs]
-                        (let [tree-model (.-treeModel attrs)
+                        (let [tree-model-name (.-treeModel attrs)
+                              tree-model (aget scope tree-model-name)
                               ;node-name (or (.nodeName attrs) "name")
                               ;node-filter (or (.nodeFilter attrs) "filter")
                               ;node-type (or (.nodeType attrs) "type")
-                              node-path (.-nodePath attrs)
+                              node-path (or (.-nodePath attrs) "'¥'")
+                              
                               template (str "<ul>"
-                                            "<li x-ng-repeat=\"node in " tree-model "['path" node-path "']\">"
-                                            "<span x-ng-class=\"node.selected\" x-ng-click=\"" tree-model ".selectnode(node.path)\">{{node.name}}</span>"
-                                            "<div x-dyntree=\"true\" x-tree-model=\"" tree-model "\" x-node-path=\"{{'" node-path "$'+node.name}}\"></div>"
+                                            "<li x-ng-repeat=\"node in " tree-model-name "[" node-path "]\">"
+                                            "<i class=\"leaf\" x-ng-show=\"!node.isFolder\">[file]</i>"
+                                            "<i class=\"collapsed\" x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && " tree-model-name "[node.path].length && node.collapsed\" x-ng-click=\"node.collapsed=false\">[close]</i>"
+                                            "<i class=\"expanded\"  x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && " tree-model-name "[node.path].length && !node.collapsed\" x-ng-click=\"node.collapsed=true\">[open]</i>"
+                                            "<i class=\"empty\"     x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && !" tree-model-name "[node.path].length\">[empty]</i>"
+                                            "<i class=\"unloaded\"  x-ng-show=\"node.isFolder && !" tree-model-name "[node.path]\" x-ng-click=\"" tree-model-name ".loadnode(node.path)\">[unload]</i>"
+                                            "<span x-ng-class=\"{selected: node.selected}\" x-ng-click=\"" tree-model-name ".selectNode(node)\">{{node.name}}</span>"
+                                            "<div x-ng-hide=\"node.collapsed\" x-dyntree=\"true\" x-tree-model=\"" tree-model-name "\" x-node-path=\"node.path\"></div>"
                                             "</li>"
                                             "</ul>")]
+                          (when-not (aget tree-model "selectNode")
+                            (aset tree-model "selectNode" (fn [node]
+                                                            (if-let [sn (aget tree-model "selectedNode")]
+                                                              (aset sn "selected" false))
+                                                            (aset tree-model "selectedNode" node)
+                                                            (aset node "selected" true)
+                                                            (js/alert (.-path node))))
+                            (aset tree-model "loadnode" (fn [path]
+                                                          (aset tree-model path (clj->js [{:name "loaded!" :isFolder false :path (str path "loaded!")}])))))
                           (.append (.html elem "")
                             (($compile template) scope))))})))))
-
-;				//tree template
-;				var template = 
-;					'<ul>' + 
-;						'<li data-ng-repeat="node in ' + treeModel + '">' + 
-;							'<i class="collapsed" data-ng-show="node.' + nodeChildren + '.length && node.collapsed" data-ng-click="' + treeId + '.selectNodeHead(node)"></i>' + 
-;							'<i class="expanded" data-ng-show="node.' + nodeChildren + '.length && !node.collapsed" data-ng-click="' + treeId + '.selectNodeHead(node)"></i>' + 
-;							'<i class="normal" data-ng-hide="node.' + nodeChildren + '.length"></i> ' + 
-;							'<span data-ng-class="node.selected" data-ng-click="' + treeId + '.selectNodeLabel(node)">{{node.' + nodeLabel + '}}</span>' + 
-;							'<div data-ng-hide="node.collapsed" data-tree-id="' + treeId + '" data-tree-model="node.' + nodeChildren + '" data-node-id=' + nodeId + ' data-node-label=' + nodeLabel + ' data-node-children=' + nodeChildren + '></div>' + 
-;						'</li>' + 
-;					'</ul>'; 
-;
-;
-;				//check tree id, tree model
-;				if( treeId && treeModel ) {
-;
-;					//root node
-;					if( attrs.angularTreeview ) {
-;					
-;						//create tree object if not exists
-;						scope[treeId] = scope[treeId] || {};
-;
-;						//if node head clicks,
-;						scope[treeId].selectNodeHead = scope[treeId].selectNodeHead || function( selectedNode ){
-;
-;							//Collapse or Expand
-;							selectedNode.collapsed = !selectedNode.collapsed;
-;						};
-;
-;						//if node label clicks,
-;						scope[treeId].selectNodeLabel = scope[treeId].selectNodeLabel || function( selectedNode ){
-;
-;							//remove highlight from previous node
-;							if( scope[treeId].currentNode && scope[treeId].currentNode.selected ) {
-;								scope[treeId].currentNode.selected = undefined;
-;							}
-;
-;							//set highlight to selected node
-;							selectedNode.selected = 'selected'
-;
-;							//set currentNode
-;							scope[treeId].currentNode = selectedNode;
-;						};
-;					}
-;
-;					//Rendering template.
-;					element.html('').append( $compile( template )( scope ) );
-;				}
-;			}
-;		};
-;	}]);
-;})( angular );

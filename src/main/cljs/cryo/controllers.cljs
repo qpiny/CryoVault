@@ -27,11 +27,20 @@
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
   
   (aset $scope "filesystem"
-        (clj->js {:path$opt [{:name "f1" :type "file" :path "$opt$f1"}
-                             {:name "d1" :type "folder" :path "$opt$d1"}]
-                  :path$opt$d1 [{:name "f2" :type "file" :path "$opt$d1$f2"}
-                            {:name "d2" :type "folder" :path "$opt$d1$d2"}]
-                  :selectnode (fn [node] "k")}))
+        (clj->js {:¥ [{:name "opt" :isFolder true :path "¥opt"}
+                      {:name "root" :isFolder false :path "¥root"}]
+                  :¥opt [{:name "f1" :isFolder false :path "¥opt¥f1"}
+                         {:name "d1" :isFolder true :path "¥opt¥d1"}]
+                  :¥opt¥d1 [{:name "f2" :isFolder false :path "¥opt¥d1¥f2"}
+                            {:name "d2" :isFolder true :path "¥opt¥d1¥d2"}]
+                  :selectnode (fn [node]
+                                (aset
+                                  (aget $scope "filesystem")
+                                  "¥opt¥d1¥d2" (clj->js []))
+                                )
+                  :clicknode (fn [node]
+                               
+                              )}))
   (aset $scope "welcome" "welcome"))
 
 (aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv"))
