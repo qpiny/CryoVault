@@ -1,0 +1,12 @@
+[
+	{
+		"name": "opt",
+		"isFolder": "true",
+		"path": "¥opt"
+	},
+	{
+		"name": "root",
+		"isFolder": "false",
+		"path": "¥root"
+	}
+]

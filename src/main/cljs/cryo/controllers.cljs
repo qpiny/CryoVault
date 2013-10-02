@@ -21,7 +21,7 @@
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "ArchiveSrv" "JobSrv"))
 
 
-(defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv]
+(defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv]
   (aset $scope "snapshot"
         (.get SnapshotSrv
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
@@ -33,17 +33,14 @@
                          {:name "d1" :isFolder true :path "¥opt¥d1"}]
                   :¥opt¥d1 [{:name "f2" :isFolder false :path "¥opt¥d1¥f2"}
                             {:name "d2" :isFolder true :path "¥opt¥d1¥d2"}]
-                  :selectnode (fn [node]
-                                (aset
-                                  (aget $scope "filesystem")
-                                  "¥opt¥d1¥d2" (clj->js []))
-                                )
-                  :clicknode (fn [node]
-                               
-                              )}))
+                  :loadNode (fn [path]
+                               (aset
+                                 (aget $scope "filesystem")
+                                 path (.get SnapshotFileSrv (clj->js {:snapshotId (.-snapshotId $routeParams)
+                                                                      :path path}))))}))
   (aset $scope "welcome" "welcome"))
 
-(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv"))
+(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv"))
 
 
 (defn ^:export archiveCtrl [$scope $routeParams ArchiveSrv]

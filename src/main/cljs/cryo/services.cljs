@@ -8,6 +8,13 @@
         (clj->js {})
         (clj->js {:query {:method "GET" :params {:snapshotId "list"} :isArray true}}))))
   
+  (.factory "SnapshotFileSrv"
+    (fn [$resource]
+      ($resource
+        "data/snapshots/:snapshotId/files/:path.json"
+        (clj->js {})
+        (clj->js {:query {:method "GET" :isArray true}}))))
+  
   (.factory "ArchiveSrv"
     (fn [$resource]
       ($resource
