@@ -2,13 +2,14 @@
 
 (doto (angular/module "cryoDirectives" (array))
   (.directive "dyntree"
-    (array "$compile"
-           (fn [$compile]
+    (array "$compile" "$parse"
+           (fn [$compile $parse]
              (clj->js
                {:restrict "A"
                 :link (fn [scope elem attrs]
                         (let [tree-model-name (.-treeModel attrs)
                               tree-model (aget scope tree-model-name)
+                              load-node (.-loadNode attrs)
                               ;node-name (or (.nodeName attrs) "name")
                               ;node-filter (or (.nodeFilter attrs) "filter")
                               ;node-type (or (.nodeType attrs) "type")
@@ -33,5 +34,7 @@
                                       (aset sn "selected" false))
                                     (aset tree-model "selectedNode" node)
                                     (aset node "selected" true))))
+                          (if (and load-node (not (aget tree-model node-path)))
+                            (.loadNode tree-model "¥"));(($parse node-path))))
                           (.append (.html elem "")
                             (($compile template) scope))))})))))

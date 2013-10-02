@@ -2,11 +2,11 @@
 	{
 		"name": "opt",
 		"isFolder": "true",
-		"path": "Â¥opt"
+		"path": "¥opt"
 	},
 	{
 		"name": "root",
 		"isFolder": "false",
-		"path": "Â¥root"
+		"path": "¥root"
 	}
 ]
