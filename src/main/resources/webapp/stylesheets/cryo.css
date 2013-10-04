@@ -865,4 +865,6 @@ a.label:hover,a.label:focus,a.badge:hover,a.badge:focus{color:#ffffff;text-decor
 #handle{cursor:pointer;float:left;}
 #handle.without-sidebar{background-position:-456px -72px;}
 #handle.with-sidebar{background-position:-432px -72px;}
+div[x-dyntree] ul{list-style:none;}
+div[x-dyntree] span{padding-left:5px;}
 

@@ -21685,30 +21685,63 @@ cljs.core.special_symbol_QMARK_ = function special_symbol_QMARK_(x) {
 };
 goog.provide("cryo.services");
 goog.require("cljs.core");
-var G__4050_4051 = angular.module.call(null, "cryoService", ["ngResource"]);
-G__4050_4051.factory("SnapshotSrv", function($resource) {
+var G__6650_6651 = angular.module.call(null, "cryoService", ["ngResource"]);
+G__6650_6651.factory("SnapshotSrv", function($resource) {
   return $resource.call(null, "data/snapshots/:snapshotId.json", cljs.core.clj__GT_js.call(null, cljs.core.ObjMap.EMPTY), cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:query", cljs.core.PersistentArrayMap.fromArray(["\ufdd0:method", "GET", "\ufdd0:params", cljs.core.PersistentArrayMap.fromArray(["\ufdd0:snapshotId", "list"], true), "\ufdd0:isArray", true], true)], true)))
 });
-G__4050_4051.factory("ArchiveSrv", function($resource) {
+G__6650_6651.factory("SnapshotFileSrv", function($resource) {
+  return $resource.call(null, "data/snapshots/:snapshotId/files/:path.json", cljs.core.clj__GT_js.call(null, cljs.core.ObjMap.EMPTY), cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:get", cljs.core.PersistentArrayMap.fromArray(["\ufdd0:method", "GET", "\ufdd0:isArray", true], true)], true)))
+});
+G__6650_6651.factory("ArchiveSrv", function($resource) {
   return $resource.call(null, "data/archives/:archiveId.json", cljs.core.clj__GT_js.call(null, cljs.core.ObjMap.EMPTY), cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:query", cljs.core.PersistentArrayMap.fromArray(["\ufdd0:method", "GET", "\ufdd0:params", cljs.core.PersistentArrayMap.fromArray(["\ufdd0:archiveId", "list"], true), "\ufdd0:isArray", true], true)], true)))
 });
-G__4050_4051.factory("JobSrv", function($resource) {
+G__6650_6651.factory("JobSrv", function($resource) {
   return $resource.call(null, "data/jobs/:jobId.json", cljs.core.clj__GT_js.call(null, cljs.core.ObjMap.EMPTY), cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:query", cljs.core.PersistentArrayMap.fromArray(["\ufdd0:method", "GET", "\ufdd0:params", cljs.core.PersistentArrayMap.fromArray(["\ufdd0:jobId", "list"], true), "\ufdd0:isArray", true], true)], true)))
 });
 goog.provide("cryo.directives");
 goog.require("cljs.core");
-var G__10913_10914 = angular.module.call(null, "cryoDirectives", []);
-G__10913_10914.directive("statusicon", function() {
-  return cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:restrict", "E", "\ufdd0:link", function(scope, elem, attrs) {
-    return elem.text("TADAAAA")
-  }], true))
-});
-G__10913_10914.directive("dyntree", ["$compile", function($compile) {
+var G__8068_8069 = angular.module.call(null, "cryoDirectives", []);
+G__8068_8069.directive("dyntree", ["$compile", "$parse", function($compile, $parse) {
   return cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:restrict", "A", "\ufdd0:link", function(scope, elem, attrs) {
-    var tree_model = attrs.treeModel;
-    var node_path = attrs.nodePath;
-    var template = [cljs.core.str("<ul>"), cljs.core.str('<li x-ng-repeat="node in '), cljs.core.str(tree_model), cljs.core.str("['path"), cljs.core.str(node_path), cljs.core.str("']\">"), cljs.core.str('<span x-ng-class="node.selected" x-ng-click="'), cljs.core.str(tree_model), cljs.core.str('.selectnode(node.path)">{{node.name}}</span>'), cljs.core.str('<div x-dyntree="true" x-tree-model="'), cljs.core.str(tree_model), cljs.core.str('" x-node-path="{{\''), cljs.core.str(node_path), cljs.core.str("$'+node.name}}\"></div>"), 
-    cljs.core.str("</li>"), cljs.core.str("</ul>")].join("");
+    var tree_model_name = attrs.treeModel;
+    var tree_model = scope[tree_model_name];
+    var load_node = attrs.loadNode;
+    var node_path = function() {
+      var or__3943__auto__ = attrs.nodePath;
+      if(cljs.core.truth_(or__3943__auto__)) {
+        return or__3943__auto__
+      }else {
+        return"'!'"
+      }
+    }();
+    var template = [cljs.core.str("<ul>"), cljs.core.str('<li x-ng-repeat="node in '), cljs.core.str(tree_model_name), cljs.core.str("["), cljs.core.str(node_path), cljs.core.str(']">'), cljs.core.str('<i class="icon-file" x-ng-show="!node.isFolder"></i>'), cljs.core.str('<i class="icon-folder-close" x-ng-show="node.isFolder && '), cljs.core.str(tree_model_name), cljs.core.str("[node.path] && "), cljs.core.str(tree_model_name), cljs.core.str('[node.path].length && node.collapsed" x-ng-click="node.collapsed=false"></i>'), 
+    cljs.core.str('<i class="icon-folder-open"  x-ng-show="node.isFolder && '), cljs.core.str(tree_model_name), cljs.core.str("[node.path] && "), cljs.core.str(tree_model_name), cljs.core.str('[node.path].length && !node.collapsed" x-ng-click="node.collapsed=true"></i>'), cljs.core.str('<i class="icon-folder-open icon-white" x-ng-show="node.isFolder && '), cljs.core.str(tree_model_name), cljs.core.str("[node.path] && !"), cljs.core.str(tree_model_name), cljs.core.str('[node.path].length"></i>'), 
+    cljs.core.str('<i class="icon-download" x-ng-show="node.isFolder && !'), cljs.core.str(tree_model_name), cljs.core.str('[node.path]" x-ng-click="'), cljs.core.str(tree_model_name), cljs.core.str('.loadNode(node.path)"></i>'), cljs.core.str('<span x-ng-class="{selected: node.selected}" x-ng-click="'), cljs.core.str(tree_model_name), cljs.core.str('.selectNode(node)">{{node.name}}</span>'), cljs.core.str('<div x-ng-hide="node.collapsed" x-dyntree="true" x-tree-model="'), cljs.core.str(tree_model_name), 
+    cljs.core.str('" x-node-path="node.path"></div>'), cljs.core.str("</li>"), cljs.core.str("</ul>")].join("");
+    if(cljs.core.truth_(tree_model["selectNode"])) {
+    }else {
+      tree_model["selectNode"] = function(node) {
+        var temp__4090__auto___8070 = tree_model["selectedNode"];
+        if(cljs.core.truth_(temp__4090__auto___8070)) {
+          var sn_8071 = temp__4090__auto___8070;
+          sn_8071["selected"] = false
+        }else {
+        }
+        tree_model["selectedNode"] = node;
+        return node["selected"] = true
+      }
+    }
+    if(cljs.core.truth_(function() {
+      var and__3941__auto__ = load_node;
+      if(cljs.core.truth_(and__3941__auto__)) {
+        return cljs.core.not.call(null, tree_model[node_path])
+      }else {
+        return and__3941__auto__
+      }
+    }())) {
+      tree_model.loadNode($parse.call(null, node_path).call(null))
+    }else {
+    }
     return elem.html("").append($compile.call(null, template).call(null, scope))
   }], true))
 }]);
@@ -21716,53 +21749,53 @@ goog.provide("cryo.controllers");
 goog.require("cljs.core");
 cryo.controllers.oset_BANG_ = function() {
   var oset_BANG___delegate = function(obj, kvs) {
-    var seq__10332 = cljs.core.seq.call(null, cljs.core.partition.call(null, 2, kvs));
-    var chunk__10333 = null;
-    var count__10334 = 0;
-    var i__10335 = 0;
+    var seq__4363 = cljs.core.seq.call(null, cljs.core.partition.call(null, 2, kvs));
+    var chunk__4364 = null;
+    var count__4365 = 0;
+    var i__4366 = 0;
     while(true) {
-      if(i__10335 < count__10334) {
-        var vec__10336 = cljs.core._nth.call(null, chunk__10333, i__10335);
-        var k = cljs.core.nth.call(null, vec__10336, 0, null);
-        var v = cljs.core.nth.call(null, vec__10336, 1, null);
+      if(i__4366 < count__4365) {
+        var vec__4367 = cljs.core._nth.call(null, chunk__4364, i__4366);
+        var k = cljs.core.nth.call(null, vec__4367, 0, null);
+        var v = cljs.core.nth.call(null, vec__4367, 1, null);
         obj[cljs.core.name.call(null, k)] = v;
-        var G__10338 = seq__10332;
-        var G__10339 = chunk__10333;
-        var G__10340 = count__10334;
-        var G__10341 = i__10335 + 1;
-        seq__10332 = G__10338;
-        chunk__10333 = G__10339;
-        count__10334 = G__10340;
-        i__10335 = G__10341;
+        var G__4369 = seq__4363;
+        var G__4370 = chunk__4364;
+        var G__4371 = count__4365;
+        var G__4372 = i__4366 + 1;
+        seq__4363 = G__4369;
+        chunk__4364 = G__4370;
+        count__4365 = G__4371;
+        i__4366 = G__4372;
         continue
       }else {
-        var temp__4092__auto__ = cljs.core.seq.call(null, seq__10332);
+        var temp__4092__auto__ = cljs.core.seq.call(null, seq__4363);
         if(temp__4092__auto__) {
-          var seq__10332__$1 = temp__4092__auto__;
-          if(cljs.core.chunked_seq_QMARK_.call(null, seq__10332__$1)) {
-            var c__3073__auto__ = cljs.core.chunk_first.call(null, seq__10332__$1);
-            var G__10342 = cljs.core.chunk_rest.call(null, seq__10332__$1);
-            var G__10343 = c__3073__auto__;
-            var G__10344 = cljs.core.count.call(null, c__3073__auto__);
-            var G__10345 = 0;
-            seq__10332 = G__10342;
-            chunk__10333 = G__10343;
-            count__10334 = G__10344;
-            i__10335 = G__10345;
+          var seq__4363__$1 = temp__4092__auto__;
+          if(cljs.core.chunked_seq_QMARK_.call(null, seq__4363__$1)) {
+            var c__3073__auto__ = cljs.core.chunk_first.call(null, seq__4363__$1);
+            var G__4373 = cljs.core.chunk_rest.call(null, seq__4363__$1);
+            var G__4374 = c__3073__auto__;
+            var G__4375 = cljs.core.count.call(null, c__3073__auto__);
+            var G__4376 = 0;
+            seq__4363 = G__4373;
+            chunk__4364 = G__4374;
+            count__4365 = G__4375;
+            i__4366 = G__4376;
             continue
           }else {
-            var vec__10337 = cljs.core.first.call(null, seq__10332__$1);
-            var k = cljs.core.nth.call(null, vec__10337, 0, null);
-            var v = cljs.core.nth.call(null, vec__10337, 1, null);
+            var vec__4368 = cljs.core.first.call(null, seq__4363__$1);
+            var k = cljs.core.nth.call(null, vec__4368, 0, null);
+            var v = cljs.core.nth.call(null, vec__4368, 1, null);
             obj[cljs.core.name.call(null, k)] = v;
-            var G__10346 = cljs.core.next.call(null, seq__10332__$1);
-            var G__10347 = null;
-            var G__10348 = 0;
-            var G__10349 = 0;
-            seq__10332 = G__10346;
-            chunk__10333 = G__10347;
-            count__10334 = G__10348;
-            i__10335 = G__10349;
+            var G__4377 = cljs.core.next.call(null, seq__4363__$1);
+            var G__4378 = null;
+            var G__4379 = 0;
+            var G__4380 = 0;
+            seq__4363 = G__4377;
+            chunk__4364 = G__4378;
+            count__4365 = G__4379;
+            i__4366 = G__4380;
             continue
           }
         }else {
@@ -21780,9 +21813,9 @@ cryo.controllers.oset_BANG_ = function() {
     return oset_BANG___delegate.call(this, obj, kvs)
   };
   oset_BANG_.cljs$lang$maxFixedArity = 1;
-  oset_BANG_.cljs$lang$applyTo = function(arglist__10350) {
-    var obj = cljs.core.first(arglist__10350);
-    var kvs = cljs.core.rest(arglist__10350);
+  oset_BANG_.cljs$lang$applyTo = function(arglist__4381) {
+    var obj = cljs.core.first(arglist__4381);
+    var kvs = cljs.core.rest(arglist__4381);
     return oset_BANG___delegate(obj, kvs)
   };
   oset_BANG_.cljs$core$IFn$_invoke$arity$variadic = oset_BANG___delegate;
@@ -21795,16 +21828,16 @@ cryo.controllers.mainCtrl = function mainCtrl($scope, $routeParams, SnapshotSrv,
 };
 goog.exportSymbol("cryo.controllers.mainCtrl", cryo.controllers.mainCtrl);
 cryo.controllers.mainCtrl["$inject"] = ["$scope", "$routeParams", "SnapshotSrv", "ArchiveSrv", "JobSrv"];
-cryo.controllers.snapshotCtrl = function snapshotCtrl($scope, $routeParams, SnapshotSrv) {
+cryo.controllers.snapshotCtrl = function snapshotCtrl($scope, $routeParams, SnapshotSrv, SnapshotFileSrv) {
   $scope["snapshot"] = SnapshotSrv.get(cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:snapshotId", $routeParams.snapshotId], true)));
-  $scope["filesystem"] = cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:path$opt", cljs.core.PersistentVector.fromArray([cljs.core.PersistentArrayMap.fromArray(["\ufdd0:name", "f1", "\ufdd0:type", "file", "\ufdd0:path", "$opt$f1"], true), cljs.core.PersistentArrayMap.fromArray(["\ufdd0:name", "d1", "\ufdd0:type", "folder", "\ufdd0:path", "$opt$d1"], true)], true), "\ufdd0:path$opt$d1", cljs.core.PersistentVector.fromArray([cljs.core.PersistentArrayMap.fromArray(["\ufdd0:name", 
-  "f2", "\ufdd0:type", "file", "\ufdd0:path", "$opt$d1$f2"], true), cljs.core.PersistentArrayMap.fromArray(["\ufdd0:name", "d2", "\ufdd0:type", "folder", "\ufdd0:path", "$opt$d1$d2"], true)], true), "\ufdd0:selectnode", function(node) {
-    return"k"
-  }], true));
-  return $scope["welcome"] = "welcome"
+  return $scope["filesystem"] = cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:loadNode", function(path) {
+    return $scope["filesystem"][path] = SnapshotFileSrv.get(cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:snapshotId", $routeParams.snapshotId, "\ufdd0:path", path], true)))
+  }, "\ufdd0:selectNode", function() {
+    return console.log("coucou")
+  }], true))
 };
 goog.exportSymbol("cryo.controllers.snapshotCtrl", cryo.controllers.snapshotCtrl);
-cryo.controllers.snapshotCtrl["$inject"] = ["$scope", "$routeParams", "SnapshotSrv"];
+cryo.controllers.snapshotCtrl["$inject"] = ["$scope", "$routeParams", "SnapshotSrv", "SnapshotFileSrv"];
 cryo.controllers.archiveCtrl = function archiveCtrl($scope, $routeParams, ArchiveSrv) {
   return $scope["archive"] = ArchiveSrv.get(cljs.core.clj__GT_js.call(null, cljs.core.PersistentArrayMap.fromArray(["\ufdd0:archiveId", $routeParams.archiveId], true)))
 };

@@ -13,7 +13,7 @@
       ($resource
         "data/snapshots/:snapshotId/files/:path.json"
         (clj->js {})
-        (clj->js {:query {:method "GET" :isArray true}}))))
+        (clj->js {:get {:method "GET" :isArray true}}))))
   
   (.factory "ArchiveSrv"
     (fn [$resource]

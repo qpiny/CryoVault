@@ -7,11 +7,12 @@ import akka.actor.Props
 
 import com.typesafe.config.ConfigFactory
 
-import _root_.org.mashupbots.socko.events.{ HttpResponseStatus, WebSocketHandshakeEvent }
-import _root_.org.mashupbots.socko.routes._
-import _root_.org.mashupbots.socko.handlers.{ StaticContentHandler, StaticContentHandlerConfig, StaticResourceRequest }
-import _root_.org.mashupbots.socko.webserver.{ WebServer, WebServerConfig }
-import _root_.org.mashupbots.socko.infrastructure.LocalCache
+import org.mashupbots.socko.events.{ HttpResponseStatus, WebSocketHandshakeEvent }
+import org.mashupbots.socko.routes._
+import org.mashupbots.socko.handlers.{ StaticContentHandler, StaticContentHandlerConfig, StaticResourceRequest }
+import org.mashupbots.socko.rest.{ RestRequest, RestResponse }
+import org.mashupbots.socko.webserver.{ WebServer, WebServerConfig }
+import org.mashupbots.socko.infrastructure.LocalCache
 import org.jboss.netty.channel.Channel
 
 import org.rejna.cryo.models.{ Glacier, LoggingClass, CryoContext }
@@ -24,6 +25,7 @@ object CryoWeb extends App with LoggingClass {
   val wsHandlers = HashMap.empty[Channel, ActorRef]
   val staticHandler = system.actorOf(Props(classOf[StaticContentHandler], StaticContentHandlerConfig(
     cache = new LocalCache(0, 16))))
+  val restHandler = system.actorOf(Props(classOf[CryoRest])) //.withRouter(FromConfig())
 
   val routes = Routes({
     case HttpRequest(request) => request match {
@@ -32,7 +34,7 @@ object CryoWeb extends App with LoggingClass {
         request.response.write(HttpResponseStatus.ACCEPTED, "Shutting down cryo ...")
         cryoctx.shutdown
       case GET(Path("/")) =>
-        staticHandler ! new StaticResourceRequest(request, "webapp/glacier.html")
+        staticHandler ! new StaticResourceRequest(request, "webapp/index.html")
       case GET(Path(path)) =>
         staticHandler ! new StaticResourceRequest(request, "webapp" + path)
       case _: Any => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
@@ -60,7 +62,7 @@ object CryoWeb extends App with LoggingClass {
   }
   def registerWebSocket(event: WebSocketHandshakeEvent) = {
     log.info("Register a new websocket connection")
-    event.authorize()//onComplete = Some(unregisterWebSocket))
+    event.authorize() //onComplete = Some(unregisterWebSocket))
     wsHandlers += event.channel -> system.actorOf(Props(classOf[CryoSocket], cryoctx, event.channel))
   }
 

@@ -28,11 +28,13 @@
   
   (aset $scope "filesystem"
         (clj->js {:loadNode (fn [path]
-                              (let [fs (aget $scope "filesystem")
-                                    content (.get SnapshotFileSrv
-                                              (clj->js {:snapshotId (.-snapshotId $routeParams)
-                                                        :path path}))]
-                                (aset fs path content)))})))
+                              (aset
+                                (aget $scope "filesystem")
+                                path
+                                (.get SnapshotFileSrv
+                                  (clj->js {:snapshotId (.-snapshotId $routeParams)
+                                            :path path}))))
+                  :selectNode (fn [] (.log js/console "coucou"))})))
 
 (aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv"))
 
