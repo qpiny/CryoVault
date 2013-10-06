@@ -52,9 +52,9 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
     try {
       for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
         channel.truncate(0)
-        
+
         log.debug("Writting repository :")
-        repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}")}
+        repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}") }
         val repo = repository.values
           .filter { d => d.status == Created || d.status == Remote }
           .map { _.state }
@@ -68,17 +68,14 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
   override def preStart = {
     implicit val formats = Json
     try {
-      for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), READ))) {
-        val buffer = ByteBuffer.allocate(channel.size.toInt)
-        channel.read(buffer)
-        val repoData = new String(buffer.array, "UTF-8")
-        log.debug("Repository: " + repoData)
-        val entries = Serialization.read[List[EntryState]](repoData) map {
-          case state => DataEntry(cryoctx, attributeBuilder, state)
-        }
-        repository ++= entries.map(e => e.id -> e)
-        log.info("Repository loaded : " + entries.map(_.id).mkString(","))
+      val source = scala.io.Source.fromFile(cryoctx.workingDirectory.resolve("repository").toFile)
+      val repoData = source.getLines mkString "\n"
+      source.close()
+      val entries = Serialization.read[List[EntryState]](repoData) map {
+        case state => DataEntry(cryoctx, attributeBuilder, state)
       }
+      repository ++= entries.map(e => e.id -> e)
+      log.info("Repository loaded : " + entries.map(_.id).mkString(","))
     } catch {
       case e: IOException => log.warn("Repository file not found")
       case t: Throwable => log.error("Repository load failed", t)
@@ -87,7 +84,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
 
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
-    
+
     case CreateData(idOption, description, size) =>
       val id = idOption.getOrElse {
         var i = ""

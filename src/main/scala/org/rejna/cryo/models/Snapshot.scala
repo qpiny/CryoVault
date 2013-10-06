@@ -40,9 +40,9 @@ sealed abstract class SnapshotResponse extends Response
 sealed class SnapshotError(message: String, cause: Option[Throwable]) extends CryoError(message, cause.get)
 
 case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) extends SnapshotRequest
-case class SnapshotGetFiles(id: String, directory: String) extends SnapshotRequest
-case class SnapshotFiles(id: String, directory: String, files: List[FileElement])
-case class FileElement(name: Path, isDirectory: Boolean, filter: Option[FileFilter], count: Int, size: Long)
+case class SnapshotGetFiles(id: String, path: String) extends SnapshotRequest
+case class SnapshotFiles(id: String, path: String, files: List[FileElement])
+case class FileElement(name: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
 //case class FileElement(file: Path, count: Int, size: Long, filter: Option[FileFilter])
 //new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
 case class FilterUpdated() extends SnapshotResponse
@@ -93,12 +93,12 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
       fileFilters += FileSystems.getDefault.getPath(file) -> filter
       sender ! FilterUpdated
 
-    case SnapshotGetFiles(id, directory) =>
-      val absoluteDirectory = cryoctx.baseDirectory.resolve(directory).normalize
-      if (!absoluteDirectory.startsWith(cryoctx.baseDirectory))
-        sender ! SnapshotFiles(id, directory, List[FileElement]())
+    case SnapshotGetFiles(id, path) =>
+      val absolutePath = cryoctx.baseDirectory.resolve(path).normalize
+      if (!absolutePath.startsWith(cryoctx.baseDirectory))
+        sender ! SnapshotFiles(id, path, List[FileElement]())
       else try {
-        val dirContent = Files.newDirectoryStream(absoluteDirectory)
+        val dirContent = Files.newDirectoryStream(absolutePath)
         val fileElements = for (f <- dirContent) yield {
           val filePath = cryoctx.baseDirectory.relativize(f)
           val fileSize = for (
@@ -107,11 +107,11 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
           ) yield Files.size(cryoctx.baseDirectory.resolve(fs))
           new FileElement(filePath, Files.isDirectory(f), fileFilters.get(filePath), fileSize.size, fileSize.sum)
         }
-        sender ! SnapshotFiles(id, directory, fileElements.toList)
+        sender ! SnapshotFiles(id, path, fileElements.toList)
       } catch {
         case e: AccessDeniedException =>
-          sender ! SnapshotFiles(id, directory, List(new FileElement(
-            FileSystems.getDefault.getPath(directory).resolve("_Access_denied_"), false, None, 0, 0)))
+          sender ! SnapshotFiles(id, path, List(new FileElement(
+            FileSystems.getDefault.getPath(path).resolve("_Access_denied_"), false, None, 0, 0)))
       }
 
     case SnapshotUpload(id) =>

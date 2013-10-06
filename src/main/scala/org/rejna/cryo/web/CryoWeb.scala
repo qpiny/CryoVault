@@ -35,6 +35,8 @@ object CryoWeb extends App with LoggingClass {
         cryoctx.shutdown
       case GET(Path("/")) =>
         staticHandler ! new StaticResourceRequest(request, "webapp/index.html")
+      case GET(PathSegments("data" :: _)) =>
+        restHandler ! request
       case GET(Path(path)) =>
         staticHandler ! new StaticResourceRequest(request, "webapp" + path)
       case _: Any => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
