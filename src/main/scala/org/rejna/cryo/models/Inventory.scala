@@ -178,7 +178,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
       case DataNotFoundError(id, _, _) =>
         log.info("No inventory found in datastore")
         (cryoctx.notification ? GetNotification()) map {
-          case NotificationGotten() =>
+          case NotificationGot() =>
           case e: Any => log.warn(CryoError("Fail to get notification", e))
         } flatMap { _ =>
           (cryoctx.manager ? GetJobList())

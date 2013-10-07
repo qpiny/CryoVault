@@ -19,7 +19,7 @@ sealed abstract class NotificationResponse extends Response
 sealed class NotificationError(message: String, cause: Throwable) extends CryoError(message, cause)
 
 case class GetNotification() extends NotificationRequest
-case class NotificationGotten() extends NotificationResponse 
+case class NotificationGot() extends NotificationResponse 
 case class GetNotificationARN() extends NotificationRequest
 case class NotificationARN(arn: String) extends NotificationResponse
 
@@ -144,12 +144,12 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
           case JobsAdded(addedJobs) => removeMessage(addedJobs.map(jobsReceipt.apply(_)))
           case o: Any => _sender ! CryoError("Fail to add job", o)
         } onComplete {
-          case Success(_) => if (_sender != context.system.deadLetters) _sender ! NotificationGotten()
+          case Success(_) => if (_sender != context.system.deadLetters) _sender ! NotificationGot()
           case Failure(e) => _sender ! CryoError("Fail to remove notification message", e)
         }
       }
       else
-        _sender ! NotificationGotten()
+        _sender ! NotificationGot()
 
     case GetNotificationARN() =>
       sender ! NotificationARN(notificationArn)

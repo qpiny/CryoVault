@@ -62,8 +62,9 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   val partSize = config.getBytes("cryo.part-size")
   val archiveSize = config.getBytes("cryo.archive-size")
 
-  val workingDirectory = FileSystems.getDefault.getPath(config.getString("cryo.working-directory"))
-  val baseDirectory = FileSystems.getDefault.getPath(config.getString("cryo.base-directory"))
+  val filesystem = FileSystems.getDefault
+  val workingDirectory = filesystem.getPath(config.getString("cryo.working-directory"))
+  val baseDirectory = filesystem.getPath(config.getString("cryo.base-directory"))
 
   def blockSizeFor(fileSize: Long) = {
     if (fileSize < (1 mebi)) 1 kibi
@@ -116,24 +117,32 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   if (config.getBoolean("aws.disable-cert-checking"))
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 
-  val hashcatalog = system.actorOf(Props(classOf[HashCatalog], this), "catalog")
+    
+  val hashcatalog = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.hashcatalog")), this), "catalog")
   children = hashcatalog :: children
 
-  val deadLetterMonitor = system.actorOf(Props(classOf[DeadLetterMonitor], this), "deadletter")
+  val deadLetterMonitor = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.deadLetterMonitor")), this), "deadletter")
   children = deadLetterMonitor :: children
 
-  val datastore = system.actorOf(Props(classOf[Datastore], this), "datastore")
+  val datastore = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.datastore")), this), "datastore")
   children = datastore :: children
 
-  val notification = system.actorOf(Props(classOf[QueueNotification], this), "notification")
+  val notification = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.notification")), this), "notification")
   children = notification :: children
 
-  val cryo = system.actorOf(Props(classOf[Glacier], this), "cryo")
+  val cryo = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.cryo")), this), "cryo")
   children = cryo :: children
 
-  val manager = system.actorOf(Props(classOf[Manager], this), "manager")
+  val manager = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.manager")), this), "manager")
   children = manager :: children
 
-  val inventory = system.actorOf(Props(classOf[Inventory], this), "inventory")
+  val inventory = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.inventory")), this), "inventory")
   children = inventory :: children
 }

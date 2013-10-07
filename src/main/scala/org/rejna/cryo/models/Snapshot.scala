@@ -90,13 +90,19 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
       sender ! ID(id)
 
     case SnapshotUpdateFilter(id, file, filter) =>
-      fileFilters += FileSystems.getDefault.getPath(file) -> filter
-      sender ! FilterUpdated
+      val path = cryoctx.filesystem.getPath(file)
+      if (cryoctx.baseDirectory.resolve(path).startsWith(cryoctx.baseDirectory)) {
+	      fileFilters += path -> filter
+	      sender ! FilterUpdated()
+      }
+      else {
+        throw CryoError(s"Directory traversal attempt ! (${path} -> ${cryoctx.baseDirectory.resolve(path)})")
+      }
 
     case SnapshotGetFiles(id, path) =>
       val absolutePath = cryoctx.baseDirectory.resolve(path).normalize
       if (!absolutePath.startsWith(cryoctx.baseDirectory))
-        sender ! SnapshotFiles(id, path, List[FileElement]())
+        sender ! SnapshotFiles(id, path, List.empty[FileElement])
       else try {
         val dirContent = Files.newDirectoryStream(absolutePath)
         val fileElements = for (f <- dirContent) yield {
@@ -153,16 +159,20 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
     var size = 0L
     var files = LinkedList.empty[Path]
     for ((path, filter) <- filters) {
-      new TraversePath(cryoctx.baseDirectory.relativize(path)).foreach {
-        case (f, attrs) =>
-          if (attrs.isRegularFile && filter.accept(f)) {
-            val normf = cryoctx.baseDirectory.relativize(f).normalize
-            if (!normf.startsWith(cryoctx.baseDirectory))
-              throw CryoError(s"Directory traversal attempt ! (${f} -> ${normf})")
-            files = LinkedList(normf) append files
-            size += attrs.size
-          }
+      if (path.startsWith(cryoctx.baseDirectory)) {
+        new TraversePath(path).foreach {
+          case (f, attrs) =>
+            if (attrs.isRegularFile && filter.accept(f)) {
+              val normf = f.normalize
+              /* Really usefull ? */
+              if (!normf.startsWith(cryoctx.baseDirectory))
+                throw CryoError(s"Directory traversal attempt ! (${f} -> ${normf})")
+              files = LinkedList(cryoctx.baseDirectory.relativize(normf)) append files
+              size += attrs.size
+            }
+        }
       }
+      else throw CryoError(s"Directory traversal attempt ! (${path})")
     }
     (files, size)
   }
