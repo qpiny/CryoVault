@@ -46,9 +46,7 @@ class SnapshotTest extends TestKit(ActorSystem())
 
   it must "update file filter" in {
     snapshotBuilderRef ! SnapshotUpdateFilter("random-id", ".", ExtensionFilter("txt"))
-    expectMsg(FilterUpdated())
-    assert(snapshotBuilder.fileFilters.size == 1)
-    assert(snapshotBuilder.files.size == 3)
+    expectMsg(CryoError(""))
   }
 
   it should "throw an exception if one tries to attempt directory traversal" in {
