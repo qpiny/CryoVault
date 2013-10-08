@@ -17,7 +17,7 @@ import org.jboss.netty.channel.Channel
 
 import org.rejna.cryo.models.{ Glacier, LoggingClass, CryoContext }
 
-object CryoWeb extends App with LoggingClass {
+object CryoWeb extends LoggingClass {
   log.info("Starting cryo ...")
   val config = ConfigFactory.load()
   val system = ActorSystem("cryo", config)
@@ -25,7 +25,7 @@ object CryoWeb extends App with LoggingClass {
   val wsHandlers = HashMap.empty[Channel, ActorRef]
   val staticHandler = system.actorOf(Props(classOf[StaticContentHandler], StaticContentHandlerConfig(
     cache = new LocalCache(0, 16))))
-  val restHandler = system.actorOf(Props(classOf[CryoRest])) //.withRouter(FromConfig())
+  val restHandler = system.actorOf(Props(classOf[CryoRest], cryoctx)) //.withRouter(FromConfig())
 
   val routes = Routes({
     case HttpRequest(request) => request match {
@@ -34,11 +34,11 @@ object CryoWeb extends App with LoggingClass {
         request.response.write(HttpResponseStatus.ACCEPTED, "Shutting down cryo ...")
         cryoctx.shutdown
       case GET(Path("/")) =>
-        staticHandler ! new StaticResourceRequest(request, "webapp/index.html")
+        staticHandler ! StaticResourceRequest(request, "webapp/index.html")
       case GET(PathSegments("data" :: _)) =>
         restHandler ! request
       case GET(Path(path)) =>
-        staticHandler ! new StaticResourceRequest(request, "webapp" + path)
+        staticHandler ! StaticResourceRequest(request, "webapp" + path)
       case _: Any => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
     }
 
@@ -68,8 +68,7 @@ object CryoWeb extends App with LoggingClass {
     wsHandlers += event.channel -> system.actorOf(Props(classOf[CryoSocket], cryoctx, event.channel))
   }
 
-  override def main(args: Array[String]) = {
-    super.main(args)
+  def main(args: Array[String]) = {
     val webServer = new WebServer(WebServerConfig(), routes, system)
     cryoctx.addShutdownHook {
       log.info("Stopping web server")

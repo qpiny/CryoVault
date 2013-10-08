@@ -2,7 +2,7 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.Map
 
-import akka.actor.Actor
+import akka.actor.{ Actor, Stash }
 import akka.util.ByteString
 
 import java.util.{ UUID, Date }
@@ -15,12 +15,30 @@ case class DataEntryMock(id: String, description: String, creationDate: Date, si
     content.slice(position.toInt, position.toInt + length)
 }
 
-class DatastoreMock(cryoctx: CryoContext) extends Actor {
-  
+case class AddDataMock(entry: DataEntryMock)
+case class DataAddedMock(id: String)
+
+class DatastoreMock(cryoctx: CryoContext) extends Actor with Stash {
+
   val repository = Map.empty[String, DataEntryMock]
-  
+
   def receive = {
+    case MakeActorReady =>
+      unstashAll()
+      context.become(receiveWhenReady)
+    case AddDataMock(entry) =>
+      repository += entry.id -> entry
+      sender ! DataAddedMock(entry.id)
+    case _ =>
+      stash()
+  }
+
+  def receiveWhenReady: Receive = {
     case PrepareToDie() => sender ! ReadyToDie()
+
+    case AddDataMock(entry) =>
+      repository += entry.id -> entry
+      sender ! DataAddedMock(entry.id)
 
     case CreateData(idOption, description, size) =>
       val id = idOption.getOrElse {

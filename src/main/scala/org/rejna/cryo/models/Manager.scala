@@ -107,7 +107,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
   val attributeBuilder = CryoAttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
   val finalizedJobs = HashSet.empty[String]
-  val jobUpdated = Promise[Unit]()
+  var jobUpdated = Promise[Unit]() /* var instead of val for test */
 
   override def preStart = {
     implicit val formats = Json
@@ -156,19 +156,22 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
           log.error("Fail to save finalized jobs", o)
       }
     case AddJobs(addedJobs) =>
-      jobs ++= addedJobs.filterNot(j => finalizedJobs.contains(j.id)).map(j => j.id -> j)
-      sender ! JobsAdded(addedJobs)
+      val unfinalizedJobs = addedJobs.filterNot(j => finalizedJobs.contains(j.id))
+      jobs ++= unfinalizedJobs.map(j => j.id -> j)
+      sender ! JobsAdded(unfinalizedJobs)
 
     case RemoveJobs(jobIds) =>
-      jobs --= jobIds
-      sender ! JobsRemoved(jobIds)
+      val presentJobs = jobIds.filter(jobs.contains(_))
+      jobs --= presentJobs
+      sender ! JobsRemoved(presentJobs)
 
     case UpdateJobList(jl) =>
-      jobs ++= jl.filterNot(j => finalizedJobs.contains(j.id)).map(j => j.id -> j)
+      val unfinalizedJobs = jl.filterNot(j => finalizedJobs.contains(j.id))
+      jobs ++= unfinalizedJobs.map(j => j.id -> j)
       // TODO remove obsolete jobs ?
       if (!jobUpdated.isCompleted)
         jobUpdated.success()
-      sender ! JobListUpdated(jl)
+      sender ! JobListUpdated(unfinalizedJobs)
 
     case GetJobList() =>
       if (jobUpdated.isCompleted) {

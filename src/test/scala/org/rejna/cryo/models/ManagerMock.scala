@@ -1,10 +1,18 @@
 package org.rejna.cryo.models
 
-import akka.actor.Actor
+import akka.actor.{ Actor, Stash }
 
-class ManagerMock(val cryoctx: CryoContext) extends Actor {
-
+class ManagerMock(val cryoctx: CryoContext) extends Actor with Stash {
+  
   def receive = {
+    case MakeActorReady =>
+      unstashAll()
+      context.become(receiveWhenReady)
+    case _ =>
+      stash()
+  }
+  
+  def receiveWhenReady: Receive = {
     case AddJobs(jobs) =>
       sender ! JobsAdded(jobs)
     case RemoveJobs(jobIds) =>

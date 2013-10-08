@@ -37,7 +37,7 @@ class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] 
 
 sealed abstract class SnapshotRequest extends Request { val id: String }
 sealed abstract class SnapshotResponse extends Response
-sealed class SnapshotError(message: String, cause: Option[Throwable]) extends CryoError(message, cause.get)
+sealed class SnapshotError(message: String, cause: Option[Throwable]) extends CryoError(message, cause.orNull)
 
 case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) extends SnapshotRequest
 case class SnapshotGetFiles(id: String, path: String) extends SnapshotRequest
@@ -50,6 +50,7 @@ case class SnapshotUpload(id: String) extends SnapshotRequest
 case class SnapshotUploaded(id: String) extends SnapshotResponse
 case class GetID() extends Request
 case class ID(id: String) extends SnapshotResponse
+case class DirectoryTraversalError(path: String) extends SnapshotError(s"Directory traversal attempt : ${path}", None)
 
 //case class ArchiveCreated(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest
@@ -91,12 +92,11 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
 
     case SnapshotUpdateFilter(id, file, filter) =>
       val path = cryoctx.filesystem.getPath(file)
-      if (cryoctx.baseDirectory.resolve(path).startsWith(cryoctx.baseDirectory)) {
-	      fileFilters += path -> filter
-	      sender ! FilterUpdated()
-      }
-      else {
-        throw CryoError(s"Directory traversal attempt ! (${path} -> ${cryoctx.baseDirectory.resolve(path)})")
+      if (cryoctx.baseDirectory.resolve(path).normalize.startsWith(cryoctx.baseDirectory)) {
+        fileFilters += path -> filter
+        sender ! FilterUpdated()
+      } else {
+        sender ! DirectoryTraversalError(path.toString)
       }
 
     case SnapshotGetFiles(id, path) =>
@@ -159,20 +159,17 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
     var size = 0L
     var files = LinkedList.empty[Path]
     for ((path, filter) <- filters) {
-      if (path.startsWith(cryoctx.baseDirectory)) {
-        new TraversePath(path).foreach {
-          case (f, attrs) =>
-            if (attrs.isRegularFile && filter.accept(f)) {
-              val normf = f.normalize
-              /* Really usefull ? */
-              if (!normf.startsWith(cryoctx.baseDirectory))
-                throw CryoError(s"Directory traversal attempt ! (${f} -> ${normf})")
-              files = LinkedList(cryoctx.baseDirectory.relativize(normf)) append files
-              size += attrs.size
-            }
-        }
+      new TraversePath(cryoctx.baseDirectory.resolve(path)).foreach {
+        case (f, attrs) =>
+          if (attrs.isRegularFile && filter.accept(f)) {
+            val normf = f.normalize
+            /* Really usefull ? */
+            if (!normf.startsWith(cryoctx.baseDirectory))
+              throw DirectoryTraversalError(f.toString)
+            files = LinkedList(cryoctx.baseDirectory.relativize(normf)) append files
+            size += attrs.size
+          }
       }
-      else throw CryoError(s"Directory traversal attempt ! (${path})")
     }
     (files, size)
   }

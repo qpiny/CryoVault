@@ -100,8 +100,8 @@ lesscss {
 	source = fileTree('src/main/less') {
 		include 'cryo.less'
 	}
-	//dest = 'build/generated-resources/webapp/stylesheets'
-	dest = 'src/main/resources/webapp/stylesheets'
+	dest = 'build/generated-resources/webapp/stylesheets'
+	//dest = 'src/main/resources/webapp/stylesheets'
 	compress = true
 }
 processResources.dependsOn 'lesscss'
@@ -129,6 +129,12 @@ cljsbuild.onlyIf { !inWebdevel }
 
 task cljsautobuild(type: Lein) {
 	largs = ['cljsbuild', 'auto']
+	inputs.dir = file('src/main/cljs')
+	outputs.file = file("$buildDir/generated-resources/webapp/javascript/main.js")
+	//ext.srcFile = file('mountains.xml')
+	//ext.destDir = new File(buildDir, 'generated')
+	//inputs.dir new File(buildDir, 'generated-resources/
+	//outputs.dir file('webapp/javascript/main.js')
 }
 
 task webdevel << {
@@ -153,4 +159,19 @@ task webdevelant {
 		}
 	}
 	finalizedBy "run"
+}
+
+task scalaTest(dependsOn: testClasses) << {
+	ant.taskdef(
+		name: 'scalatest', 
+		classname: 'org.scalatest.tools.ScalaTestAntTask', 
+		classpath: configurations.testCompile.asPath
+	)
+		ant.scalatest(
+			//runpath: configurations.testCompile,
+			haltonfailure: 'true', 
+			fork: 'false') {
+		suite(classname: 'org.rejna.models.ManagerTest')
+		reporter(type: 'stderr')
+	}
 }

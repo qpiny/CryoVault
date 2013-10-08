@@ -74,7 +74,7 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
     else 1 gibi
   }
 
-  def getTimeout(clazz: Class[_]) = Timeout(30 seconds)
+  def getTimeout(clazz: Class[_]) = Timeout(5 seconds)
 
   val cipher = Cipher.getInstance(config.getString("cryo.cipher"));
   val key = {
