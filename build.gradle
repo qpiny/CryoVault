@@ -31,8 +31,8 @@ repositories {
 	//maven { url 'https://oss.sonatype.org/content/repositories/releases/' }
 	//maven { url 'http://repo.typesafe.com/typesafe/' }
 	maven { url 'http://repo.spray.io/' }
-	mavenRepo name: 'Gradle', url: 'http://repo.gradle.org/gradle/repo'
-	mavenRepo name: 'clojars', url: 'http://clojars.org/repo'
+	maven { url 'http://repo.gradle.org/gradle/repo' }
+	maven { url 'http://clojars.org/repo' }
 	//mavenRepo (name: "AngularJS", url: "https://ajax.googleapis.com") {
 	//	pattern = "ajax/libs/angularjs/[version]/[module](.[classifier]).js
 	//}
@@ -72,7 +72,7 @@ sourceSets {
 }
 
 task wrapper(type: Wrapper) {
-	gradleVersion = '1.7'
+	gradleVersion = '1.8'
 }
 
 task generateFmppSources << {
@@ -129,8 +129,8 @@ cljsbuild.onlyIf { !inWebdevel }
 
 task cljsautobuild(type: Lein) {
 	largs = ['cljsbuild', 'auto']
-	inputs.dir = file('src/main/cljs')
-	outputs.file = file("$buildDir/generated-resources/webapp/javascript/main.js")
+	//inputs.dir = file('src/main/cljs')
+	//outputs.file = file("$buildDir/generated-resources/webapp/javascript/main.js")
 	//ext.srcFile = file('mountains.xml')
 	//ext.destDir = new File(buildDir, 'generated')
 	//inputs.dir new File(buildDir, 'generated-resources/
@@ -162,16 +162,18 @@ task webdevelant {
 }
 
 task scalaTest(dependsOn: testClasses) << {
+	cp = configurations.testCompile + sourceSets.test.output// sourceSets.test.compileClasspath//  + configurations.testCompile
+	println cp.asPath
 	ant.taskdef(
 		name: 'scalatest', 
 		classname: 'org.scalatest.tools.ScalaTestAntTask', 
-		classpath: configurations.testCompile.asPath
+		classpath: cp.asPath
 	)
 		ant.scalatest(
 			//runpath: configurations.testCompile,
-			haltonfailure: 'true', 
+			haltonfailure: 'true',
+			suite: 'org.rejna.cryo.models.ManagerTest', 
 			fork: 'false') {
-		suite(classname: 'org.rejna.models.ManagerTest')
-		reporter(type: 'stderr')
+		reporter(type: 'stdout')
 	}
 }
