@@ -9,14 +9,15 @@ import scala.concurrent.Promise
 import scala.concurrent.duration._
 
 import org.scalatest.matchers.MustMatchers
-import org.scalatest.{ FlatSpecLike, BeforeAndAfter }
+import org.scalatest.{ FlatSpecLike, BeforeAndAfter, Suite }
 
 import java.util.Date
 
 class ManagerTest extends TestKit(ActorSystem())
   with ImplicitSender
   with FlatSpecLike
-  with BeforeAndAfter {
+  with BeforeAndAfter
+  with Suite {
 
   val cryoctx = new CryoContext(system, ConfigFactory.load())
   val managerRef = TestActorRef[Manager](Props(classOf[Manager], cryoctx))

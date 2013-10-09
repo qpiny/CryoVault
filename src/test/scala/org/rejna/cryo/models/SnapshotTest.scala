@@ -13,6 +13,11 @@ class SnapshotTest extends TestKit(ActorSystem())
   with ImplicitSender
   with FlatSpecLike
   with BeforeAndAfter {
+  
+  def sameAs[A](c: Traversable[A], d: Traversable[A]) = {
+    def counts(e: Traversable[A]) = e groupBy identity mapValues (_.size)
+    counts(c) == counts(d)
+  }
 
   val cryoctx = new CryoContext(system, ConfigFactory.load())
   val snapshotBuilderRef = TestActorRef[SnapshotBuilder](Props(classOf[SnapshotBuilder], cryoctx, "random-id"))
@@ -43,22 +48,28 @@ class SnapshotTest extends TestKit(ActorSystem())
     snapshotBuilder.fileFilters += cryoctx.filesystem.getPath("") -> ExtensionFilter("txt")
     val path = cryoctx.baseDirectory.resolve("folder1")
     snapshotBuilderRef ! SnapshotGetFiles("random-files", path.toString)
-    expectMsg(SnapshotFiles("random-files", path.toString,
-      FileElement(cryoctx.baseDirectory.relativize(path.resolve("another.file")), false, None, 0, 0) ::
+    val m = expectMsgClass(classOf[SnapshotFiles])
+    val r = FileElement(cryoctx.baseDirectory.relativize(path.resolve("another.file")), false, None, 0, 0) ::
         FileElement(cryoctx.baseDirectory.relativize(path.resolve("folder11")), true, None, 1, 4) ::
         FileElement(cryoctx.baseDirectory.relativize(path.resolve("folder12")), true, None, 2, 35) ::
-        Nil))
+        Nil
+    assert(m.id == "random-files")
+    assert(m.path == path.toString)
+    assert(sameAs(m.files, r))
   }
 
   it must "list files with filter" in {
     snapshotBuilder.fileFilters += cryoctx.filesystem.getPath("folder1/folder12") -> ExtensionFilter("txt")
     val path = cryoctx.baseDirectory.resolve("folder1")
     snapshotBuilderRef ! SnapshotGetFiles("random-files", path.toString)
-    expectMsg(SnapshotFiles("random-files", path.toString,
-        FileElement(cryoctx.baseDirectory.relativize(path.resolve("another.file")), false, None, 0, 0) ::
+    val m = expectMsgClass(classOf[SnapshotFiles])
+    val r = FileElement(cryoctx.baseDirectory.relativize(path.resolve("another.file")), false, None, 0, 0) ::
         FileElement(cryoctx.baseDirectory.relativize(path.resolve("folder11")), true, None, 0, 0) ::
         FileElement(cryoctx.baseDirectory.relativize(path.resolve("folder12")), true, Some(ExtensionFilter("txt")), 2, 35) ::
-        Nil))
+        Nil
+    assert(m.id == "random-files")
+    assert(m.path == path.toString)
+    assert(sameAs(m.files, r))
   }
   
   // TODO SnapshotUpload / SnapshotUploaded
