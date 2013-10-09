@@ -11,7 +11,7 @@ import org.mashupbots.socko.events.{ HttpResponseStatus, WebSocketHandshakeEvent
 import org.mashupbots.socko.routes._
 import org.mashupbots.socko.handlers.{ StaticContentHandler, StaticContentHandlerConfig, StaticResourceRequest }
 import org.mashupbots.socko.rest.{ RestRegistry, RestConfig, RestHandler, ReportRuntimeException }
-import org.mashupbots.socko.webserver.{ WebServer, WebServerConfig }
+import org.mashupbots.socko.webserver.{ WebServer, WebServerConfig, WebLogConfig }
 import org.mashupbots.socko.infrastructure.LocalCache
 import org.jboss.netty.channel.Channel
 
@@ -72,7 +72,7 @@ object CryoWeb extends LoggingClass {
   }
 
   def main(args: Array[String]) = {
-    val webServer = new WebServer(WebServerConfig(), routes, system)
+    val webServer = new WebServer(WebServerConfig(webLog = Some(WebLogConfig())), routes, system)
     cryoctx.addShutdownHook {
       log.info("Stopping web server")
       webServer.stop()

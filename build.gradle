@@ -10,7 +10,13 @@ apply plugin: 'eclipse'
 apply plugin: 'application'
 apply plugin: 'lesscss'
 
-mainClassName = 'org.rejna.cryo.web.CryoWeb'
+mainClassName = 'org.rejna.cryo.web.CryoWebMock'
+sourceSets {
+	main {
+		scala { srcDir 'src/test/scala' }
+		resources { srcDir 'src/test/resources' }
+	}
+}
 
 ext {
 	majorScalaVersion = '2.10'
@@ -55,6 +61,10 @@ dependencies {
 	fmpp group: 'net.sourceforge.fmpp', name: 'fmpp', version: '0.9.14'
 	cljs 'leiningen:leiningen:2.3.3'
 	cljs 'org.slf4j:slf4j-simple:1.7.5'
+	compile group: 'junit', name: 'junit', version: '4.11'
+	compile group: 'org.scalatest', name: 'scalatest_' + majorScalaVersion, version: '2.0.RC1'
+	compile group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
+	
 }
 
 configurations.all {

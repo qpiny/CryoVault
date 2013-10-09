@@ -1,10 +1,9 @@
 package org.rejna.cryo.web
 
 import akka.util.ByteString
-
 import java.util.Date
-
 import org.rejna.cryo.models._
+import akka.actor.actorRef2Scala
 
 object CryoWebMock extends App {
   override def main(args: Array[String]) = {
