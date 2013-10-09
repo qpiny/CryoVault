@@ -8,16 +8,19 @@ import com.typesafe.config.ConfigFactory
 import scala.concurrent.Promise
 import scala.concurrent.duration._
 
-import org.scalatest.matchers.MustMatchers
-import org.scalatest.{ FlatSpecLike, BeforeAndAfter, Suite }
+import org.scalatest.{ FlatSpecLike, BeforeAndAfter }
+import org.scalatest.junit.{ JUnitRunner, AssertionsForJUnit }
+
+import org.junit.runner.RunWith
 
 import java.util.Date
 
+@RunWith(classOf[JUnitRunner])
 class ManagerTest extends TestKit(ActorSystem())
   with ImplicitSender
   with FlatSpecLike
   with BeforeAndAfter
-  with Suite {
+  with AssertionsForJUnit {
 
   val cryoctx = new CryoContext(system, ConfigFactory.load())
   val managerRef = TestActorRef[Manager](Props(classOf[Manager], cryoctx))
@@ -44,14 +47,14 @@ class ManagerTest extends TestKit(ActorSystem())
     manager.jobUpdated = Promise[Unit]()
   }
 
-  "Manager actor" must "accept new jobs" in {
+  "Manager actor" should "accept new jobs" in {
     managerRef ! AddJobs(jobList)
     expectMsg(JobsAdded(jobList))
     assert(manager.jobs == jobList.map(j => j.id -> j).toMap)
     assert(manager.jobUpdated.isCompleted == false)
   }
 
-  it must "update an already submited job" in {
+  it should "update an already submited job" in {
     val updatedJob2 = ArchiveJob(
       "archiveJobId",
       "Description is changed",
@@ -66,7 +69,7 @@ class ManagerTest extends TestKit(ActorSystem())
     assert(manager.jobUpdated.isCompleted == false)
   }
   
-  it must "ignore jobs that are already finished" in {
+  it should "ignore jobs that are already finished" in {
     manager.finalizedJobs += "archiveJobId"
     managerRef ! AddJobs(job2)
     expectMsg(JobsAdded(Nil))
@@ -74,7 +77,7 @@ class ManagerTest extends TestKit(ActorSystem())
     assert(manager.jobUpdated.isCompleted == false)
   }
   
-  it must "remove only present jobs" in {
+  it should "remove only present jobs" in {
     manager.jobs ++= jobList.map(j => j.id -> j)
     managerRef ! RemoveJobs("nonExistantJob", "archiveJobId", "otherJobId")
     expectMsg(JobsRemoved("archiveJobId" :: Nil))
@@ -82,14 +85,14 @@ class ManagerTest extends TestKit(ActorSystem())
     assert(manager.jobUpdated.isCompleted == false)
   }
   
-  it must "update its job list" in {
+  it should "update its job list" in {
     managerRef ! UpdateJobList(jobList)
     expectMsg(JobListUpdated(jobList))
     assert(manager.jobs == jobList.map(j => j.id -> j).toMap)
     assert(manager.jobUpdated.isCompleted == true)
   }
   
-  it must "wait an updated job list before return its job list" in {
+  it should "wait an updated job list before return its job list" in {
     manager.jobs ++= jobList.map(j => j.id -> j)
     managerRef ! GetJobList()
     assert(manager.jobUpdated.isCompleted == false)
@@ -99,7 +102,7 @@ class ManagerTest extends TestKit(ActorSystem())
     assert(manager.jobUpdated.isCompleted == true)
   }
   
-  it must "finalize jobs" in {
+  it should "finalize jobs" in {
     manager.jobs ++= jobList.map(j => j.id -> j)
     managerRef ! FinalizeJob("archiveJobId", "otherId")
     expectMsg(JobFinalized("archiveJobId" :: "otherId" :: Nil))

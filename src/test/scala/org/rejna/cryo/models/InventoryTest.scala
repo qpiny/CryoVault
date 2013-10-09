@@ -8,15 +8,19 @@ import com.typesafe.config.ConfigFactory
 import scala.concurrent.Promise
 import scala.concurrent.duration._
 
-import org.scalatest.matchers.MustMatchers
 import org.scalatest.{ FlatSpecLike, BeforeAndAfter }
+import org.scalatest.junit.{ JUnitRunner, AssertionsForJUnit }
+
+import org.junit.runner.RunWith
 
 import java.util.Date
 
+@RunWith(classOf[JUnitRunner])
 class InventoryTest extends TestKit(ActorSystem())
   with ImplicitSender
   with FlatSpecLike
-  with BeforeAndAfter {
+  with BeforeAndAfter
+  with AssertionsForJUnit {
 
   val cryoctx = new CryoContext(system, ConfigFactory.load())
   val inventoryRef = TestActorRef[Inventory](Props(classOf[Inventory], cryoctx))

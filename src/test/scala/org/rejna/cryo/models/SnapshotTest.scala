@@ -4,15 +4,19 @@ import akka.actor.{ ActorSystem, Props }
 import akka.testkit.{ TestKit, TestActorRef, ImplicitSender }
 import com.typesafe.config.ConfigFactory
 
-import org.scalatest.matchers.MustMatchers
 import org.scalatest.{ FlatSpecLike, BeforeAndAfter }
+import org.scalatest.junit.{ JUnitRunner, AssertionsForJUnit }
+
+import org.junit.runner.RunWith
 
 import java.io.File
 
+@RunWith(classOf[JUnitRunner])
 class SnapshotTest extends TestKit(ActorSystem())
   with ImplicitSender
   with FlatSpecLike
-  with BeforeAndAfter {
+  with BeforeAndAfter
+  with AssertionsForJUnit {
   
   def sameAs[A](c: Traversable[A], d: Traversable[A]) = {
     def counts(e: Traversable[A]) = e groupBy identity mapValues (_.size)

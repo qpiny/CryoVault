@@ -10,7 +10,7 @@ import com.typesafe.config.ConfigFactory
 import org.mashupbots.socko.events.{ HttpResponseStatus, WebSocketHandshakeEvent }
 import org.mashupbots.socko.routes._
 import org.mashupbots.socko.handlers.{ StaticContentHandler, StaticContentHandlerConfig, StaticResourceRequest }
-import org.mashupbots.socko.rest.{ RestRequest, RestResponse }
+import org.mashupbots.socko.rest.{ RestRegistry, RestConfig, RestHandler, ReportRuntimeException }
 import org.mashupbots.socko.webserver.{ WebServer, WebServerConfig }
 import org.mashupbots.socko.infrastructure.LocalCache
 import org.jboss.netty.channel.Channel
@@ -25,7 +25,10 @@ object CryoWeb extends LoggingClass {
   val wsHandlers = HashMap.empty[Channel, ActorRef]
   val staticHandler = system.actorOf(Props(classOf[StaticContentHandler], StaticContentHandlerConfig(
     cache = new LocalCache(0, 16))))
-  val restHandler = system.actorOf(Props(classOf[CryoRest], cryoctx)) //.withRouter(FromConfig())
+  val restRegistry = RestRegistry("org.rejna.cryo.web",
+    RestConfig("1.0", "http://localhost:8888/data", reportRuntimeException = ReportRuntimeException.All))
+  val restHandler = system.actorOf(Props(classOf[RestHandler], restRegistry)) //.withRouter(FromConfig())
+  val restProcessor = system.actorOf(Props(classOf[CryoRest], cryoctx))
 
   val routes = Routes({
     case HttpRequest(request) => request match {
