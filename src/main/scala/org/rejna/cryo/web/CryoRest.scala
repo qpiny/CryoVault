@@ -5,7 +5,10 @@ import java.io.{ PrintWriter, StringWriter }
 
 import akka.actor.{ ActorSystem, Actor, ActorRef }
 
+import org.mashupbots.socko.events.HttpRequestEvent
 import org.mashupbots.socko.rest._
+
+import org.json4s.{ Formats, DefaultFormats, NoTypeHints }
 
 import org.rejna.cryo.models._
 import InventoryStatus._
@@ -23,12 +26,17 @@ object DataStatusMock {
   def apply(ds: DataStatus): DataStatusMock = DataStatusMock(ds.id, ds.description, ds.creationDate, ds.status.toString, ds.size, ds.checksum)
 }
 
+//date: Date, status: String, snapshots: List[DataStatusMock]
 case class GetSnapshotListRequest(context: RestRequestContext) extends RestRequest
-case class GetSnapshotListResponse(context: RestResponseContext, date: Date, status: String, snapshots: List[DataStatusMock]) extends RestResponse
+case class GetSnapshotListResponse(context: RestResponseContext, snapshotList: Option[SnapshotList]) extends RestResponse
 object GetSnapshotListRegistration extends RestRegistration {
   val method = Method.GET
   val path = "/snapshots/list"
   val requestParams = Seq.empty
+  override val customFormats = Some(new Formats {
+    val dateFormat = DefaultFormats.lossless.dateFormat
+    override val typeHints = NoTypeHints
+  })
   def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef = CryoWeb.restProcessor
   override val description = "Retrieve list of snapshots"
 }
@@ -56,14 +64,22 @@ object GetSnapshotRegistration extends RestRegistration {
 //}
 
 class CryoRest(val cryoctx: CryoContext) extends CryoActor {
-  def receive = {
+  def receive = cryoReceive {
     case GetSnapshotListRequest(ctx) =>
       val _sender = sender
       (cryoctx.inventory ? GetSnapshotList()) map {
-        case SnapshotList(date, status, snapshots) =>
-          _sender ! GetSnapshotListResponse(ctx.responseContext, date, status.toString, snapshots.map(DataStatusMock(_)))
+        case sl: SnapshotList =>
+          log.info("Receive snapshot list")
+          //_sender ! GetSnapshotListResponse(ctx.responseContext, Some(sl))
+          val http = RestRequestEvents.get(ctx).get.asInstanceOf[HttpRequestEvent]
+          http.response.write(http.request.content.toString())
+        case a: Any =>
+          log.error(s"Unexpected message from inventory : ${a}")
+          throw CryoError("Unexpected message from inventory", a )
       } onFailure {
-        case e: Exception => _sender ! GetSnapshotListResponse(ctx.responseContext(404), new Date, "Error", List.empty[DataStatusMock])
+        case e: Throwable =>
+          log.info("Error while retreiving snapshot list", e)
+          _sender ! GetSnapshotListResponse(ctx.responseContext(404), None)
         //RestErrorResponse(ctx, e)
       }
 

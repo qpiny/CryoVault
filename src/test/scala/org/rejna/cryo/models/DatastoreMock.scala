@@ -18,11 +18,11 @@ case class DataEntryMock(id: String, description: String, creationDate: Date, si
 case class AddDataMock(entry: DataEntryMock)
 case class DataAddedMock(id: String)
 
-class DatastoreMock(cryoctx: CryoContext) extends Actor with Stash {
+class DatastoreMock(val cryoctx: CryoContext) extends CryoActor with Stash {
 
   val repository = Map.empty[String, DataEntryMock]
 
-  def receive = {
+  def receive = cryoReceive {
     case MakeActorReady =>
       unstashAll()
       context.become(receiveWhenReady)
@@ -33,7 +33,7 @@ class DatastoreMock(cryoctx: CryoContext) extends Actor with Stash {
       stash()
   }
 
-  def receiveWhenReady: Receive = {
+  def receiveWhenReady: Receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
 
     case AddDataMock(entry) =>
@@ -72,6 +72,7 @@ class DatastoreMock(cryoctx: CryoContext) extends Actor with Stash {
         case None =>
           sender ! DataNotFoundError(id, s"Data ${id} not found")
         case Some(de) =>
+          log.info(s"Send data status to ${sender}]")
           sender ! DataStatus(id, de.description, de.creationDate, EntryStatus.Creating, de.size, de.checksum)
       }
 

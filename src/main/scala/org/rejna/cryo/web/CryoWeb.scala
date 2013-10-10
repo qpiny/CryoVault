@@ -24,11 +24,11 @@ object CryoWeb extends LoggingClass {
   val cryoctx = new CryoContext(system, config)
   val wsHandlers = HashMap.empty[Channel, ActorRef]
   val staticHandler = system.actorOf(Props(classOf[StaticContentHandler], StaticContentHandlerConfig(
-    cache = new LocalCache(0, 16))))
+    cache = new LocalCache(0, 16))), "staticHandler")
   val restRegistry = RestRegistry("org.rejna.cryo.web",
     RestConfig("1.0", "http://localhost:8888/data", reportRuntimeException = ReportRuntimeException.All))
-  val restHandler = system.actorOf(Props(classOf[RestHandler], restRegistry)) //.withRouter(FromConfig())
-  val restProcessor = system.actorOf(Props(classOf[CryoRest], cryoctx))
+  val restHandler = system.actorOf(Props(classOf[RestHandler], restRegistry), "restHandler") //.withRouter(FromConfig())
+  val restProcessor = system.actorOf(Props(classOf[CryoRest], cryoctx), "restProcessor")
 
   val routes = Routes({
     case HttpRequest(request) => request match {
@@ -38,6 +38,8 @@ object CryoWeb extends LoggingClass {
         cryoctx.shutdown
       case GET(Path("/")) =>
         staticHandler ! StaticResourceRequest(request, "webapp/index.html")
+      case PathSegments("swagger-ui" :: relativePath) =>
+        staticHandler ! new StaticResourceRequest(request, relativePath.mkString("swaggerui/", "/", ""))
       case GET(PathSegments("data" :: _)) =>
         restHandler ! request
       case GET(Path(path)) =>

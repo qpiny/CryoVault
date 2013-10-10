@@ -39,7 +39,7 @@ class InventoryMock(val cryoctx: CryoContext) extends CryoActor with Stash {
       stash()
   }
 
-  def receiveWhenReady: Receive = {
+  def receiveWhenReady: Receive = cryoReceive {
     case AddSnapshotMock(snapshot) =>
       val _sender = sender
       snapshots += snapshot.id
@@ -59,16 +59,26 @@ class InventoryMock(val cryoctx: CryoContext) extends CryoActor with Stash {
     case CreateSnapshot() =>
       sender ! SnapshotCreated("NewlyCreatedSnapshotId")
     case GetArchiveList() =>
+      val _sender = sender
       Future.sequence(archives.map(cryoctx.datastore ? GetDataStatus(_))) map {
-        case dsl => sender ! ArchiveList(new Date,
-          InventoryStatus.Cached,
-          dsl.filter(_.isInstanceOf[DataStatus]).asInstanceOf[List[DataStatus]])
+        case dsl =>
+          val archiveList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
+          _sender ! ArchiveList(new Date,
+            InventoryStatus.Cached,
+            archiveList)
+      } onFailure {
+        case e: Throwable => _sender ! CryoError("Error while retrieving archive list", e)
       }
     case GetSnapshotList() =>
+      val _sender = sender
       Future.sequence(snapshots.map(cryoctx.datastore ? GetDataStatus(_))) map {
-        case dsl => sender ! SnapshotList(new Date,
-          InventoryStatus.Cached,
-          dsl.filter(_.isInstanceOf[DataStatus]).asInstanceOf[List[DataStatus]])
+        case dsl =>
+          val snapshotList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
+          _sender ! SnapshotList(new Date,
+            InventoryStatus.Cached,
+            snapshotList)
+      } onFailure {
+        case e: Throwable => _sender ! CryoError("Error while retrieving snapshot list", e)
       }
   }
 }
