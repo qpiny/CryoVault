@@ -23,12 +23,6 @@ object DataStatusMock {
   def apply(ds: DataStatus): DataStatusMock = DataStatusMock(ds.id, ds.description, ds.creationDate, ds.status.toString, ds.size, ds.checksum)
 }
 
-case class RestErrorResponse(context: RestResponseContext, message: String) extends RestResponse
-object RestErrorResponse {
-  def apply(context: RestRequestContext, error: Exception, code: Int = 500) =
-    new RestErrorResponse(context.responseContext(code, Map("error" -> error.getMessage)), ExceptionToStackTrace(error).toString)
-}
-
 case class GetSnapshotListRequest(context: RestRequestContext) extends RestRequest
 case class GetSnapshotListResponse(context: RestResponseContext, date: Date, status: String, snapshots: List[DataStatusMock]) extends RestResponse
 object GetSnapshotListRegistration extends RestRegistration {
@@ -40,7 +34,7 @@ object GetSnapshotListRegistration extends RestRegistration {
 }
 
 case class GetSnapshotRequest(context: RestRequestContext, snapshotId: String) extends RestRequest
-case class GetSnapshotResponse(context: RestResponseContext, snapshot: DataStatusMock) extends RestResponse
+case class GetSnapshotResponse(context: RestResponseContext, snapshot: Option[DataStatusMock]) extends RestResponse
 object GetSnapshotRegistration extends RestRegistration {
   val method = Method.GET
   val path = "/snapshots/{snapshotId}"
@@ -65,19 +59,21 @@ class CryoRest(val cryoctx: CryoContext) extends CryoActor {
   def receive = {
     case GetSnapshotListRequest(ctx) =>
       val _sender = sender
-      (cryoctx.inventory ? GetSnapshotList) map {
+      (cryoctx.inventory ? GetSnapshotList()) map {
         case SnapshotList(date, status, snapshots) =>
           _sender ! GetSnapshotListResponse(ctx.responseContext, date, status.toString, snapshots.map(DataStatusMock(_)))
       } onFailure {
-        case e: Exception => _sender ! RestErrorResponse(ctx, e)
+        case e: Exception => _sender ! GetSnapshotListResponse(ctx.responseContext(404), new Date, "Error", List.empty[DataStatusMock])
+        //RestErrorResponse(ctx, e)
       }
 
     case GetSnapshotRequest(ctx, snapshotId) =>
       val _sender = sender
       (cryoctx.datastore ? GetDataStatus(snapshotId)) map {
-        case d: DataStatus => _sender ! GetSnapshotResponse(ctx.responseContext, DataStatusMock(d))
+        case d: DataStatus => _sender ! GetSnapshotResponse(ctx.responseContext, Some(DataStatusMock(d)))
       } onFailure {
-        case e: Exception => _sender ! RestErrorResponse(ctx, e)
+        case e: Exception => _sender ! GetSnapshotResponse(ctx.responseContext(404), None)
+        //RestErrorResponse(ctx, e)
       }
 
 //    case GetSnapshotFilesRequest(ctx, snapshotId, path) =>
@@ -89,3 +85,9 @@ class CryoRest(val cryoctx: CryoContext) extends CryoActor {
 //      }
   }
 }
+
+//case class RestErrorResponse(context: RestResponseContext, message: String) extends RestResponse
+//object RestErrorResponse {
+//  def apply(context: RestRequestContext, error: Exception, code: Int = 500) =
+//    new RestErrorResponse(context.responseContext(code, Map("error" -> error.getMessage)), ExceptionToStackTrace(error).toString)
+//}
