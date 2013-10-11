@@ -33,10 +33,10 @@ object GetSnapshotListRegistration extends RestRegistration {
   val method = Method.GET
   val path = "/snapshots/list"
   val requestParams = Seq.empty
-  override val customFormats = Some(new Formats {
-    val dateFormat = DefaultFormats.lossless.dateFormat
-    override val typeHints = NoTypeHints
-  })
+  //override val customFormats = Some(new Formats {
+//    val dateFormat = DefaultFormats.lossless.dateFormat
+//    override val typeHints = NoTypeHints
+//  })
   def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef = CryoWeb.restProcessor
   override val description = "Retrieve list of snapshots"
 }
