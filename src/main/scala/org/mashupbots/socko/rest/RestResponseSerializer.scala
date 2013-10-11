@@ -224,6 +224,27 @@ case class ObjectDataSerializer(
   val forceContentType = true
 }
 
+case class EnumDataSerializer(
+  tpe: ru.Type,
+  responseDataTerm: ru.TermSymbol,
+  rm: ru.Mirror,
+  customFormats: Option[Formats]) extends NonVoidDataSerializer {
+
+  def serialize(data: Any): Array[Byte] = {
+    if (data == null) Array.empty
+    else {
+      implicit val formats = customFormats.getOrElse(json.formats(NoTypeHints))
+      val s = json.write(data.asInstanceOf[AnyRef])
+      s.getBytes(CharsetUtil.UTF_8)
+    }
+  }
+
+  val contentType = "application/json; charset=UTF-8"
+
+  val forceContentType = true
+}
+
+
 /**
  * Serialize a primitive into a UTF-8 JSON byte array
  *

@@ -16,23 +16,23 @@
 package org.mashupbots.socko.rest
 
 import scala.collection.mutable.HashMap
-import scala.reflect.runtime.{universe => ru}
+import scala.reflect.runtime.{ universe => ru }
 import org.json4s.NoTypeHints
-import org.json4s.native.{Serialization => json}
+import org.json4s.native.{ Serialization => json }
 import org.mashupbots.socko.infrastructure.CharsetUtil
 import org.mashupbots.socko.infrastructure.Logger
 import org.mashupbots.socko.events.EndPoint
 
 /**
  * Generated [[https://developers.helloreverb.com/swagger/ Swagger]] API documentation
- * 
+ *
  * @param lookup Map of path and swagger JSON associated with the path
  */
 case class SwaggerApiDocs(lookup: Map[String, Array[Byte]]) {
-  
+
   /**
    * Gets the JSON doc for the specified end point
-   * 
+   *
    * @param path Full path to the requested documentation. For example: `/api/api-docs.json/pet`.
    * @return JSON UTF-8, `None` if data for path not found
    */
@@ -50,7 +50,7 @@ object SwaggerApiDocs extends Logger {
    * URL path relative to the config `rootUrl` that will trigger the return of the API documentation
    */
   val urlPath = "/api-docs.json"
-    
+
   /**
    * Generates a Map of URL paths and the associated API documentation to be returned for these paths
    *
@@ -448,6 +448,17 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
     }
   }
 
+  private def registerEnumType(tpe: ru.Type) = {
+    tpe.asInstanceOf[ru.TypeRef]
+      .pre
+      .members
+      .view
+      .filter(_.isTerm)
+      .filterNot(_.isMethod)
+      .filterNot(_.isMethod)
+      .filterNot(_.isClass)
+      .toList // list of values (+ object ValueSet, object ValueOrdering)
+  }
   /**
    * Parse the type of a property and output the Swagger API details
    *
@@ -491,14 +502,18 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
    */
   private def locatePropertiesMetaData(tpe: ru.Type): Seq[RestPropertyMetaData] = {
     val cs = tpe.typeSymbol.asClass
-    val companionModuleSymbol = cs.companionSymbol.asModule
-    val moduleType = companionModuleSymbol.typeSignature
-    if (moduleType <:< typeRestModelMetaData) {
-      val moduleMirror = rm.reflectModule(companionModuleSymbol)
-      val companionObj = moduleMirror.instance.asInstanceOf[RestModelMetaData]
-      companionObj.modelProperties
-    } else {
-      Seq.empty
+    try {
+      val companionModuleSymbol = cs.companionSymbol.asModule
+      val moduleType = companionModuleSymbol.typeSignature
+      if (moduleType <:< typeRestModelMetaData) {
+        val moduleMirror = rm.reflectModule(companionModuleSymbol)
+        val companionObj = moduleMirror.instance.asInstanceOf[RestModelMetaData]
+        companionObj.modelProperties
+      } else {
+        Seq.empty
+      }
+    } catch {
+      case e: Exception => Seq.empty
     }
   }
 

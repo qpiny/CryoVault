@@ -21,14 +21,20 @@ case class ExceptionToStackTrace(e: Exception) {
   }
 }
 
-case class DataStatusMock(id: String, description: String, creationDate: Date, status: String, size: Long, checksum: String)
+case class DataStatusMock(id: String, description: String, creationDate: Date, status: EntryStatus.EntryStatus, size: Long, checksum: String)
 object DataStatusMock {
-  def apply(ds: DataStatus): DataStatusMock = DataStatusMock(ds.id, ds.description, ds.creationDate, ds.status.toString, ds.size, ds.checksum)
+  def apply(ds: DataStatus): DataStatusMock = DataStatusMock(ds.id, ds.description, ds.creationDate, ds.status, ds.size, ds.checksum)
 }
 
+case class SnapshotListTest(id: String, plop: Array[DataStatus], date: Date)
+object SnapshotListTest extends RestModelMetaData {
+    val modelProperties = Seq(
+      RestPropertyMetaData("id", "an id", Some(AllowableValuesList(List("A", "B", "C")))),
+      RestPropertyMetaData("plop", "hum ..."))
+  }
 //date: Date, status: String, snapshots: List[DataStatusMock]
 case class GetSnapshotListRequest(context: RestRequestContext) extends RestRequest
-case class GetSnapshotListResponse(context: RestResponseContext, snapshotList: Option[SnapshotList]) extends RestResponse
+case class GetSnapshotListResponse(context: RestResponseContext, snapshotList: Option[SnapshotListTest]) extends RestResponse
 object GetSnapshotListRegistration extends RestRegistration {
   val method = Method.GET
   val path = "/snapshots/list"
