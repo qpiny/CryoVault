@@ -20,7 +20,7 @@ import java.util.Date
 import scala.reflect.runtime.{universe => ru}
 
 import org.jboss.netty.handler.codec.http.HttpHeaders
-import org.json4s.{ NoTypeHints, Formats }
+import org.json4s.{ NoTypeHints, Formats, Serializer, TypeInfo, JValue }
 import org.json4s.native.{Serialization => json}
 import org.mashupbots.socko.events.HttpRequestEvent
 import org.mashupbots.socko.infrastructure.CharsetUtil
@@ -213,7 +213,13 @@ case class ObjectDataSerializer(
   def serialize(data: Any): Array[Byte] = {
     if (data == null) Array.empty
     else {
-      implicit val formats = customFormats.getOrElse(json.formats(NoTypeHints))
+      val baseFormat = customFormats.getOrElse(json.formats(NoTypeHints))
+      implicit val formats = baseFormat + new Serializer[Any] {
+        def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), Any] = {
+          
+        }
+    def serialize(implicit format: Formats): PartialFunction[Any, JValue]
+      }
       val s = json.write(data.asInstanceOf[AnyRef])
       s.getBytes(CharsetUtil.UTF_8)
     }

@@ -25,6 +25,7 @@ val tpe = ru.typeOf[MyClass].declaration(ru.newTermName("myMethod")).asMethod.pa
 
 
 tpe.asInstanceOf[ru.TypeRef].pre.members.view.filter(_.isTerm).filterNot(_.isMethod).filterNot(_.isMethod).filterNot(_.isClass).toList.head
+tpe.asInstanceOf[ru.TypeRef].pre.
 tpe <:< ru.typeOf[Enumeration]
 tpe.baseClasses
 ru.typeOf[EntryStatus.EntryStatus]

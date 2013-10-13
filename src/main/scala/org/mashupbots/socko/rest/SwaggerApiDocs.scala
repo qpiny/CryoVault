@@ -421,6 +421,8 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
         thisType.members
           .filter(s => s.isTerm && !s.isMethod && !s.isMacro)
           .map(s => {
+            // if s is enum or option[enum]
+            // SwaggerModelProperty("string", description, termRequired, allowableValues, None))
             val dot = s.fullName.lastIndexOf('.')
             val termName = if (dot > 0) s.fullName.substring(dot + 1) else s.fullName
             val required = !(s.typeSignature <:< SwaggerReflector.optionAnyRefType)
@@ -433,7 +435,13 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
               if (metaData.isEmpty) None
               else if (metaData.get.description.isEmpty) None
               else Some(metaData.get.description)
-            val allowableValues: Option[AllowableValues] = if (metaData.isEmpty) None else metaData.get.allowableValues
+            val allowableValues: Option[AllowableValues] =
+              if (metaData.isEmpty) {
+                if (isEnumeration(s.typeSignature)) Some(enumerationValues(s.typeSignature))
+                else None
+              } else {
+                metaData.get.allowableValues
+              }
 
             // Return name-value for map
             (termName, SwaggerModelProperty(termType, description, termRequired, allowableValues, termItems))
@@ -448,8 +456,9 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
     }
   }
 
+  @Deprecated
   private def registerEnumType(tpe: ru.Type) = {
-    tpe.asInstanceOf[ru.TypeRef]
+    val allowableValues = tpe.asInstanceOf[ru.TypeRef]
       .pre
       .members
       .view
@@ -458,6 +467,12 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
       .filterNot(_.isMethod)
       .filterNot(_.isClass)
       .toList // list of values (+ object ValueSet, object ValueOrdering)
+      .map(_.name.decoded)
+    //tpe.asInstanceOf[ru.TypeRef].pre.members.view.filter(_.isTerm).filterNot(_.isMethod).filterNot(_.isMethod).filterNot(_.isClass).toList
+    for (value <- allowableValues) {
+      val model = SwaggerModel(value, None, Map.empty[String, SwaggerModelProperty])
+      models.put(value, model)
+    }
   }
   /**
    * Parse the type of a property and output the Swagger API details
@@ -469,7 +484,9 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
    *   returns an empty map of container content type.
    */
   private def parsePropertyType(tpe: ru.Type, subModels: collection.mutable.Set[ru.Type]): (String, Map[String, String]) = {
-    if (SwaggerReflector.isPrimitive(tpe)) {
+    if (isEnumeration(tpe)) {
+      ("string", Map.empty[String, String])
+    } else if (SwaggerReflector.isPrimitive(tpe)) {
       // Primitive
       (SwaggerReflector.dataType(tpe), Map.empty[String, String])
     } else {
@@ -481,7 +498,9 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
       } else {
         // Container
         val contentType = SwaggerReflector.containerContentType(tpe)
-        if (SwaggerReflector.isPrimitive(contentType)) {
+        if (isEnumeration(contentType)) {
+          (containerType, Map[String, String]("type" -> "string"))
+        } else if (SwaggerReflector.isPrimitive(contentType)) {
           // Container of primitives
           (containerType, Map[String, String]("type" -> SwaggerReflector.dataType(contentType)))
         } else {
@@ -517,13 +536,21 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
     }
   }
 
+  private def enumerationValues(tpe: ru.Type) = {
+    val list = rm.reflectModule(tpe.asInstanceOf[ru.TypeRef].pre.typeSymbol.asClass.companionSymbol.asModule).instance.asInstanceOf[Enumeration].values.toList.map(_.toString)
+    AllowableValuesList(list)
+  }
+  
+  private def isEnumeration(tpe: ru.Type): Boolean = {
+    tpe.declaration(ru.newTermName("scala$Enumeration$$outerEnum")) != ru.NoSymbol
+  }
   /**
    * Determines if we need to register a type as a model. Primitives are ignored.
    *
    * @param tpe Type to register
    */
   def register(tpe: ru.Type): Unit = {
-    if (SwaggerReflector.isPrimitive(tpe))
+    if (SwaggerReflector.isPrimitive(tpe) || isEnumeration(tpe))
       // Ignore primitive
       Unit
     else {
@@ -534,11 +561,10 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
       } else {
         // Container type
         val contentType = SwaggerReflector.containerContentType(tpe)
-        if (SwaggerReflector.isPrimitive(contentType))
+        if (SwaggerReflector.isPrimitive(contentType) || isEnumeration(contentType))
           // Ignore primitive containers
           Unit
-        else
-          // Register Container of complex types
+        else // Register Container of complex types
           registerComplexType(contentType)
       }
     }
