@@ -17,11 +17,11 @@ package org.mashupbots.socko.rest
 
 import java.util.Date
 
-import scala.reflect.runtime.{universe => ru}
+import scala.reflect.runtime.{ universe => ru }
 
 import org.jboss.netty.handler.codec.http.HttpHeaders
-import org.json4s.{ NoTypeHints, Formats, Serializer, TypeInfo, JValue }
-import org.json4s.native.{Serialization => json}
+import org.json4s.{ NoTypeHints, Formats, Serializer, TypeInfo, JValue, JString }
+import org.json4s.native.{ Serialization => json }
 import org.mashupbots.socko.events.HttpRequestEvent
 import org.mashupbots.socko.infrastructure.CharsetUtil
 import org.mashupbots.socko.infrastructure.Logger
@@ -215,10 +215,16 @@ case class ObjectDataSerializer(
     else {
       val baseFormat = customFormats.getOrElse(json.formats(NoTypeHints))
       implicit val formats = baseFormat + new Serializer[Any] {
-        def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), Any] = {
-          
+        def deserialize(implicit format: Formats) = new PartialFunction[(TypeInfo, JValue), Any] {
+          def isDefinedAt(a: (TypeInfo, JValue)) = {
+            println(s"ObjectDataSerializer.serialize.deserialize(${a._1}, ${a._2})")
+            false
+          }
+          def apply(a: (TypeInfo, JValue)) = JString("")
         }
-    def serialize(implicit format: Formats): PartialFunction[Any, JValue]
+        def serialize(implicit format: Formats) = {
+          case e: Enumeration$Val => JString(e.toString)
+        }
       }
       val s = json.write(data.asInstanceOf[AnyRef])
       s.getBytes(CharsetUtil.UTF_8)
@@ -249,7 +255,6 @@ case class EnumDataSerializer(
 
   val forceContentType = true
 }
-
 
 /**
  * Serialize a primitive into a UTF-8 JSON byte array

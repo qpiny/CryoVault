@@ -29,12 +29,14 @@ sealed class JobStatus(message: String) {
   val isInProgress = false
   val isSucceeded = false
   val isFailed = false
+  val isFinalized = false
 }
 case class InProgress(message: String) extends JobStatus(message) { override val isInProgress = true }
 case class Succeeded(message: String) extends JobStatus(message) { override val isSucceeded = true }
 case class Failed(message: String) extends JobStatus(message) { override val isFailed = true }
+case class Finalized(message: String) extends JobStatus(message) { override val isFinalized = true }
 
-sealed abstract class Job {
+sealed abstract class Job extends ManagerResponse {
   val id: String
   val description: String
   val creationDate: Date
@@ -62,6 +64,7 @@ object Job {
     case "InProgress" => InProgress(message)
     case "Succeeded" => Succeeded(message)
     case "Failed" => Failed(message)
+    case "Finalized" => Finalized(message)
   }
 
   def apply(j: GlacierJobDescription): Job = {
@@ -70,7 +73,7 @@ object Job {
         new ArchiveJob(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
-          Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()),//DateUtil.fromISOString(j.getCreationDate), // FIXME
+          Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()), //DateUtil.fromISOString(j.getCreationDate), // FIXME
           getStatus(j.getStatusCode, j.getStatusMessage),
           Json.dateFormat.parse(j.getCompletionDate()),
           j.getArchiveId)
@@ -99,14 +102,14 @@ case class UpdateJobList(jobs: List[Job]) extends ManagerRequest
 case class JobListUpdated(jobs: List[Job]) extends ManagerResponse
 case class GetJobList() extends ManagerRequest
 case class JobList(jobs: List[Job]) extends ManagerResponse
-case class FinalizeJob(jobIds: List[String]) extends ManagerRequest
-object FinalizeJob { def apply(jobIds: String*): FinalizeJob = FinalizeJob(jobIds.toList) }
-case class JobFinalized(jobIds: List[String]) extends ManagerResponse
+case class GetJob(jobId: String) extends ManagerRequest
+case class JobNotFound(jobId: String, message: String, cause: Throwable = null) extends ManagerError(message, cause)
+case class FinalizeJob(jobId: String) extends ManagerRequest
 
 class Manager(val cryoctx: CryoContext) extends CryoActor {
   val attributeBuilder = CryoAttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
-  val finalizedJobs = HashSet.empty[String]
+  val finalizedJobs = attributeBuilder.map("finalizedJobs", Map[String, Job]())
   var jobUpdated = Promise[Unit]() /* var instead of val for test */
 
   override def preStart = {
@@ -126,7 +129,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
         throw CryoError("Fail to get finalizedJobs", o)
     } map {
       case DataRead(_, _, buffer) =>
-        finalizedJobs ++= Serialization.read[List[String]](buffer.decodeString("UTF-8"))
+        finalizedJobs ++= Serialization.read[List[Job]](buffer.decodeString("UTF-8")).map(j => j.id -> j)
       case o: Any =>
         throw CryoError("Fail to read finalizedJobs", o)
     } onComplete {
@@ -142,7 +145,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       implicit val formats = Json
       cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
-        case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs))))
+        case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs.values))))
         case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
       } flatMap {
         case DataWritten(id, _, _) => cryoctx.datastore ? CloseData(id)
@@ -181,9 +184,28 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
         jobUpdated.future.onSuccess { case _ => _sender ! JobList(jobs.values.toList) }
       }
 
-    case FinalizeJob(jobIds) =>
-      jobs --= jobIds
-      finalizedJobs ++= jobIds
-      sender ! JobFinalized(jobIds)
+    case FinalizeJob(jobId) =>
+      val job = jobs.remove(jobId).map {
+        case j: InventoryJob => j.copy(status = Finalized("Finalized"))
+        case j: ArchiveJob => j.copy(status = Finalized("Finalized"))
+      }
+
+      job match {
+        case Some(j) =>
+          finalizedJobs += j.id -> j
+          sender ! j
+        case None =>
+          finalizedJobs.get(jobId) match {
+            case Some(j) => sender ! j
+            case None => sender ! JobNotFound(jobId, s"Job ${jobId} is not found and can't be finalized") 
+          }
+      }
+
+    case GetJob(jobId) =>
+      jobs.get(jobId).orElse(finalizedJobs.get(jobId)) match {
+        case Some(j) => sender ! j
+        case None => sender ! JobNotFound(jobId, s"Job ${jobId} is not found")
+      }
+
   }
 }

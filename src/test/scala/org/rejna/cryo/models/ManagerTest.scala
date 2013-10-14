@@ -70,7 +70,7 @@ class ManagerTest extends TestKit(ActorSystem())
   }
   
   it should "ignore jobs that are already finished" in {
-    manager.finalizedJobs += "archiveJobId"
+    manager.finalizedJobs += "archiveJobId" -> ArchiveJob("archiveJobId", "description of archiveJob", new Date, Finalized("Finalized"), None, "ArchiveId")
     managerRef ! AddJobs(job2)
     expectMsg(JobsAdded(Nil))
     assert(manager.jobs == Map.empty[String, Job])
@@ -104,10 +104,10 @@ class ManagerTest extends TestKit(ActorSystem())
   
   it should "finalize jobs" in {
     manager.jobs ++= jobList.map(j => j.id -> j)
-    managerRef ! FinalizeJob("archiveJobId", "otherId")
-    expectMsg(JobFinalized("archiveJobId" :: "otherId" :: Nil))
-    assert(manager.jobs == Map(job1.id -> job1))
-    assert(manager.finalizedJobs == Set("archiveJobId", "otherId"))
+    managerRef ! FinalizeJob(job1.id)
+    expectMsg(job1.copy(status = Finalized("Finalized")))
+    assert(manager.jobs == Map(job2.id -> job1))
+    assert(manager.finalizedJobs == Map(job1.id -> job1))
     assert(manager.jobUpdated.isCompleted == false)
   }
 }

@@ -16,7 +16,7 @@ import org.rejna.cryo.models._
 import InventoryStatus._
 
 case class GetSnapshotListRequest(context: RestRequestContext) extends RestRequest
-case class GetSnapshotListResponse(context: RestResponseContext, snapshotList: Option[SnapshotList]) extends RestResponse
+case class GetSnapshotListResponse(context: RestResponseContext, snapshotList: List[DataStatus]) extends RestResponse
 object GetSnapshotListRegistration extends RestRegistration {
   val method = Method.GET
   val path = "/snapshots/list"
@@ -106,9 +106,9 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
     case GetSnapshotListRequest(ctx) =>
       val _sender = sender
       (cryoctx.inventory ? GetSnapshotList()) onComplete {
-        case Success(sl: SnapshotList) => _sender ! GetSnapshotListResponse(ctx.responseContext, Some(sl))
-        case Success(o) => _sender ! GetSnapshotListResponse(ctx.responseContext(501, Map("message" -> o.toString)), None)
-        case Failure(e) => _sender ! GetSnapshotListResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), None)
+        case Success(sl: SnapshotList) => _sender ! GetSnapshotListResponse(ctx.responseContext, sl.snapshots)
+        case Success(o) => _sender ! GetSnapshotListResponse(ctx.responseContext(501, Map("message" -> o.toString)), List.empty[DataStatus])
+        case Failure(e) => _sender ! GetSnapshotListResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), List.empty[DataStatus])
       }
       context.stop(self)
 
@@ -117,8 +117,8 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
       (cryoctx.datastore ? GetDataStatus(snapshotId)) onComplete {
         case Success(d: DataStatus) => _sender ! GetSnapshotResponse(ctx.responseContext, Some(d))
         case Success(DataNotFoundError) => _sender ! GetSnapshotResponse(ctx.responseContext(404), None)
-        case Success(o) => _sender ! GetSnapshotListResponse(ctx.responseContext(501, Map("message" -> o.toString)), None)
-        case Failure(e) => _sender ! GetSnapshotListResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), None)
+        case Success(o) => _sender ! GetSnapshotResponse(ctx.responseContext(501, Map("message" -> o.toString)), None)
+        case Failure(e) => _sender ! GetSnapshotResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), None)
       }
       context.stop(self)
 

@@ -2,6 +2,8 @@ package org.rejna.cryo.models
 
 import akka.actor.{ Actor, Stash }
 
+import java.util.Date
+
 class ManagerMock(val cryoctx: CryoContext) extends Actor with Stash {
   
   def receive = {
@@ -21,8 +23,8 @@ class ManagerMock(val cryoctx: CryoContext) extends Actor with Stash {
       sender ! JobListUpdated(jobs)
     case GetJobList() =>
       sender ! JobList(List.empty[Job])
-    case FinalizeJob(jobIds: List[String]) =>
-      sender ! JobFinalized(jobIds)
+    case FinalizeJob(jobId: String) =>
+      sender ! InventoryJob(jobId, "", new Date, Finalized("Finalized"), None)
 
   }
 }

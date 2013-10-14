@@ -105,7 +105,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
             case t: Throwable => log.error(s"Fail to download job ${job.id}", t)
           }
           (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
-            case Success(JobFinalized(_)) => log.info(s"Data ${dataId} download job finalized")
+            case Success(j: Job) => log.info(s"Data ${dataId} download job finalized")
             case o: Any => log.error(CryoError(s"Fail to finalize data ${dataId}", o))
           }
       }
