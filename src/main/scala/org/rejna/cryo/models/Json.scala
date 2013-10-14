@@ -78,15 +78,16 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
         .getOrElse { throw MappingException(s"Invalid status: ${statusCode}", null) }
       json \ "Action" match {
         case JString("InventoryRetrieval") =>
-          new InventoryJob(
+          new Job(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extractOpt[String].getOrElse(""),
             (json \ "CreationDate").extract[Date],
             jobStatus,
-            (json \ "CompletionDate").extractOpt[Date])
+            (json \ "CompletionDate").extractOpt[Date],
+            "inventory")
         case JString("ArchiveRetrieval") =>
           val statusCode = (json \ "StatusCode").extract[String]
-          new ArchiveJob(
+          new Job(
             (json \ "JobId").extract[String],
             (json \ "JobDescription").extractOpt[String].getOrElse(""),
             (json \ "CreationDate").extract[Date],
@@ -99,22 +100,14 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
   }
 
   def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
-    case j: InventoryJob =>
+    case j: Job =>
       ("id" -> j.id) ~
         ("jobType" -> "InventoryJob") ~
         ("description" -> j.description) ~
         ("creationDate" -> Extraction.decompose(j.creationDate)) ~
         ("status" -> j.status.toString) ~
-        ("completedDate" -> Extraction.decompose(j.completedDate))
-    case j: ArchiveJob =>
-      ("id" -> j.id) ~
-        ("jobType" -> "ArchiveJob") ~
-        ("description" -> j.description) ~
-        ("creationDate" -> Extraction.decompose(j.creationDate)) ~
-        ("status" -> j.status.toString) ~
         ("completedDate" -> Extraction.decompose(j.completedDate)) ~
-        ("archiveId" -> j.archiveId)
-
+        ("objectId" -> j.objectId)
   }
 }
 object JsonNotificationSerialization extends Serializer[NotificationMessage] with LoggingClass {

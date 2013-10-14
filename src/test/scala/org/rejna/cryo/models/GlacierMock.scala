@@ -19,18 +19,19 @@ class GlacierMock(cryoctx: CryoContext) extends Actor with Stash {
       sender ! JobListRefreshed()
     case RefreshInventory() =>
       sender ! RefreshInventoryRequested(
-        InventoryJob("RefreshInventoryJobId",
+        Job("RefreshInventoryJobId",
           "Inventory refresh request job",
           new Date,
-          InProgress("in progress"),
-          None))
+          InProgress(),
+          None,
+          "inventory"))
     case DownloadArchive(archiveId: String) =>
       sender ! DownloadArchiveRequested(
-        ArchiveJob(
+        Job(
           "DownloadArchiveJobId",
           "Archive download request job",
           new Date,
-          InProgress("in progress"),
+          InProgress(),
           None,
           archiveId))
     case UploadData(id: String) =>

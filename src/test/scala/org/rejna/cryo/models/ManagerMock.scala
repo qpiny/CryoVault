@@ -24,7 +24,7 @@ class ManagerMock(val cryoctx: CryoContext) extends Actor with Stash {
     case GetJobList() =>
       sender ! JobList(List.empty[Job])
     case FinalizeJob(jobId: String) =>
-      sender ! InventoryJob(jobId, "", new Date, Finalized("Finalized"), None)
+      sender ! Job(jobId, "", new Date, Finalized("Finalized"), None, "inventory")
 
   }
 }

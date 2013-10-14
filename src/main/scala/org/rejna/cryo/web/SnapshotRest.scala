@@ -52,7 +52,7 @@ object GetSnapshotFilesRegistration extends RestRegistration {
 }
 
 case class GetSnapshotFileFilterRequest(context: RestRequestContext, snapshotId: String, path: String) extends RestRequest
-case class GetSnapshotFileFilterResponse(context: RestResponseContext, filter: String) extends RestResponse
+case class GetSnapshotFileFilterResponse(context: RestResponseContext, filter: Option[String]) extends RestResponse
 object GetSnapshotFileFilterRegistration extends RestRegistration {
   val method = Method.GET
   val path = "/snapshots/{snapshotId}/filter/{path}"
@@ -75,7 +75,7 @@ object DeleteSnapshotFileFilterRegistration extends RestRegistration {
   override val description = "Remove filter of the specified path"
 }
 
-case class AddSnapshotFileFilterRequest(context: RestRequestContext, snapshotId: String, path: String) extends RestRequest
+case class AddSnapshotFileFilterRequest(context: RestRequestContext, snapshotId: String, path: String, filter: FileFilter) extends RestRequest
 case class AddSnapshotFileFilterResponse(context: RestResponseContext) extends RestResponse
 object AddSnapshotFileFilterRegistration extends RestRegistration {
   val method = Method.POST
@@ -88,7 +88,7 @@ object AddSnapshotFileFilterRegistration extends RestRegistration {
   override val description = "Remove filter of the specified path"
 }
 
-case class UpdateSnapshotFileFilterRequest(context: RestRequestContext, snapshotId: String, path: String) extends RestRequest
+case class UpdateSnapshotFileFilterRequest(context: RestRequestContext, snapshotId: String, path: String, filter: FileFilter) extends RestRequest
 case class UpdateSnapshotFileFilterResponse(context: RestResponseContext) extends RestResponse
 object UpdateSnapshotFileFilterRegistration extends RestRegistration {
   val method = Method.PUT
@@ -99,6 +99,16 @@ object UpdateSnapshotFileFilterRegistration extends RestRegistration {
     Nil
   def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef = CryoWeb.newRestProcessor(classOf[SnapshotRestProcessor])
   override val description = "Remove filter of the specified path"
+}
+
+case class CreateSnapshotRequest(context: RestRequestContext) extends RestRequest
+case class CreateSnapshotResponse(context: RestResponseContext, snapshotId: Option[String]) extends RestResponse
+object CreateSnapshotRegistration extends RestRegistration {
+  val method = Method.POST
+  val path = "/snapshots"
+    val requestParams = Nil
+    def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef = CryoWeb.newRestProcessor(classOf[SnapshotRestProcessor])
+    override val description = "Create a new snapshot"
 }
 
 class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
@@ -131,5 +141,50 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
         case Failure(e) => _sender ! GetSnapshotFilesResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), List.empty[FileElement])
       }
       context.stop(self)
+
+    case GetSnapshotFileFilterRequest(ctx, snapshotId, path) =>
+      val _sender = sender
+      (cryoctx.inventory ? SnapshotGetFilter(snapshotId, path)) onComplete {
+        case Success(SnapshotFilter(_, _, filter)) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext, filter.map(_.toString))
+        case Success(SnapshotNotFound) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext(404), None)
+        case Success(o) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)), None)
+        case Failure(e) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), None)
+      }
+      context.stop(self)
+
+    case DeleteSnapshotFileFilterRequest(ctx, snapshotId, path) =>
+      val _sender = sender
+      (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, path, NoOne)) onComplete {
+        case Success(FilterUpdated()) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext)
+        case Success(SnapshotNotFound) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext(404))
+        case Success(o) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)))
+        case Failure(e) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)))
+      }
+
+    case AddSnapshotFileFilterRequest(ctx, snapshotId, path, filter) =>
+      val _sender = sender
+      (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, path, filter)) onComplete {
+        case Success(FilterUpdated()) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext)
+        case Success(SnapshotNotFound) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext(404))
+        case Success(o) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)))
+        case Failure(e) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)))
+      }
+
+    case UpdateSnapshotFileFilterRequest(ctx, snapshotId, path, filter) =>
+      val _sender = sender
+      (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, path, filter)) onComplete {
+        case Success(FilterUpdated()) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext)
+        case Success(SnapshotNotFound) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext(404))
+        case Success(o) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)))
+        case Failure(e) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)))
+      }
+      
+    case CreateSnapshotRequest(ctx) =>
+      val _sender = sender
+      (cryoctx.inventory ? CreateSnapshot()) onComplete {
+        case Success(SnapshotCreated(snapshotId)) => _sender ! CreateSnapshotResponse(ctx.responseContext, Some(snapshotId))
+        case Success(o) => _sender ! CreateSnapshotResponse(ctx.responseContext(501, Map("message" -> o.toString)), None)
+        case Failure(e) => _sender ! CreateSnapshotResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), None)
+      }
   }
 }

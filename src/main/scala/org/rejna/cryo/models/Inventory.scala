@@ -183,7 +183,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         } flatMap { _ =>
           (cryoctx.manager ? GetJobList())
         } flatMap {
-          case JobList(jl) if !jl.exists(_.isInstanceOf[InventoryJob]) =>
+          case JobList(jl) if !jl.exists(_.objectId == "inventory") =>
             (cryoctx.cryo ? RefreshInventory()) map {
               case RefreshInventoryRequested(job) =>
                 log.info(s"Inventory update requested (${job.id})")

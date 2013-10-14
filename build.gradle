@@ -100,7 +100,7 @@ tasks.withType(ScalaCompile) {
 	scalaCompileOptions.deprecation = true
 	
 	scalaCompileOptions.useCompileDaemon = false
-	scalaCompileOptions.useAnt = true
+	scalaCompileOptions.useAnt = false
 	
 	
 	configure(scalaCompileOptions.forkOptions) {

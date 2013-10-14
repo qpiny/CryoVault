@@ -26,17 +26,18 @@ class ManagerTest extends TestKit(ActorSystem())
   val managerRef = TestActorRef[Manager](Props(classOf[Manager], cryoctx))
   val manager = managerRef.underlyingActor
 
-  val job1 = InventoryJob(
+  val job1 = Job(
     "inventoryJobId",
     "Inventory job",
     new Date,
-    InProgress("In progress"),
-    None)
-  val job2 = ArchiveJob(
+    InProgress(),
+    None,
+    "inventory")
+  val job2 = Job(
     "archiveJobId",
     "Archive job",
     new Date,
-    InProgress("In progress"),
+    InProgress(),
     None,
     "archiveId")
   val jobList = job1 :: job2 :: Nil
@@ -55,11 +56,11 @@ class ManagerTest extends TestKit(ActorSystem())
   }
 
   it should "update an already submited job" in {
-    val updatedJob2 = ArchiveJob(
+    val updatedJob2 = Job(
       "archiveJobId",
       "Description is changed",
       new Date,
-      Succeeded("job is ok"),
+      Succeeded(),
       Some(new Date),
       "archiveId")
     manager.jobs ++= jobList.map(j => j.id -> j)
@@ -70,7 +71,7 @@ class ManagerTest extends TestKit(ActorSystem())
   }
   
   it should "ignore jobs that are already finished" in {
-    manager.finalizedJobs += "archiveJobId" -> ArchiveJob("archiveJobId", "description of archiveJob", new Date, Finalized("Finalized"), None, "ArchiveId")
+    manager.finalizedJobs += "archiveJobId" -> Job("archiveJobId", "description of archiveJob", new Date, Finalized(), None, "ArchiveId")
     managerRef ! AddJobs(job2)
     expectMsg(JobsAdded(Nil))
     assert(manager.jobs == Map.empty[String, Job])
@@ -105,9 +106,9 @@ class ManagerTest extends TestKit(ActorSystem())
   it should "finalize jobs" in {
     manager.jobs ++= jobList.map(j => j.id -> j)
     managerRef ! FinalizeJob(job1.id)
-    expectMsg(job1.copy(status = Finalized("Finalized")))
-    assert(manager.jobs == Map(job2.id -> job1))
-    assert(manager.finalizedJobs == Map(job1.id -> job1))
+    expectMsg(job1.copy(status = Finalized()))
+    assert(manager.jobs == Map(job2.id -> job2))
+    assert(manager.finalizedJobs == Map(job1.id -> job1.copy(status = Finalized())))
     assert(manager.jobUpdated.isCompleted == false)
   }
 }

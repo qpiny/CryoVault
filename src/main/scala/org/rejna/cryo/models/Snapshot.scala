@@ -43,8 +43,8 @@ case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) ex
 case class SnapshotGetFiles(id: String, path: String) extends SnapshotRequest
 case class SnapshotFiles(id: String, path: String, files: List[FileElement])
 case class FileElement(name: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
-//case class FileElement(file: Path, count: Int, size: Long, filter: Option[FileFilter])
-//new FileElement(f, fileSize.size, fileSize.sum, fileFilters.get(filePath.toString.replace(java.io.File.separatorChar, '/')))
+case class SnapshotGetFilter(id: String, path: String)
+case class SnapshotFilter(id: String, path: String, filter: Option[FileFilter])
 case class FilterUpdated() extends SnapshotResponse
 case class SnapshotUpload(id: String) extends SnapshotRequest
 case class SnapshotUploaded(id: String) extends SnapshotResponse
@@ -93,7 +93,10 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
     case SnapshotUpdateFilter(id, file, filter) =>
       val path = cryoctx.filesystem.getPath(file)
       if (cryoctx.baseDirectory.resolve(path).normalize.startsWith(cryoctx.baseDirectory)) {
-        fileFilters += path -> filter
+        if (filter == NoOne)
+          fileFilters -= path
+        else
+          fileFilters += path -> filter
         sender ! FilterUpdated()
       } else {
         sender ! DirectoryTraversalError(path.toString)
@@ -150,6 +153,9 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
         case e: CryoError => _sender ! e
         case o: Any => _sender ! CryoError("Unexpected message", o)
       }
+
+    case SnapshotGetFilter(id, path) =>
+      sender ! SnapshotFilter(id, path, fileFilters.get(cryoctx.filesystem.getPath(path)))
 
     case a: Any => log.error(s"unknown message : ${a}")
   }

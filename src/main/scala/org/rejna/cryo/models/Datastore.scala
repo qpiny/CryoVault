@@ -91,7 +91,7 @@ class Datastore(val cryoctx: CryoContext) extends CryoActor {
         do { i = UUID.randomUUID.toString }
         while (repository contains i)
         i
-      }
+      } // FIXME ID collision is still possible
       repository.get(id) match {
         case Some(d: DataEntryCreated) =>
           d.close

@@ -22,6 +22,7 @@ object JobStatus {
     case "InProgress" => Some(InProgress(message))
     case "Succeeded" => Some(Succeeded(message))
     case "Failed" => Some(Failed(message))
+    case "Finalized" => Some(Finalized(message))
     case _ => None
   }
 }
@@ -31,33 +32,17 @@ sealed class JobStatus(message: String) {
   val isFailed = false
   val isFinalized = false
 }
-case class InProgress(message: String) extends JobStatus(message) { override val isInProgress = true }
-case class Succeeded(message: String) extends JobStatus(message) { override val isSucceeded = true }
-case class Failed(message: String) extends JobStatus(message) { override val isFailed = true }
-case class Finalized(message: String) extends JobStatus(message) { override val isFinalized = true }
+case class InProgress(message: String = "In progress") extends JobStatus(message) { override val isInProgress = true }
+case class Succeeded(message: String = "Succeeded") extends JobStatus(message) { override val isSucceeded = true }
+case class Failed(message: String = "Failed") extends JobStatus(message) { override val isFailed = true }
+case class Finalized(message: String = "Finalized") extends JobStatus(message) { override val isFinalized = true }
 
-sealed abstract class Job extends ManagerResponse {
-  val id: String
-  val description: String
-  val creationDate: Date
-  val status: JobStatus
-  val completedDate: Option[Date]
-}
-
-case class InventoryJob(
-  id: String,
-  description: String,
-  creationDate: Date,
-  status: JobStatus,
-  completedDate: Option[Date]) extends Job
-
-case class ArchiveJob(
-  id: String,
-  description: String,
-  creationDate: Date,
-  status: JobStatus,
-  completedDate: Option[Date],
-  val archiveId: String) extends Job
+case class Job(id: String,
+    description: String,
+    creationDate: Date,
+    status: JobStatus,
+    completedDate: Option[Date],
+    objectId: String) extends ManagerResponse
 
 object Job {
   def getStatus(status: String, message: String) = status match {
@@ -70,7 +55,7 @@ object Job {
   def apply(j: GlacierJobDescription): Job = {
     j.getAction match {
       case "ArchiveRetrieval" =>
-        new ArchiveJob(
+        new Job(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
           Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()), //DateUtil.fromISOString(j.getCreationDate), // FIXME
@@ -78,12 +63,13 @@ object Job {
           Json.dateFormat.parse(j.getCompletionDate()),
           j.getArchiveId)
       case "InventoryRetrieval" =>
-        new InventoryJob(
+        new Job(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
           Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()),
           getStatus(j.getStatusCode, j.getStatusMessage),
-          Json.dateFormat.parse(j.getCompletionDate())) //Option(j.getCompletionDate).map(DateUtil.fromISOString))
+          Json.dateFormat.parse(j.getCompletionDate()),  //Option(j.getCompletionDate).map(DateUtil.fromISOString))
+          "inventory")
     }
   }
 }
@@ -185,10 +171,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
       }
 
     case FinalizeJob(jobId) =>
-      val job = jobs.remove(jobId).map {
-        case j: InventoryJob => j.copy(status = Finalized("Finalized"))
-        case j: ArchiveJob => j.copy(status = Finalized("Finalized"))
-      }
+      val job = jobs.remove(jobId).map(_.copy(status = Finalized()))
 
       job match {
         case Some(j) =>

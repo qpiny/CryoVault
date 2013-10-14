@@ -10,7 +10,10 @@
 		<div class="row-fluid">
 			<div id="sidebar" class="{{sidebarStatus}}">
 				<accordion close-others="false">
-					<accordion-group heading="Snapshots">
+					<accordion-group>
+						<accordion-heading>
+						Snapshots<button class="btn">Add</button>
+						</accordion-heading>
 						<ul class="nav nav-tabs nav-stacked">
 							<li x-ng-repeat="snapshot in snapshots" x-ng-class="{active: snapshot.id==params.snapshotId}"">
 								<a href="#/snapshots/{{snapshot.id}}">

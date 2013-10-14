@@ -27,9 +27,9 @@ class CryoResponse extends Response
 case class RefreshJobList() extends CryoRequest
 case class JobListRefreshed() extends CryoResponse
 case class RefreshInventory() extends CryoRequest
-case class RefreshInventoryRequested(job: InventoryJob) extends CryoResponse
+case class RefreshInventoryRequested(job: Job) extends CryoResponse
 case class DownloadArchive(archiveId: String) extends CryoRequest
-case class DownloadArchiveRequested(job: ArchiveJob) extends CryoResponse
+case class DownloadArchiveRequested(job: Job) extends CryoResponse
 case class UploadData(id: String) extends CryoRequest
 case class DataUploaded(id: String) extends CryoResponse
 
@@ -52,8 +52,7 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
 
     case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
       val succeededJobs = addedJobs.asInstanceOf[List[(String, Job)]].flatMap {
-        case (_, a: ArchiveJob) if a.status.isSucceeded => Some(a.archiveId -> a)
-        case (_, i: InventoryJob) if i.status.isSucceeded => Some("inventory" -> i)
+        case (_, j: Job) if j.status.isSucceeded => Some(j.objectId -> j)
         case _: Any => None
       } toMap // remove duplicates
 
@@ -136,11 +135,11 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
       } map {
         case jobId =>
           log.debug("initiateInventoryJob done")
-          new InventoryJob(jobId, "", new Date, InProgress(""), None)
+          new Job(jobId, "", new Date, InProgress(), None, "inventory")
       } flatMap {
         case job => cryoctx.manager ? AddJobs(job)
       } onComplete {
-        case Success(JobsAdded(job)) => _sender ! RefreshInventoryRequested(job.head.asInstanceOf[InventoryJob])
+        case Success(JobsAdded(job)) => _sender ! RefreshInventoryRequested(job.head.asInstanceOf[Job])
         case o: Any => _sender ! CryoError("Fail to add refresh inventory job", o)
       }
 
@@ -157,12 +156,9 @@ class Glacier(val cryoctx: CryoContext) extends CryoActor {
                 .withSNSTopic(snsTopicARN))).getJobId
       } flatMap {
         case jobId =>
-          cryoctx.manager ? AddJobs(new ArchiveJob(jobId, "", new Date, InProgress(""), None, archiveId))
+          cryoctx.manager ? AddJobs(new Job(jobId, "", new Date, InProgress(), None, archiveId))
       } onComplete {
-            case Success(JobsAdded(jobs)) => jobs.map {
-              case job: ArchiveJob => _sender ! DownloadArchiveRequested(job)
-              case o: Any => _sender ! CryoError("Fail to add download archive job", o)
-            }
+            case Success(JobsAdded(jobs)) => jobs.map(job => _sender ! DownloadArchiveRequested(job))
             case o: Any => _sender ! CryoError("Fail to add download archive job", o)
       }
 
