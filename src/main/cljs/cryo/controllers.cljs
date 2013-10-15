@@ -5,7 +5,7 @@
   (doseq [[k v] (partition 2 kvs)]
     (aset obj (name k) v)))
 
-(defn ^:export mainCtrl [$scope $routeParams SnapshotSrv ArchiveSrv JobSrv]
+(defn ^:export mainCtrl [$scope $routeParams SnapshotSrv ArchiveSrv JobSrv socket]
   (oset! $scope
          :params $routeParams
          :snapshots (.query SnapshotSrv)
@@ -17,12 +17,16 @@
                                  (if (= "with-sidebar" (.-sidebarStatus $scope))
                                    "without-sidebar"
                                    "with-sidebar")))
-         :createSnapshot (fn [] (.create SnapshotSrv))))
+         :createSnapshot (fn []
+                           (.subscribe socket "/cryo/manager")
+                           (.create SnapshotSrv)))
+  (.subscribe socket "/cryo/inventory")
+  (.on socket "test" (fn [e] (.log js/console "got it !!"))))
 
-(aset mainCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "ArchiveSrv" "JobSrv"))
+(aset mainCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 
 
-(defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv]
+(defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv socket]
   (aset $scope "snapshot"
         (.get SnapshotSrv
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
@@ -37,7 +41,7 @@
                                             :path path}))))
                   :selectNode (fn [] (.log js/console "coucou"))})))
 
-(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv"))
+(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv" "socket"))
 
 
 (defn ^:export archiveCtrl [$scope $routeParams ArchiveSrv]
