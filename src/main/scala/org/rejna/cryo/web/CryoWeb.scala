@@ -26,7 +26,7 @@ object CryoWeb extends LoggingClass {
   val staticHandler = system.actorOf(Props(classOf[StaticContentHandler], StaticContentHandlerConfig(
     cache = new LocalCache(0, 16))), "staticHandler")
   val restRegistry = RestRegistry("org.rejna.cryo.web",
-    RestConfig("1.0", "http://localhost:8888/data", reportRuntimeException = ReportRuntimeException.All))
+    RestConfig("1.0", "http://localhost:8888/api", reportRuntimeException = ReportRuntimeException.All))
   val restHandler = system.actorOf(Props(classOf[RestHandler], restRegistry), "restHandler") //.withRouter(FromConfig())
   //val restProcessor = system.actorOf(Props(classOf[CryoRest], cryoctx), "restProcessor")
 
@@ -42,7 +42,7 @@ object CryoWeb extends LoggingClass {
         staticHandler ! StaticResourceRequest(request, "webapp/index.html")
       case PathSegments("swagger-ui" :: relativePath) =>
         staticHandler ! new StaticResourceRequest(request, relativePath.mkString("swaggerui/", "/", ""))
-      case GET(PathSegments("data" :: _)) =>
+      case PathSegments("api" :: _) =>
         restHandler ! request
       case GET(Path(path)) =>
         staticHandler ! StaticResourceRequest(request, "webapp" + path)

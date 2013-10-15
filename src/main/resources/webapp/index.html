@@ -9,11 +9,9 @@
 	<div class="container-fluid">
 		<div class="row-fluid">
 			<div id="sidebar" class="{{sidebarStatus}}">
+				<button class="btn" x-ng-click="createSnapshot()">Add</button>
 				<accordion close-others="false">
-					<accordion-group>
-						<accordion-heading>
-						Snapshots<button class="btn">Add</button>
-						</accordion-heading>
+					<accordion-group heading="Snapshots">
 						<ul class="nav nav-tabs nav-stacked">
 							<li x-ng-repeat="snapshot in snapshots" x-ng-class="{active: snapshot.id==params.snapshotId}"">
 								<a href="#/snapshots/{{snapshot.id}}">
@@ -56,7 +54,6 @@
 	<script type="text/javascript" src="javascript/angular.js"></script>
 	<script type="text/javascript" src="javascript/angular-resource.js"></script>
 	<script type="text/javascript" src="javascript/ui-bootstrap-tpls-0.6.0.js"></script>
-	<script type="text/javascript" src="javascript/angular.treeview.js"></script>
 	<script type="text/javascript" src="javascript/main.js"></script>
 	<script type="text/javascript">
 		goog.require("cryo.app");

@@ -3,7 +3,7 @@
             [cryo.directives])
   (:use [cryo.controllers :only [mainCtrl snapshotCtrl archiveCtrl jobCtrl]]))
 
-(doto (angular/module "cryo" (array "ui.bootstrap" "angularTreeview" "cryoService" "cryoDirectives"))
+(doto (angular/module "cryo" (array "ui.bootstrap" "cryoService" "cryoDirectives"))
   (.config (array
             "$routeProvider" 
             (fn [$routeProvider]

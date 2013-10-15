@@ -16,7 +16,8 @@
                           (oset! $scope :sidebarStatus
                                  (if (= "with-sidebar" (.-sidebarStatus $scope))
                                    "without-sidebar"
-                                   "with-sidebar")))))
+                                   "with-sidebar")))
+         :createSnapshot (fn [] (.create SnapshotSrv))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "ArchiveSrv" "JobSrv"))
 
