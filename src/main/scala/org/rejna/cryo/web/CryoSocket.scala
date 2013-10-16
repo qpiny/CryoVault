@@ -32,6 +32,8 @@ class UnexceptionalPartial[-A, +B](exceptionCatcher: Catcher[B])(unsafe: Partial
   def apply(a: A) = catching(exceptionCatcher) { unsafe(a) }
 }
 
+case class Exit() extends Request
+
 object EventTypeHints extends TypeHints {
   val hints =
     //    classOf[UploadSnapshot] ::
@@ -58,6 +60,7 @@ object EventTypeHints extends TypeHints {
       classOf[Log] ::
       classOf[GetJobList] ::
       classOf[JobList] ::
+      classOf[Exit] ::
       Nil
 
   def hintFor(clazz: Class[_]) = clazz.getSimpleName
@@ -115,6 +118,9 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
           ignore += subscription.r
         case RemoveIgnoreSubscription(subscription) =>
           ignore -= subscription.r
+        case Exit() =>
+          CryoEventBus.publish(Stopping)
+          cryoctx.shutdown
 
         case sr: SnapshotRequest =>
           cryoctx.inventory ! sr

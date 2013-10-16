@@ -4,17 +4,12 @@ import akka.actor.{ Actor, Stash }
 
 import java.util.Date
 
-class GlacierMock(cryoctx: CryoContext) extends Actor with Stash {
+class GlacierMock(cryoctx: CryoContext) extends Actor {
   
   def receive = {
     case MakeActorReady =>
-      unstashAll()
-      context.become(receiveWhenReady)
-    case _ =>
-      stash()
-  }
-  
-  def receiveWhenReady: Receive = {
+    case PrepareToDie() =>
+      sender ! ReadyToDie()
     case RefreshJobList() =>
       sender ! JobListRefreshed()
     case RefreshInventory() =>
@@ -36,7 +31,6 @@ class GlacierMock(cryoctx: CryoContext) extends Actor with Stash {
           archiveId))
     case UploadData(id: String) =>
       sender ! DataUploaded(id: String)
-
   }
 
 }

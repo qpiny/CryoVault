@@ -5,26 +5,35 @@
   (doseq [[k v] (partition 2 kvs)]
     (aset obj (name k) v)))
 
-(defn ^:export mainCtrl [$scope $routeParams SnapshotSrv ArchiveSrv JobSrv socket]
+(defn ^:export exitCtrl [$scope socket]
+  (oset! $scope
+         :status "Waiting ..."
+         :stop #(.send socket {:type "Exit"}))
+  
+  (.subscribe socket "/status")
+  (.on socket "/status" (fn [e] (aset $scope "status" e.type))))
+
+(aset exitCtrl "$inject" (array "$scope" "socket"))
+
+(defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv socket]
   (oset! $scope
          :params $routeParams
          :snapshots (.query SnapshotSrv)
          :archives (.query ArchiveSrv)
          :jobs (.query JobSrv)
          :sidebarStatus "with-sidebar"
-         :toggleSidebar (fn []
-                          (oset! $scope :sidebarStatus
-                                 (if (= "with-sidebar" (.-sidebarStatus $scope))
-                                   "without-sidebar"
-                                   "with-sidebar")))
-         :createSnapshot (fn []
-                           (.subscribe socket "/cryo/manager")
-                           (.create SnapshotSrv)))
+         :toggleSidebar #(oset! $scope :sidebarStatus
+                                (if (= "with-sidebar" (.-sidebarStatus $scope))
+                                  "without-sidebar"
+                                  "with-sidebar"))
+         :createSnapshot #(.create SnapshotSrv)
+         :exit #(.open $modal
+                  (clj->js {:templateUrl "partials/exit.html"
+                            :controller exitCtrl})))
   (.subscribe socket "/cryo/inventory")
   (.on socket "/cryo/inventory#snapshots" (fn [e] (.log js/console "got it !!"))))
 
-(aset mainCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
-
+(aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 
 (defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv socket]
   (aset $scope "snapshot"

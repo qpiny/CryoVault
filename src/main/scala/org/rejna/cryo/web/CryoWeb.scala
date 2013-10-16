@@ -1,6 +1,6 @@
 package org.rejna.cryo.web
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{ HashMap, ListBuffer }
 
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
 import akka.actor.Props
@@ -15,7 +15,10 @@ import org.mashupbots.socko.webserver.{ WebServer, WebServerConfig, WebLogConfig
 import org.mashupbots.socko.infrastructure.LocalCache
 import org.jboss.netty.channel.Channel
 
-import org.rejna.cryo.models.{ Glacier, LoggingClass, CryoContext }
+import org.rejna.cryo.models.{ Glacier, LoggingClass, CryoContext, Event, CryoEventBus }
+
+case object Stopping extends Event { val path = "/status" }
+case object Stopped extends Event { val path = "/status" }
 
 object CryoWeb extends LoggingClass {
   log.info("Starting cryo ...")
@@ -28,7 +31,6 @@ object CryoWeb extends LoggingClass {
   val restRegistry = RestRegistry("org.rejna.cryo.web",
     RestConfig("1.0", "http://localhost:8888/api", reportRuntimeException = ReportRuntimeException.All))
   val restHandler = system.actorOf(Props(classOf[RestHandler], restRegistry), "restHandler") //.withRouter(FromConfig())
-  //val restProcessor = system.actorOf(Props(classOf[CryoRest], cryoctx), "restProcessor")
 
   def newRestProcessor(cls: Class[_]) = system.actorOf(Props(cls, cryoctx))
   
@@ -37,6 +39,7 @@ object CryoWeb extends LoggingClass {
       case GET(Path("/exit")) =>
         log.info("Stopping Cryo")
         request.response.write(HttpResponseStatus.ACCEPTED, "Shutting down cryo ...")
+        CryoEventBus.publish(Stopping)
         cryoctx.shutdown
       case GET(Path("/")) =>
         staticHandler ! StaticResourceRequest(request, "webapp/index.html")
@@ -79,6 +82,7 @@ object CryoWeb extends LoggingClass {
     val webServer = new WebServer(WebServerConfig(webLog = Some(WebLogConfig())), routes, system)
     cryoctx.addShutdownHook {
       log.info("Stopping web server")
+      CryoEventBus.publish(Stopped)
       webServer.stop()
     }
     webServer.start()

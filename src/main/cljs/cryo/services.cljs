@@ -31,19 +31,26 @@
         (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}}))))
   
   (.factory "socket"
-    (fn [$rootScope]
+    (fn [$rootScope $q]
       (def callbacks {})
-      (let [ws (js/WebSocket "ws://localhost:8888/websocket/")]
+      (let [ws (js/WebSocket "ws://localhost:8888/websocket/")
+            deferred (.defer $q)
+            promise (.-promise deferred)
+            ws-send (fn [message]
+                      (.then promise (fn [sock]
+                                       (let [msg (.stringify js/JSON (clj->js message))]
+                                         (.send sock msg)))))]
+        (aset ws "onopen" (fn [] (.$apply $rootScope #(.resolve deferred ""))))
         (aset ws "onmessage" (fn [event]
-                               (when-let [message (.-data event)]
-                                 (when-let [path (.-path message)]
-                                           (.log js/console (str "Receive message : " (.stringify js/JSON message)))
-                                           (doseq [x (callbacks path)] (.$apply $rootScope (x message)))))))
+                               (when-let [messagestr (.-data event)]
+                                 (when-let [message (.parse js/JSON messagestr)]
+                                   (when-let [path (.-path message)]
+                                     (.log js/console (str "Receive message : " messagestr))
+                                     (doseq [x (callbacks path)] (.$apply $rootScope (x message))))))))
         (clj->js {:on (fn [event callback]
                         (set! callbacks
                               (update-in callbacks [event] #(conj % callback))))
-                  :send (fn [message]
-                          (.send ws message))
+                  :send ws-send
                   :subscribe (fn [subscription]
                                (.log js/console "Subscribe !")
-                               (.send ws (.stringify js/JSON (clj->js {:type "Subscribe" :subscription subscription}))))})))))
+                               (ws-send {:type "Subscribe" :subscription subscription}))})))))
