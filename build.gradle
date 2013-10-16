@@ -98,9 +98,10 @@ tasks.withType(ScalaCompile) {
 	scalaCompileOptions.fork = false
 	scalaCompileOptions.unchecked = true
 	scalaCompileOptions.deprecation = true
+	scalaCompileOptions.setAdditionalParameters(['-feature'])
 	
 	scalaCompileOptions.useCompileDaemon = false
-	scalaCompileOptions.useAnt = false
+	scalaCompileOptions.useAnt = true
 	
 	
 	configure(scalaCompileOptions.forkOptions) {
