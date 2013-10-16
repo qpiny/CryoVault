@@ -35,9 +35,10 @@
       (def callbacks {})
       (let [ws (js/WebSocket "ws://localhost:8888/websocket/")]
         (aset ws "onmessage" (fn [event]
-                               (.log js/console (str "Receive message : " (.stringify js/JSON (.-data event))))
-                               (.log js/console (str "Receive message : " (.toJson js/angular (.-data event))))
-                               (doseq [x (callbacks (.-type event))] (.$apply $rootScope (x event)))))
+                               (when-let [message (.-data event)]
+                                 (when-let [path (.-path message)]
+                                           (.log js/console (str "Receive message : " (.stringify js/JSON message)))
+                                           (doseq [x (callbacks path)] (.$apply $rootScope (x message)))))))
         (clj->js {:on (fn [event callback]
                         (set! callbacks
                               (update-in callbacks [event] #(conj % callback))))

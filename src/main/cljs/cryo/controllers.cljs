@@ -21,7 +21,7 @@
                            (.subscribe socket "/cryo/manager")
                            (.create SnapshotSrv)))
   (.subscribe socket "/cryo/inventory")
-  (.on socket "test" (fn [e] (.log js/console "got it !!"))))
+  (.on socket "/cryo/inventory#snapshots" (fn [e] (.log js/console "got it !!"))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 
