@@ -126,7 +126,7 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       (cryoctx.datastore ? GetDataStatus(snapshotId)) onComplete {
         case Success(d: DataStatus) => _sender ! GetSnapshotResponse(ctx.responseContext, Some(d))
-        case Success(DataNotFoundError) => _sender ! GetSnapshotResponse(ctx.responseContext(404), None)
+        case Success(e: DataNotFoundError) => _sender ! GetSnapshotResponse(ctx.responseContext(404), None)
         case Success(o) => _sender ! GetSnapshotResponse(ctx.responseContext(501, Map("message" -> o.toString)), None)
         case Failure(e) => _sender ! GetSnapshotResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), None)
       }
@@ -136,7 +136,7 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       (cryoctx.inventory ? SnapshotGetFiles(snapshotId, path.replace('!', '/'))) onComplete {
         case Success(SnapshotFiles(_, _, fe)) => _sender ! GetSnapshotFilesResponse(ctx.responseContext, fe)
-        case Success(SnapshotNotFound) => _sender ! GetSnapshotFilesResponse(ctx.responseContext(404), List.empty[FileElement])
+        case Success(e: SnapshotNotFound) => _sender ! GetSnapshotFilesResponse(ctx.responseContext(404), List.empty[FileElement])
         case Success(o) => _sender ! GetSnapshotFilesResponse(ctx.responseContext(501, Map("message" -> o.toString)), List.empty[FileElement])
         case Failure(e) => _sender ! GetSnapshotFilesResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), List.empty[FileElement])
       }
@@ -146,7 +146,7 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       (cryoctx.inventory ? SnapshotGetFilter(snapshotId, path)) onComplete {
         case Success(SnapshotFilter(_, _, filter)) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext, filter.map(_.toString))
-        case Success(SnapshotNotFound) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext(404), None)
+        case Success(e: SnapshotNotFound) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext(404), None)
         case Success(o) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)), None)
         case Failure(e) => _sender ! GetSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), None)
       }
@@ -156,7 +156,7 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, path, NoOne)) onComplete {
         case Success(FilterUpdated()) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext)
-        case Success(SnapshotNotFound) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext(404))
+        case Success(e: SnapshotNotFound) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext(404))
         case Success(o) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)))
         case Failure(e) => _sender ! DeleteSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)))
       }
@@ -165,7 +165,7 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, path, filter)) onComplete {
         case Success(FilterUpdated()) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext)
-        case Success(SnapshotNotFound) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext(404))
+        case Success(e: SnapshotNotFound) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext(404))
         case Success(o) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)))
         case Failure(e) => _sender ! AddSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)))
       }
@@ -174,7 +174,7 @@ class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
       val _sender = sender
       (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, path, filter)) onComplete {
         case Success(FilterUpdated()) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext)
-        case Success(SnapshotNotFound) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext(404))
+        case Success(e: SnapshotNotFound) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext(404))
         case Success(o) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext(501, Map("message" -> o.toString)))
         case Failure(e) => _sender ! UpdateSnapshotFileFilterResponse(ctx.responseContext(500, Map("message" -> e.getMessage)))
       }

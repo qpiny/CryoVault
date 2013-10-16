@@ -32,13 +32,18 @@
   
   (.factory "socket"
     (fn [$rootScope]
-      (let [ws (WebSocket "ws://localhost:8888/websocket/")
-            callbacks {}]
-        
-        (aset ws "onmessage" (fn [event] 
-                               (doseq [x ( ; TODO /// event.type) exec callback
+      (def callbacks {})
+      (let [ws (js/WebSocket "ws://localhost:8888/websocket/")]
+        (aset ws "onmessage" (fn [event]
+                               (when-let [message (.-data event)]
+                                 (when-let [path (.-path message)]
+                                           (.log js/console (str "Receive message : " (.stringify js/JSON message)))
+                                           (doseq [x (callbacks path)] (.$apply $rootScope (x message)))))))
         (clj->js {:on (fn [event callback]
                         (set! callbacks
                               (update-in callbacks [event] #(conj % callback))))
                   :send (fn [message]
-                          (.send ws message))})))))
+                          (.send ws message))
+                  :subscribe (fn [subscription]
+                               (.log js/console "Subscribe !")
+                               (.send ws (.stringify js/JSON (clj->js {:type "Subscribe" :subscription subscription}))))})))))

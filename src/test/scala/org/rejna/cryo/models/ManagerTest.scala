@@ -7,6 +7,7 @@ import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.Promise
 import scala.concurrent.duration._
+import scala.language.postfixOps
 
 import org.scalatest.{ FlatSpecLike, BeforeAndAfter }
 import org.scalatest.junit.{ JUnitRunner, AssertionsForJUnit }
