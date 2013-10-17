@@ -38,11 +38,11 @@ case class Failed(message: String = "Failed") extends JobStatus(message) { overr
 case class Finalized(message: String = "Finalized") extends JobStatus(message) { override val isFinalized = true }
 
 case class Job(id: String,
-    description: String,
-    creationDate: Date,
-    status: JobStatus,
-    completedDate: Option[Date],
-    objectId: String) extends ManagerResponse
+  description: String,
+  creationDate: Date,
+  status: JobStatus,
+  completedDate: Option[Date],
+  objectId: String) extends ManagerResponse
 
 object Job {
   def getStatus(status: String, message: String) = status match {
@@ -68,7 +68,7 @@ object Job {
           Option(j.getJobDescription).getOrElse(""),
           Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()),
           getStatus(j.getStatusCode, j.getStatusMessage),
-          Json.dateFormat.parse(j.getCompletionDate()),  //Option(j.getCompletionDate).map(DateUtil.fromISOString))
+          Json.dateFormat.parse(j.getCompletionDate()), //Option(j.getCompletionDate).map(DateUtil.fromISOString))
           "inventory")
     }
   }
@@ -97,6 +97,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
   val finalizedJobs = attributeBuilder.map("finalizedJobs", Map[String, Job]())
   var jobUpdated = Promise[Unit]() /* var instead of val for test */
+  var isDying = false
 
   override def preStart = {
     implicit val formats = Json
@@ -127,7 +128,9 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
   }
 
   def receive = cryoReceive {
-    case PrepareToDie() =>
+    case PrepareToDie() if !isDying =>
+      isDying = true
+
       val _sender = sender
       implicit val formats = Json
       cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
@@ -144,6 +147,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
           _sender ! ReadyToDie()
           log.error("Fail to save finalized jobs", o)
       }
+
     case AddJobs(addedJobs) =>
       val unfinalizedJobs = addedJobs.filterNot(j => finalizedJobs.contains(j.id))
       jobs ++= unfinalizedJobs.map(j => j.id -> j)
@@ -163,9 +167,12 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
       sender ! JobListUpdated(unfinalizedJobs)
 
     case GetJobList() =>
+      log.debug("Receive GetJobList()")
       if (jobUpdated.isCompleted) {
+        log.debug("Reply to GetJobList()")
         sender ! JobList(jobs.values.toList)
       } else {
+        log.debug("Relay reply to GetJobList()")
         val _sender = sender
         jobUpdated.future.onSuccess { case _ => _sender ! JobList(jobs.values.toList) }
       }
@@ -180,7 +187,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
         case None =>
           finalizedJobs.get(jobId) match {
             case Some(j) => sender ! j
-            case None => sender ! JobNotFound(jobId, s"Job ${jobId} is not found and can't be finalized") 
+            case None => sender ! JobNotFound(jobId, s"Job ${jobId} is not found and can't be finalized")
           }
       }
 

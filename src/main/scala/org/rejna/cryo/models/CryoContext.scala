@@ -29,29 +29,33 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   val exitPromise = Promise[Any]()
   var children: List[ActorRef] = Nil
   var shutdownHooks: Future[Any] = exitPromise.future
+  var isShuttingDown = false
 
   def addShutdownHook[T](f: => T) = shutdownHooks = shutdownHooks map { (Unit) => f }
   def addFutureShutdownHook[T](f: => Future[T]) = shutdownHooks = shutdownHooks flatMap { (Unit) => f }
 
   def shutdown() {
-    implicit val timeout = getTimeout(classOf[PrepareToDie])
+    if (!isShuttingDown) {
+      implicit val timeout = getTimeout(classOf[PrepareToDie])
 
-    exitPromise.completeWith {
-      log.info("Prepare actors for the death")
-      Future.sequence[Any, List](children map { _ ? PrepareToDie() }) flatMap { _ =>
-        log.info("Kill all actors")
-        Future.sequence[Any, List](children map { gracefulStop(_, timeout.duration) })
+      isShuttingDown = true
+      exitPromise.completeWith {
+        log.info("Prepare actors for the death")
+        Future.sequence[Any, List](children map { _ ? PrepareToDie() }) flatMap { _ =>
+          log.info("Kill all actors")
+          Future.sequence[Any, List](children map { gracefulStop(_, timeout.duration) })
+        }
       }
-    }
-    shutdownHooks.onComplete {
-      case Success(_) =>
-        log.info("Shutting down system")
-        system.shutdown
-        println("Shutdown completed")
-        System.exit(0)
-      case Failure(e) =>
-        e.printStackTrace()
-        System.exit(0)
+      shutdownHooks.onComplete {
+        case Success(_) =>
+          log.info("Shutting down system")
+          system.shutdown
+          println("Shutdown completed")
+          System.exit(0)
+        case Failure(e) =>
+          e.printStackTrace()
+          System.exit(0)
+      }
     }
   }
 
@@ -117,32 +121,31 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   if (config.getBoolean("aws.disable-cert-checking"))
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 
-    
   val hashcatalog = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.hashcatalog")), this), "catalog")
+    Props(Class.forName(config.getString("cryo.services.hashcatalog")), this), "catalog")
   children = hashcatalog :: children
 
   val deadLetterMonitor = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.deadLetterMonitor")), this), "deadletter")
+    Props(Class.forName(config.getString("cryo.services.deadLetterMonitor")), this), "deadletter")
   children = deadLetterMonitor :: children
 
   val datastore = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.datastore")), this), "datastore")
+    Props(Class.forName(config.getString("cryo.services.datastore")), this), "datastore")
   children = datastore :: children
 
   val notification = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.notification")), this), "notification")
+    Props(Class.forName(config.getString("cryo.services.notification")), this), "notification")
   children = notification :: children
 
   val cryo = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.cryo")), this), "cryo")
+    Props(Class.forName(config.getString("cryo.services.cryo")), this), "cryo")
   children = cryo :: children
 
   val manager = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.manager")), this), "manager")
+    Props(Class.forName(config.getString("cryo.services.manager")), this), "manager")
   children = manager :: children
 
   val inventory = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.inventory")), this), "inventory")
+    Props(Class.forName(config.getString("cryo.services.inventory")), this), "inventory")
   children = inventory :: children
 }

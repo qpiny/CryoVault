@@ -31,26 +31,37 @@
         (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}}))))
   
   (.factory "socket"
-    (fn [$rootScope $q]
-      (def callbacks {})
-      (let [ws (js/WebSocket "ws://localhost:8888/websocket/")
-            deferred (.defer $q)
-            promise (.-promise deferred)
+    (fn [$rootScope]
+      (let [service (clj->js {:callbacks {}
+                              :stash nil
+                              :ws (js/WebSocket. "ws://localhost:8888/websocket")})
+            ws-store (fn [message]
+                       (aset service "stash" (conj (aget service "stash") message)))
             ws-send (fn [message]
-                      (.then promise (fn [sock]
-                                       (let [msg (.stringify js/JSON (clj->js message))]
-                                         (.send sock msg)))))]
-        (aset ws "onopen" (fn [] (.$apply $rootScope #(.resolve deferred ""))))
+                      (let [msg (.stringify js/JSON (clj->js message))
+                            ws (aget service "ws")]
+                        (.log js/console (str "sending message(" (.-bufferedAmount ws) ") : " msg))
+                        (.send ws msg)
+                        (.log js/console (str "message sent (" (.-bufferedAmount ws) ")"))))
+            ws (aget service "ws")]
+        (.log js/console "new websocket connection")
+        (aset ws "onopen" (fn []
+                            (aset service "send" ws-send)
+                            (.log js/console "websocket is connected")
+                            (doseq [m (aget service "stash")] (.send service m))
+                            (aset service "stash" nil)))
         (aset ws "onmessage" (fn [event]
                                (when-let [messagestr (.-data event)]
                                  (when-let [message (.parse js/JSON messagestr)]
                                    (when-let [path (.-path message)]
                                      (.log js/console (str "Receive message : " messagestr))
-                                     (doseq [x (callbacks path)] (.$apply $rootScope (x message))))))))
-        (clj->js {:on (fn [event callback]
-                        (set! callbacks
-                              (update-in callbacks [event] #(conj % callback))))
-                  :send ws-send
-                  :subscribe (fn [subscription]
-                               (.log js/console "Subscribe !")
-                               (ws-send {:type "Subscribe" :subscription subscription}))})))))
+                                     (doseq [x ((aget service "callbacks") path)] (.$apply $rootScope (x message))))))))
+        (aset ws "onerror" (fn [] (.log js/console "WS ERROR !!")))
+        (aset service "send" ws-store)
+        (aset service "on" (fn [event callback]
+                             (aset service "callbacks"
+                                   (update-in (aget "callbacks" service) [event] #(conj % callback)))))
+        (aset service "subscribe" (fn [subscription]
+                                    (.log js/console "Subscribe !")
+                                    (.send service {:type "Subscribe" :subscription subscription})))
+        service))))

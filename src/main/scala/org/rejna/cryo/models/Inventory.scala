@@ -218,7 +218,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
   }
 
   def receive = cryoReceive {
-    case PrepareToDie() =>
+    case PrepareToDie() if !isDying =>
       isDying = true
       val _sender = sender
       Future.sequence(snapshotIds.values map { _ ? PrepareToDie() }) flatMap {
@@ -272,7 +272,7 @@ class Inventory(val cryoctx: CryoContext) extends CryoActor {
         case Success((id, aref)) =>
           snapshotIds += id -> aref
           _sender ! SnapshotCreated(id)
-        case Failure(e) => 
+        case Failure(e) =>
           _sender ! e
       }
 

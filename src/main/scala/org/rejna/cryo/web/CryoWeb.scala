@@ -53,13 +53,16 @@ object CryoWeb extends LoggingClass {
     }
 
     case WebSocketHandshake(wsHandshake) => wsHandshake match {
-      case Path("/websocket/") =>
+      case Path("/websocket") =>
         registerWebSocket(wsHandshake)
+      case o: Any => log.error("Unexpected message : ${o.toString}")
     }
 
     case WebSocketFrame(wsFrame) => {
+      log.debug(s"Receive web socket packet : ${wsFrame.readText}")
       wsHandlers.get(wsFrame.channel).map(_ ! wsFrame)
     }
+    case o: Any => log.error("Unexpected message2 : ${o.toString}")
   })
 
   def unregisterWebSocket(channel: Channel) = {
