@@ -56,7 +56,7 @@ case class DirectoryTraversalError(path: String) extends SnapshotError(s"Directo
 //case object CreateSnapshot extends SnapshotRequest
 //case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
 
-class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
+class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
 
   val sizeAttribute = attributeBuilder("size", 0L)
@@ -280,7 +280,7 @@ class SnapshotBuilder(val cryoctx: CryoContext, id: String) extends CryoActor {
   }
 }
 
-class RemoteSnapshot(val cryoctx: CryoContext, id: String) extends CryoActor {
+class RemoteSnapshot(_cryoctx: CryoContext, id: String) extends CryoActor(_cryoctx) {
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
     case _ =>

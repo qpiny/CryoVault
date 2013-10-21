@@ -40,7 +40,7 @@ case class ReadError(message: String, cause: Throwable = null) extends Datastore
 case class DataNotFoundError(id: String, message: String, cause: Throwable = null) extends DatastoreError(message, cause)
 case class InvalidDataStatus(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
 
-class Datastore(val cryoctx: CryoContext) extends CryoActor {
+class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   import EntryStatus._
 
   val attributeBuilder = CryoAttributeBuilder("/cryo/datastore")

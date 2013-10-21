@@ -111,7 +111,7 @@ object CreateSnapshotRegistration extends RestRegistration {
     override val description = "Create a new snapshot"
 }
 
-class SnapshotRestProcessor(val cryoctx: CryoContext) extends CryoActor {
+class SnapshotRestProcessor(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   def receive = cryoReceive {
     case GetSnapshotListRequest(ctx) =>
       val _sender = sender

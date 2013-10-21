@@ -7,11 +7,11 @@
 
 (defn ^:export exitCtrl [$scope socket]
   (oset! $scope
-         :status "Waiting ..."
+         :status "Started"
          :stop #(.send socket {:type "Exit"}))
   
-  (.subscribe socket "/status")
-  (.on socket "/status" (fn [e] (aset $scope "status" e.type))))
+  (.subscribe socket "/cryo#status")
+  (.on socket "/cryo#status" (fn [e] (aset $scope "status" (.-now e)))))
 
 (aset exitCtrl "$inject" (array "$scope" "socket"))
 
@@ -31,7 +31,7 @@
                   (clj->js {:templateUrl "partials/exit.html"
                             :controller exitCtrl})))
   (.subscribe socket "/cryo/inventory")
-  (.on socket "/cryo/inventory#snapshots" (fn [e] (.log js/console "got it !!"))))
+  (.on socket "/cryo/inventory#snapshots" (fn [e] (.log js/console (.stringify js/JSON e)))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 

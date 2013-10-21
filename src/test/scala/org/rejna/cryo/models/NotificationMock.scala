@@ -2,7 +2,7 @@ package org.rejna.cryo.models
 
 import akka.actor.{ Actor, Stash }
 
-class NotificationMock(cryoctx: CryoContext) extends Actor {
+class NotificationMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   
   def receive = {
     case MakeActorReady =>

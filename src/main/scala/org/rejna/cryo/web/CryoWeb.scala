@@ -17,11 +17,7 @@ import org.jboss.netty.channel.Channel
 
 import org.rejna.cryo.models.{ Glacier, LoggingClass, CryoContext, Event, CryoEventBus }
 
-case object Stopping extends Event { val path = "/status" }
-case object Stopped extends Event { val path = "/status" }
-
 object CryoWeb extends LoggingClass {
-  log.info("Starting cryo ...")
   val config = ConfigFactory.load()
   val system = ActorSystem("cryo", config)
   val cryoctx = new CryoContext(system, config)
@@ -37,9 +33,9 @@ object CryoWeb extends LoggingClass {
   val routes = Routes({
     case HttpRequest(request) => request match {
       case GET(Path("/exit")) =>
+        cryoctx.status = "Stopping"
         log.info("Stopping Cryo")
         request.response.write(HttpResponseStatus.ACCEPTED, "Shutting down cryo ...")
-        CryoEventBus.publish(Stopping)
         cryoctx.shutdown
       case GET(Path("/")) =>
         staticHandler ! StaticResourceRequest(request, "webapp/index.html")
@@ -82,10 +78,12 @@ object CryoWeb extends LoggingClass {
   }
 
   def main(args: Array[String]) = {
-    val webServer = new WebServer(WebServerConfig(webLog = Some(WebLogConfig())), routes, system)
+    //val webServer = new WebServer(WebServerConfig(webLog = Some(WebLogConfig())), routes, system)
+    val webconfig = config.withFallback(ConfigFactory.parseString(s"""web { web-log { custom-actor-path = "${cryoctx.logger.path}", format = "Common" } }"""))
+    val webServer = new WebServer(new WebServerConfig(webconfig, "web"), routes, system)
     cryoctx.addShutdownHook {
       log.info("Stopping web server")
-      CryoEventBus.publish(Stopped)
+      cryoctx.status = "Stopped"
       webServer.stop()
     }
     webServer.start()

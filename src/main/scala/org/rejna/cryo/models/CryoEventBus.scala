@@ -50,10 +50,10 @@ object CryoEventBus extends EventBus with SubchannelClassification {
 }
 
 object CryoAttributeBuilder {
-  def apply(path: String*) = new CryoAttributeBuilder(path.toList)
+  def apply(path: String*)(implicit cryoctx: CryoContext) = new CryoAttributeBuilder(path.toList)
 }
 
-class CryoAttributeBuilder(path: List[String]) extends LoggingClass {
+class CryoAttributeBuilder(path: List[String])(implicit val cryoctx: CryoContext) extends LoggingClass {
   object callback extends AttributeSimpleCallback {
     override def onChange[A](name: String, previous: Option[A], now: A) = {
       log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), name, previous, now))

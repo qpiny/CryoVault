@@ -18,7 +18,7 @@ case class DataEntryMock(id: String, description: String, creationDate: Date, si
 case class AddDataMock(entry: DataEntryMock)
 case class DataAddedMock(id: String)
 
-class DatastoreMock(val cryoctx: CryoContext) extends CryoActor with Stash {
+class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash {
 
   val repository = Map.empty[String, DataEntryMock]
 

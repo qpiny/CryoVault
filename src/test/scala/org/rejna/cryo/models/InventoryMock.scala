@@ -12,7 +12,7 @@ case class SnapshotAddedMock(snapshotId: String)
 case class AddArchiveMock(archive: DataEntryMock)
 case class ArchiveAddedMock(archiveId: String)
 
-class InventoryMock(val cryoctx: CryoContext) extends CryoActor with Stash {
+class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash {
 
   val snapshots = ListBuffer.empty[String]
   val archives = ListBuffer.empty[String]

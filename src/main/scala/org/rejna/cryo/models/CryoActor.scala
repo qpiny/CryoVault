@@ -8,7 +8,7 @@ import akka.pattern.{ ask, AskTimeoutException }
 
 import org.slf4j.{ Logger, MarkerFactory }
 
-class CryoAskableActorRef(cryoctx: CryoContext, log: Logger, actorRef: ActorRef)(implicit executionContext: ExecutionContext) {
+class CryoAskableActorRef(val cryoctx: CryoContext, actorRef: ActorRef)(implicit executionContext: ExecutionContext) extends LoggingClass {
   
   def ?(message: Any) = {
     log.debug(Log.askMsgMarker, s"${message} - ${actorRef}")
@@ -25,10 +25,10 @@ class CryoAskableActorRef(cryoctx: CryoContext, log: Logger, actorRef: ActorRef)
   }
 }
 
-trait CryoActor extends Actor with LoggingClass {
-  val cryoctx: CryoContext
+abstract class CryoActor(_cryoctx: CryoContext) extends Actor with LoggingClass {
+  implicit val cryoctx = _cryoctx
   implicit val executionContext = context.system.dispatcher
-  implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(cryoctx, log, actorRef)
+  implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(cryoctx, actorRef)
 
   def cryoReceive(f: Actor.Receive) = new Actor.Receive {
     def isDefinedAt(o: Any): Boolean = {

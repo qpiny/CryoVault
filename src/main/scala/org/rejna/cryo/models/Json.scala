@@ -66,7 +66,7 @@ object JsonTupleSerialization extends Serializer[Null] {
   }
 }
   
-object JsonJobSerialization extends Serializer[Job] with LoggingClass {
+object JsonJobSerialization extends Serializer[Job] {
   val JobClass = classOf[Job]
 
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), Job] = {
@@ -110,7 +110,7 @@ object JsonJobSerialization extends Serializer[Job] with LoggingClass {
         ("objectId" -> j.objectId)
   }
 }
-object JsonNotificationSerialization extends Serializer[NotificationMessage] with LoggingClass {
+object JsonNotificationSerialization extends Serializer[NotificationMessage] {
   val NotificationClass = classOf[NotificationMessage]
 
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), NotificationMessage] = {
@@ -148,12 +148,11 @@ object JsonInventoryEntrySerialization extends Serializer[InventoryEntry] {
   }
 }
 
-object JsonInventorySerialization extends Serializer[InventoryMessage] with LoggingClass {
+object JsonInventorySerialization extends Serializer[InventoryMessage] {
   val InventoryClass = classOf[InventoryMessage]
 
   def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), InventoryMessage] = {
     case (TypeInfo(InventoryClass, _), json) =>
-      log.debug(s"deserilize inventory : ${pretty(render(json))}")
       InventoryMessage(
         (json \ "InventoryDate").extract[Date],
         (json \ "ArchiveList").children.map(_.extract[InventoryEntry]))

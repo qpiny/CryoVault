@@ -24,7 +24,12 @@ case class ReadyToDie()
 class CryoContext(val system: ActorSystem, val config: Config) extends LoggingClass {
   import org.rejna.util.IsoUnit._
   implicit val executionContext = system.dispatcher
-  implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(this, log, actorRef)
+  implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(this, actorRef)
+  implicit val cryoctx = this
+  val attributeBuilder = CryoAttributeBuilder("/cryo")
+  val statusAttribute = attributeBuilder("status", "starting")
+  def status = statusAttribute()
+  def status_= = statusAttribute() = _
 
   val exitPromise = Promise[Any]()
   var children: List[ActorRef] = Nil
@@ -121,6 +126,10 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   if (config.getBoolean("aws.disable-cert-checking"))
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 
+  val logger = system.actorOf(
+      Props(Class.forName(config.getString("cryo.services.logger")), this), "logger")
+  children = logger :: children
+  
   val hashcatalog = system.actorOf(
     Props(Class.forName(config.getString("cryo.services.hashcatalog")), this), "catalog")
   children = hashcatalog :: children

@@ -26,7 +26,7 @@ case class HashCollision(message: String) extends HashCatalogError("Blocklocatio
 case class GetCatalogContent() extends HashCatalogRequest
 case class CatalogContent(catalog: Map[HashVersion, BlockLocation]) extends HashCatalogResponse
 
-class HashCatalog(val cryoctx: CryoContext) extends CryoActor {
+class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   private val content = HashMap.empty[HashVersion, BlockLocation]
   private val hashVersions = HashMap.empty[Hash, List[HashVersion]]
 

@@ -119,7 +119,7 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
         case RemoveIgnoreSubscription(subscription) =>
           ignore -= subscription.r
         case Exit() =>
-          CryoEventBus.publish(Stopping)
+          cryoctx.status = "Stopping"
           cryoctx.shutdown
 
         case sr: SnapshotRequest =>

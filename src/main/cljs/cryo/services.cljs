@@ -40,9 +40,8 @@
             ws-send (fn [message]
                       (let [msg (.stringify js/JSON (clj->js message))
                             ws (aget service "ws")]
-                        (.log js/console (str "sending message(" (.-bufferedAmount ws) ") : " msg))
-                        (.send ws msg)
-                        (.log js/console (str "message sent (" (.-bufferedAmount ws) ")"))))
+                        (.log js/console (str "sending message : " msg))
+                        (.send ws msg)))
             ws (aget service "ws")]
         (.log js/console "new websocket connection")
         (aset ws "onopen" (fn []

@@ -92,7 +92,7 @@ case class GetJob(jobId: String) extends ManagerRequest
 case class JobNotFound(jobId: String, message: String, cause: Throwable = null) extends ManagerError(message, cause)
 case class FinalizeJob(jobId: String) extends ManagerRequest
 
-class Manager(val cryoctx: CryoContext) extends CryoActor {
+class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
   val finalizedJobs = attributeBuilder.map("finalizedJobs", Map[String, Job]())
@@ -145,7 +145,7 @@ class Manager(val cryoctx: CryoContext) extends CryoActor {
           log.info("FinalizedJobs data has been stored")
         case o: Any =>
           _sender ! ReadyToDie()
-          log.error("Fail to save finalized jobs", o)
+          log.error(CryoError("Fail to save finalized jobs", o))
       }
 
     case AddJobs(addedJobs) =>

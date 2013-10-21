@@ -34,7 +34,7 @@ case class NotificationMessage(
 // SigningCertURL(https://sns.eu-west-1.amaz...)
 // UnsubscribeURLhttps://sns.eu-west-1.amaz...)
 
-abstract class Notification(val cryoctx: CryoContext) extends CryoActor {
+abstract class Notification(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   val sns = new AmazonSNSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(sns)

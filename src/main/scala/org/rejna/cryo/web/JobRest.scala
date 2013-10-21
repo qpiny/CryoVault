@@ -35,7 +35,7 @@ object GetJobRegistration extends RestRegistration {
   override val description = "Retrieve specified list information"
 }
 
-class JobRestProcessor(val cryoctx: CryoContext) extends CryoActor {
+class JobRestProcessor(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   def receive = cryoReceive {
     case GetJobListRequest(ctx) =>
       val _sender = sender

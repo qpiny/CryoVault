@@ -2,7 +2,7 @@ package org.rejna.cryo.models
 
 import akka.actor.{ Actor, DeadLetter }
 
-class DeadLetterMonitor(val cryoctx: CryoContext) extends CryoActor {
+class DeadLetterMonitor(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   
   override def preStart = {
     context.system.eventStream.subscribe(self, classOf[DeadLetter])

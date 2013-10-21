@@ -4,17 +4,10 @@ import akka.actor.{ Actor, Stash }
 
 import java.util.Date
 
-class ManagerMock(val cryoctx: CryoContext) extends Actor with Stash {
+class ManagerMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   
   def receive = {
     case MakeActorReady =>
-      unstashAll()
-      context.become(receiveWhenReady)
-    case _ =>
-      stash()
-  }
-  
-  def receiveWhenReady: Receive = {
     case AddJobs(jobs) =>
       sender ! JobsAdded(jobs)
     case RemoveJobs(jobIds) =>

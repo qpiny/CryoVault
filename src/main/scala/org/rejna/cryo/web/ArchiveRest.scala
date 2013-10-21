@@ -39,7 +39,7 @@ object GetArchiveRegistration extends RestRegistration {
   override val description = "Retrieve specified list information"
 }
 
-class ArchiveRestProcessor(val cryoctx: CryoContext) extends CryoActor {
+class ArchiveRestProcessor(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   def receive = cryoReceive {
     case GetArchiveListRequest(ctx) =>
       val _sender = sender

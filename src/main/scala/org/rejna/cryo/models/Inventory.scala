@@ -50,7 +50,7 @@ case class SnapshotNotFound(id: String, message: String, cause: Throwable = null
 case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)
 case class InventoryMessage(date: Date, entries: List[InventoryEntry])
 
-class Inventory(val cryoctx: CryoContext) extends CryoActor {
+class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   import InventoryStatus._
   private var isDying = false
 

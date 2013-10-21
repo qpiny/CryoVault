@@ -33,7 +33,7 @@ case class DownloadArchiveRequested(job: Job) extends CryoResponse
 case class UploadData(id: String) extends CryoRequest
 case class DataUploaded(id: String) extends CryoResponse
 
-class Glacier(val cryoctx: CryoContext) extends CryoActor {
+class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
   val glacier = new AmazonGlacierClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   glacier.setEndpoint("glacier." + cryoctx.region + ".amazonaws.com/")
