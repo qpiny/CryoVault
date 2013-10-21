@@ -161,6 +161,7 @@ class CryoLogger(cryoctx: CryoContext) extends Actor {
           protocolVersion + " " + 
           responseStatusCode + " " +
           responseSize))
+    case t: OptionalMessage =>
     case a: Any => println(s"*******************${a.toString}*************")
   }
 }

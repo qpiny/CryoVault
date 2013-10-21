@@ -17,6 +17,7 @@ class DeadLetterMonitor(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       log.error("Unexpected lost error", e)
     case dl: DeadLetter =>
       log.error(s"A message has been lost: ${dl}")
+    case om: OptionalMessage =>
     case o: Any =>
       log.error(s"Unexpected message ${o}")
   }

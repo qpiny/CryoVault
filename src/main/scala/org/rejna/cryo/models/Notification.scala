@@ -7,8 +7,6 @@ import scala.util.{ Success, Failure }
 
 import java.util.Date
 
-import net.liftweb.json.{ Serialization, NoTypeHints }
-
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sqs.model._
 import com.amazonaws.services.sns.AmazonSNSClient
@@ -56,8 +54,6 @@ abstract class Notification(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 }
 
 class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
-  implicit val formats = Json
-
   val sqs = new AmazonSQSClient(cryoctx.awsCredentials, cryoctx.awsConfig)
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref"))
     HttpClientProxyHack(sqs)
@@ -136,8 +132,8 @@ class QueueNotification(cryoctx: CryoContext) extends Notification(cryoctx) {
           case message =>
             val body = message.getBody
             log.debug("Receive notification message :" + message)
-            val notificationMessage = Serialization.read[NotificationMessage](body)
-            Serialization.read[Job](notificationMessage.message) -> message.getReceiptHandle
+            val notificationMessage = Json.read[NotificationMessage](body)
+            Json.read[Job](notificationMessage.message) -> message.getReceiptHandle
         } toMap
 
         cryoctx.manager ? AddJobs(jobsReceipt.keySet.toList) map {

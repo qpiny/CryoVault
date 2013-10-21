@@ -19,7 +19,7 @@ import com.amazonaws.services.glacier.model._
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sns.AmazonSNSClient
 
-import resource._
+import EntryStatus._
 
 class CryoRequest extends Request
 class CryoResponse extends Response
@@ -51,16 +51,16 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       sender ! ReadyToDie()
 
     case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
-      val succeededJobs = addedJobs.asInstanceOf[List[(String, Job)]].flatMap {
-        case (_, j: Job) if j.status.isSucceeded => Some(j.objectId -> j)
-        case _: Any => None
-      } toMap // remove duplicates
+      val succeededJobs = addedJobs
+        .asInstanceOf[List[(String, Job)]]
+        .filter(_._2.status.isSucceeded)
+        .toMap // remove duplicates
 
       succeededJobs.map {
         case (dataId, job) =>
           log.info(s"Job ${job.id} is completed, downloading data ${dataId}")
           var transfer = (cryoctx.datastore ? GetDataStatus(dataId)) map {
-            case DataStatus(_, _, _, status, _, _) if status != EntryStatus.Creating => // TODO will be Loading when implemented
+            case DataStatus(_, _, _, status, _, _) if status != Creating => // TODO will be Loading when implemented
             case DataNotFoundError(_, _, _) =>
             case o: Any => throw new CryoError(s"Invalid data status ${o}")
           } flatMap {
@@ -70,11 +70,10 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             case o: Any => throw CryoError(s"Fail to create data ${dataId}", o)
           }
           try {
-            for (
-              input <- managed(glacier.getJobOutput(new GetJobOutputRequest()
-                .withJobId(job.id)
-                .withVaultName(cryoctx.vaultName)).getBody)
-            ) {
+            val input = glacier.getJobOutput(new GetJobOutputRequest()
+              .withJobId(job.id)
+              .withVaultName(cryoctx.vaultName)).getBody
+            try {
               val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
               Iterator.continually(input.read(buffer))
                 .takeWhile(_ != -1)
@@ -86,6 +85,8 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
                     }
                   }
                 }
+            } finally {
+              input.close()
             }
 
             transfer flatMap {
@@ -158,14 +159,14 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case jobId =>
           cryoctx.manager ? AddJobs(new Job(jobId, "", new Date, InProgress(), None, archiveId))
       } onComplete {
-            case Success(JobsAdded(jobs)) => jobs.map(job => _sender ! DownloadArchiveRequested(job))
-            case o: Any => _sender ! CryoError("Fail to add download archive job", o)
+        case Success(JobsAdded(jobs)) => jobs.map(job => _sender ! DownloadArchiveRequested(job))
+        case o: Any => _sender ! CryoError("Fail to add download archive job", o)
       }
 
     case UploadData(id) =>
       val _sender = sender
       (cryoctx.datastore ? GetDataStatus(id)) onComplete {
-        case Success(DataStatus(_, _, _, status, size, checksum)) if status == EntryStatus.Created =>
+        case Success(DataStatus(_, _, _, status, size, checksum)) if status == Cached =>
           if (size < cryoctx.multipartThreshold) {
             glacier.uploadArchive(new UploadArchiveRequest()
               //.withArchiveDescription(description)

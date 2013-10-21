@@ -8,6 +8,8 @@ import akka.pattern.{ ask, AskTimeoutException }
 
 import org.slf4j.{ Logger, MarkerFactory }
 
+trait OptionalMessage
+
 class CryoAskableActorRef(val cryoctx: CryoContext, actorRef: ActorRef)(implicit executionContext: ExecutionContext) extends LoggingClass {
   
   def ?(message: Any) = {
@@ -35,6 +37,7 @@ abstract class CryoActor(_cryoctx: CryoContext) extends Actor with LoggingClass 
       val handled = f.isDefinedAt(o)
       o match {
         case a: Any if handled => log.debug(Log.handledMsgMarker, s"Receiving message: ${a}")
+        case o: OptionalMessage => log.debug(Log.unhandledMshMarker, s"Ignored message: ${o}")
         case t: Throwable => log.warn(Log.errMsgMarker, s"Unhandled error", t)
         case a: Any => log.warn(Log.unhandledMshMarker, s"Unhandled message: ${a}")
       }

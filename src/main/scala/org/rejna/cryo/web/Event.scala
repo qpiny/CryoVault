@@ -5,10 +5,9 @@ import java.util.Date
 
 import scala.concurrent.duration._
 
-import net.liftweb.json._
+import org.json4s.{ Formats, TypeHints }
 
 import org.rejna.cryo.models._
-import InventoryStatus._
 
 //case class GetArchiveList() extends RequestEvent
 //case class ArchiveList(archives: List[String]) extends ResponseEvent("<null>")
@@ -19,6 +18,21 @@ case class Subscribe(subscription: String) extends Request
 case class Unsubscribe(subscription: String) extends Request
 case class AddIgnoreSubscription(subscription: String) extends Request
 case class RemoveIgnoreSubscription(subscription: String) extends Request
+
+object JsonWithTypeHints extends Formats {
+  implicit val format = this
+
+  override val typeHints = new TypeHints {
+    val hints = classOf[Subscribe] ::
+      Nil
+
+    def hintFor(clazz: Class[_]): String = clazz.getSimpleName
+    def classFor(hint: String): Option[Class[_]] = hints find (hintFor(_) == hint)
+  }
+
+  val dateFormat = Json.dateFormat
+  override val typeHintFieldName = "type"
+}
 
 //case class Archive(id: String, creationDate: DateTime, )
 //case class CreateSnapshot() extends RequestEvent

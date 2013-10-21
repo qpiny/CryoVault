@@ -78,6 +78,7 @@ object CryoWeb extends LoggingClass {
   }
 
   def main(args: Array[String]) = {
+    log.info("Cryo is starting ...")
     //val webServer = new WebServer(WebServerConfig(webLog = Some(WebLogConfig())), routes, system)
     val webconfig = config.withFallback(ConfigFactory.parseString(s"""web { web-log { custom-actor-path = "${cryoctx.logger.path}", format = "Common" } }"""))
     val webServer = new WebServer(new WebServerConfig(webconfig, "web"), routes, system)

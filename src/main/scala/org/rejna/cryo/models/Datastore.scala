@@ -13,8 +13,7 @@ import java.nio.file.StandardOpenOption._
 import java.nio.ByteBuffer
 import java.util.{ Date, UUID }
 
-import resource.managed
-import net.liftweb.json.Serialization
+import EntryStatus._
 
 sealed abstract class DatastoreRequest extends Request
 sealed abstract class DatastoreResponse extends Response { val id: String }
@@ -32,7 +31,7 @@ case class DataRead(id: String, position: Long, buffer: ByteString) extends Data
 case class CloseData(id: String) extends DatastoreRequest
 case class DataClosed(id: String) extends DatastoreResponse
 case class GetDataStatus(id: String) extends DatastoreRequest
-case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DatastoreResponse
+case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus, size: Long, checksum: String) extends DatastoreResponse
 
 case class OpenError(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
 case class WriteError(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
@@ -41,45 +40,38 @@ case class DataNotFoundError(id: String, message: String, cause: Throwable = nul
 case class InvalidDataStatus(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
 
 class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
-  import EntryStatus._
-
   val attributeBuilder = CryoAttributeBuilder("/cryo/datastore")
   val repository = attributeBuilder.map("repository", Map.empty[String, DataEntry])
 
-  override def postStop = {
-    implicit val formats = Json
-
+  override def postStop = try {
+    val channel = FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE)
     try {
-      for (channel <- managed(FileChannel.open(cryoctx.workingDirectory.resolve("repository"), WRITE, CREATE))) {
-        channel.truncate(0)
-
-        log.debug("Writting repository :")
-        repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}") }
-        val repo = repository.values
-          .filter { d => d.status == Created || d.status == Remote }
-          .map { _.state }
-        channel.write(ByteBuffer.wrap(Serialization.write(repo).getBytes))
-      }
-    } catch {
-      case t: Throwable => println(s"Datastore has failed to store its state", t)
+      channel.truncate(0)
+      log.debug("Writting repository :")
+      //repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}") }
+      val repo = repository.values
+        .filter { d => d.status == Cached || d.status == Remote }
+        .map { _.state }
+      //channel.write(ByteBuffer.wrap(Serialization.write(repo).getBytes))
+    } finally {
+      channel.close
     }
+  } catch {
+    case t: Throwable => println(s"Datastore has failed to store its state", t)
   }
 
-  override def preStart = {
-    implicit val formats = Json
-    try {
-      val source = scala.io.Source.fromFile(cryoctx.workingDirectory.resolve("repository").toFile)
-      val repoData = source.getLines mkString "\n"
-      source.close()
-      val entries = Serialization.read[List[EntryState]](repoData) map {
-        case state => DataEntry(cryoctx, attributeBuilder, state)
-      }
-      repository ++= entries.map(e => e.id -> e)
-      log.info("Repository loaded : " + entries.map(_.id).mkString(","))
-    } catch {
-      case e: IOException => log.warn("Repository file not found")
-      case t: Throwable => log.error("Repository load failed", t)
+  override def preStart = try {
+    val source = scala.io.Source.fromFile(cryoctx.workingDirectory.resolve("repository").toFile)
+    val repoData = source.getLines mkString "\n"
+    source.close()
+    val entries = Json.read[List[DataStatus]](repoData) map {
+      case state => DataEntry(cryoctx, attributeBuilder, state)
     }
+    repository ++= entries.map(e => e.id -> e)
+    log.info("Repository loaded : " + entries.map(_.id).mkString(","))
+  } catch {
+    case e: IOException => log.warn("Repository file not found")
+    case t: Throwable => log.error("Repository load failed", t)
   }
 
   def receive = cryoReceive {
@@ -147,12 +139,12 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case Some(de: DataEntryCreating) =>
           val newde = de.close
           repository += id -> newde
-          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(EntryStatus.Creating), EntryStatus.Created))
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Creating), Cached))
           sender ! DataClosed(id)
         case Some(de: DataEntryLoading) =>
           val newde = de.close
           repository += id -> newde
-          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(EntryStatus.Loading), EntryStatus.Created))
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Loading), Cached))
           sender ! DataClosed(id)
         case Some(de: DataEntryCreated) =>
           sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for close")

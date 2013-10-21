@@ -7,6 +7,8 @@ import akka.actor.{ Actor, Stash }
 
 import java.util.Date
 
+import EntryStatus._
+
 case class AddSnapshotMock(snapshot: DataEntryMock)
 case class SnapshotAddedMock(snapshotId: String)
 case class AddArchiveMock(archive: DataEntryMock)
@@ -64,7 +66,7 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case dsl =>
           val archiveList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
           _sender ! ArchiveList(new Date,
-            InventoryStatus.Cached,
+            Cached,
             archiveList)
       } onFailure {
         case e: Throwable => _sender ! CryoError("Error while retrieving archive list", e)
@@ -75,7 +77,7 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case dsl =>
           val snapshotList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
           _sender ! SnapshotList(new Date,
-            InventoryStatus.Cached,
+            Cached,
             snapshotList)
       } onFailure {
         case e: Throwable => _sender ! CryoError("Error while retrieving snapshot list", e)

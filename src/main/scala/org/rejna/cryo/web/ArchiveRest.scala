@@ -13,7 +13,6 @@ import org.mashupbots.socko.rest._
 import org.json4s.{ Formats, DefaultFormats, NoTypeHints }
 
 import org.rejna.cryo.models._
-import InventoryStatus._
 
 case class GetArchiveListRequest(context: RestRequestContext) extends RestRequest
 case class GetArchiveListResponse(context: RestResponseContext, archiveList: List[DataStatus]) extends RestResponse

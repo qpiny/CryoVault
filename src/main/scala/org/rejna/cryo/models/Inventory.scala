@@ -18,15 +18,13 @@ import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
 import java.util.Date
 
-import net.liftweb.json.Serialization
-import net.liftweb.json.JsonDSL._
+//object InventoryStatus extends Enumeration {
+//  type InventoryStatus = Value
+//  val Unknown, Refreshing, Cached, Error = Value
+//}
 
-object InventoryStatus extends Enumeration {
-  type InventoryStatus = Value
-  val Unknown, Refreshing, Cached, Error = Value
-}
-
-import InventoryStatus._
+//import InventoryStatus._
+import EntryStatus._
 
 sealed abstract class InventoryInternalMessage
 sealed abstract class InventoryRequest extends Request
@@ -41,17 +39,17 @@ case class ArchiveCreated(id: String) extends InventoryResponse
 case class CreateSnapshot() extends InventoryRequest
 case class SnapshotCreated(id: String) extends InventoryResponse
 case class GetArchiveList() extends InventoryRequest
-case class ArchiveList(date: Date, status: InventoryStatus, archives: List[DataStatus]) extends InventoryResponse
+case class ArchiveList(date: Date, status: EntryStatus, archives: List[DataStatus]) extends InventoryResponse
 
 case class GetSnapshotList() extends InventoryRequest
-case class SnapshotList(date: Date, status: InventoryStatus, snapshots: List[DataStatus]) extends InventoryResponse
+case class SnapshotList(date: Date, status: EntryStatus, snapshots: List[DataStatus]) extends InventoryResponse
 case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 
-case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)
-case class InventoryMessage(date: Date, entries: List[InventoryEntry])
+//case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DatastoreResponse
+//case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)
+case class InventoryMessage(date: Date, entries: List[DataStatus])
 
 class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
-  import InventoryStatus._
   private var isDying = false
 
   val attributeBuilder = CryoAttributeBuilder("/cryo/inventory")
@@ -104,29 +102,17 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   }
 
   private def save() = {
-    implicit val format = Json
-
     cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
       case DataCreated(id) =>
         val fArchList = for {
           s <- snapshots.futureNow;
           a <- archives.futureNow
-        } yield {
-          (a ++ s).map {
-            case ds: DataStatus =>
-              ("ArchiveId" -> ds.id) ~
-                ("ArchiveDescription" -> ds.description) ~
-                ("CreationDate" -> Json.dateFormat.format(ds.creationDate)) ~
-                ("Size" -> ds.size) ~
-                ("SHA256TreeHash" -> ds.checksum)
-          }
-        }
+        } yield (a ++ s)
+        
         fArchList flatMap {
           case archiveList =>
-            cryoctx.datastore ? WriteData(id, ByteString(Serialization.write(
-              //("VaultARN" -> ??) ~
-              ("InventoryDate" -> Json.dateFormat.format(date)) ~
-                ("ArchiveList" -> archiveList))))
+            val inventoryMsg = InventoryMessage(date, archiveList)
+            cryoctx.datastore ? WriteData(id, ByteString(Json.write(inventoryMsg)))
         }
       case e: Any => throw CryoError("Fail to create inventory", e)
     } flatMap {
@@ -143,13 +129,11 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     }
   }
 
-  private def loadFromDataStore(size: Long): Future[InventoryStatus] = {
-    implicit val formats = Json
-
+  private def loadFromDataStore(size: Long): Future[EntryStatus] = {
     cryoctx.datastore ? ReadData(inventoryDataId, 0, size.toInt) map {
       case DataRead(id, position, buffer) =>
         val message = buffer.decodeString("UTF-8")
-        val inventory = Serialization.read[InventoryMessage](message)
+        val inventory = Json.read[InventoryMessage](message)
         cryoctx.inventory ! UpdateInventoryDate(inventory.date)
 
         for (entry <- inventory.entries) {
@@ -170,11 +154,11 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
   private def reload() = {
     (cryoctx.datastore ? GetDataStatus(inventoryDataId)) flatMap {
-      case DataStatus(_, _, _, ds, size, _) if ds == EntryStatus.Created =>
+      case DataStatus(_, _, _, ds, size, _) if ds == Cached =>
         loadFromDataStore(size)
       case _: DataStatus =>
         log.info("Waiting for inventory download completion")
-        Future(Refreshing)
+        Future(Loading)
       case DataNotFoundError(id, _, _) =>
         log.info("No inventory found in datastore")
         (cryoctx.notification ? GetNotification()) map {
@@ -187,12 +171,12 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             (cryoctx.cryo ? RefreshInventory()) map {
               case RefreshInventoryRequested(job) =>
                 log.info(s"Inventory update requested (${job.id})")
-                Refreshing
+                Loading
               case o: Any => throw CryoError("Fail to refresh inventory", o)
             }
           case _: JobList =>
             log.info("Inventory update has been already requested")
-            Future(Refreshing)
+            Future(Loading)
           case o: Any =>
             throw CryoError("Fail to get job list", o)
         }
@@ -244,7 +228,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       if (!isDying) path match {
         case AttributePath("datastore", `inventoryDataId`, "status") =>
           CryoEventBus.publish(AttributeChange("/cryo/inventory#status", previous, now))
-          if (now == EntryStatus.Created) {
+          if (now == Cached) {
             reload
           }
         case AttributePath("datastore", id, attr) =>

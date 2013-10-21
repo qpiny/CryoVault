@@ -20,7 +20,7 @@ import org.rejna.util.MultiRange
 
 object EntryStatus extends Enumeration {
   type EntryStatus = Value
-  val Creating, Loading, Created, Remote = Value
+  val Creating, Loading, Cached, Remote, Downloading, Unknown = Value
 }
 import EntryStatus._
 
@@ -39,17 +39,17 @@ sealed abstract class DataEntry(
 
   def status: EntryStatus
 
-  def state = EntryState(status, id, description, creationDate, size, checksum)
-  override def toString = state.toString
+  def state = DataStatus(id, description, creationDate, status, size, checksum)//EntryState(status, id, description, creationDate, size, checksum)
+  override def toString = status.toString
 }
 
 object DataEntry {
-  def apply(cryoctx: CryoContext, attributeBuilder: CryoAttributeBuilder, state: EntryState) = {
+  def apply(cryoctx: CryoContext, attributeBuilder: CryoAttributeBuilder, state: DataStatus/* EntryState */) = {
     val entryAttributeBuilder = attributeBuilder / state.id
     state.status match {
       //case Creating => // not supported
       //case Loading => // not supported yet
-      case Created =>
+      case Cached =>
         new DataEntryCreated(
           cryoctx,
           state.id,
@@ -159,7 +159,7 @@ class DataEntryCreated(
     size = Files.size(file)
   val channel = FileChannel.open(file, READ)
 
-  def status = Created
+  def status = Cached
 
   def read(position: Long, length: Int) = {
     val buffer = ByteBuffer.allocate(length)
@@ -209,11 +209,11 @@ class DataEntryLoading(
 
   //override def state = EntryState(status, id, description, creationDate, expectedSize, checksum, Some(range))
 }
-case class EntryState(
-  status: EntryStatus,
-  id: String,
-  description: String,
-  creationDate: Date,
-  size: Long,
-  checksum: String)//,
+//case class EntryState(
+//  status: EntryStatus,
+//  id: String,
+//  description: String,
+//  creationDate: Date,
+//  size: Long,
+//  checksum: String)//,
   //range: Option[MultiRange[Long]] = None)

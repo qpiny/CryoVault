@@ -13,7 +13,7 @@ import org.mashupbots.socko.rest._
 import org.json4s.{ Formats, DefaultFormats, NoTypeHints }
 
 import org.rejna.cryo.models._
-import InventoryStatus._
+//import EntryStatus._
 
 case class GetSnapshotListRequest(context: RestRequestContext) extends RestRequest
 case class GetSnapshotListResponse(context: RestResponseContext, snapshotList: List[DataStatus]) extends RestResponse

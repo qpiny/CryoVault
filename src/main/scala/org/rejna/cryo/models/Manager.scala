@@ -14,8 +14,8 @@ import java.util.Date
 import akka.util.ByteString
 
 import com.amazonaws.services.glacier.model.GlacierJobDescription
-import resource.managed
-import net.liftweb.json.Serialization
+
+import EntryStatus._
 
 object JobStatus {
   def apply(name: String, message: String) = name match {
@@ -53,22 +53,23 @@ object Job {
   }
 
   def apply(j: GlacierJobDescription): Job = {
+    // TODO put in job serialization (in Json.scala)
     j.getAction match {
       case "ArchiveRetrieval" =>
         new Job(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
-          Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()), //DateUtil.fromISOString(j.getCreationDate), // FIXME
+          Json.readDate(j.getCreationDate).getOrElse(new Date()), //DateUtil.fromISOString(j.getCreationDate), // FIXME
           getStatus(j.getStatusCode, j.getStatusMessage),
-          Json.dateFormat.parse(j.getCompletionDate()),
+          Json.readDate(j.getCompletionDate()),
           j.getArchiveId)
       case "InventoryRetrieval" =>
         new Job(
           j.getJobId,
           Option(j.getJobDescription).getOrElse(""),
-          Json.dateFormat.parse(j.getCreationDate).getOrElse(new Date()),
+          Json.readDate(j.getCreationDate).getOrElse(new Date()),
           getStatus(j.getStatusCode, j.getStatusMessage),
-          Json.dateFormat.parse(j.getCompletionDate()), //Option(j.getCompletionDate).map(DateUtil.fromISOString))
+          Json.readDate(j.getCompletionDate()), //Option(j.getCompletionDate).map(DateUtil.fromISOString))
           "inventory")
     }
   }
@@ -100,7 +101,6 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   var isDying = false
 
   override def preStart = {
-    implicit val formats = Json
     log.info("Starting manager ...")
     log.info("Refreshing job list")
     (cryoctx.cryo ? RefreshJobList()) onComplete {
@@ -109,14 +109,14 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     }
 
     (cryoctx.datastore ? GetDataStatus("finalizedJobs")) flatMap {
-      case DataStatus(id, _, _, status, size, _) if status == EntryStatus.Created && size > 0 =>
+      case DataStatus(id, _, _, status, size, _) if status == Cached && size > 0 =>
         (cryoctx.datastore ? ReadData(id, 0, size.toInt))
       case dnfe: DataNotFoundError => throw dnfe
       case o: Any =>
         throw CryoError("Fail to get finalizedJobs", o)
     } map {
       case DataRead(_, _, buffer) =>
-        finalizedJobs ++= Serialization.read[List[Job]](buffer.decodeString("UTF-8")).map(j => j.id -> j)
+        finalizedJobs ++= Json.read[List[Job]](buffer).map(j => j.id -> j)
       case o: Any =>
         throw CryoError("Fail to read finalizedJobs", o)
     } onComplete {
@@ -132,9 +132,8 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       isDying = true
 
       val _sender = sender
-      implicit val formats = Json
       cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
-        case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Serialization.write(finalizedJobs.values))))
+        case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Json.write(finalizedJobs.values))))
         case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
       } flatMap {
         case DataWritten(id, _, _) => cryoctx.datastore ? CloseData(id)

@@ -39,7 +39,12 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   def addShutdownHook[T](f: => T) = shutdownHooks = shutdownHooks map { (Unit) => f }
   def addFutureShutdownHook[T](f: => Future[T]) = shutdownHooks = shutdownHooks flatMap { (Unit) => f }
 
-  def shutdown() {
+  def sendToAll(message: Any) = {
+    for (c <- children)
+      c ! message
+  }
+  
+  def shutdown() = {
     if (!isShuttingDown) {
       implicit val timeout = getTimeout(classOf[PrepareToDie])
 

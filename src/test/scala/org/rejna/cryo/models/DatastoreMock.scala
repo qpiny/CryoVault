@@ -7,6 +7,8 @@ import akka.util.ByteString
 
 import java.util.{ UUID, Date }
 
+import EntryStatus._
+
 case class DataEntryMock(id: String, description: String, creationDate: Date, size: Long, checksum: String, content: ByteString) {
   def write(buffer: ByteString) =
     DataEntryMock(id, description, creationDate, content.size + buffer.size, checksum, content.concat(buffer))
@@ -73,7 +75,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
           sender ! DataNotFoundError(id, s"Data ${id} not found")
         case Some(de) =>
           log.info(s"Send data status to ${sender}]")
-          sender ! DataStatus(id, de.description, de.creationDate, EntryStatus.Creating, de.size, de.checksum)
+          sender ! DataStatus(id, de.description, de.creationDate, Creating, de.size, de.checksum)
       }
 
     case ReadData(id, position, length) =>
@@ -87,7 +89,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
     case CloseData(id) =>
       repository.get(id) match {
         case Some(de) =>
-          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(EntryStatus.Creating), EntryStatus.Created))
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Creating), Cached))
           sender ! DataClosed(id)
         case None =>
           sender ! DataNotFoundError(id, s"Data ${id} not found")

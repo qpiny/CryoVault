@@ -15,6 +15,11 @@
 
 (aset exitCtrl "$inject" (array "$scope" "socket"))
 
+(defn list-contains? [coll value fun]
+  (if-let [s (seq coll)]
+    (if (= (fun (first s)) value) true (recur (rest s) value fun))
+    false))
+
 (defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv socket]
   (oset! $scope
          :params $routeParams
@@ -31,7 +36,15 @@
                   (clj->js {:templateUrl "partials/exit.html"
                             :controller exitCtrl})))
   (.subscribe socket "/cryo/inventory")
-  (.on socket "/cryo/inventory#snapshots" (fn [e] (.log js/console (.stringify js/JSON e)))))
+  (.on socket "/cryo/inventory#snapshots"
+    (fn [e]
+      (let [added (.-addedValues e)
+            removed (.-removedValues e)
+            previous-snapshots (aget $scope "snapshots")
+            new-snapshots (conj
+                            (.filter previous-snapshots (fn [s] (list-contains? removed (.-id s) #(.-id %))))
+                            added)]
+        (aset $scope "snapshots" new-snapshots)))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 

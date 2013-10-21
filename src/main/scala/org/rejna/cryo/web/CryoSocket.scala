@@ -21,7 +21,6 @@ import org.rejna.cryo.models._
 import akka.event.EventBus
 import akka.event.SubchannelClassification
 import akka.util.Subclassification
-import net.liftweb.json._
 import org.mashupbots.socko.events.WebSocketFrameEvent
 import org.jboss.netty.channel.Channel
 import org.jboss.netty.handler.codec.http.websocketx.TextWebSocketFrame
@@ -34,49 +33,7 @@ class UnexceptionalPartial[-A, +B](exceptionCatcher: Catcher[B])(unsafe: Partial
 
 case class Exit() extends Request
 
-object EventTypeHints extends TypeHints {
-  val hints =
-    //    classOf[UploadSnapshot] ::
-    //      classOf[UpdateSnapshotFileFilter] ::
-    classOf[Unsubscribe] ::
-      classOf[Subscribe] ::
-      classOf[RemoveIgnoreSubscription] ::
-      classOf[RefreshInventory] ::
-      classOf[GetSnapshotList] ::
-      classOf[SnapshotGetFiles] ::
-      //      classOf[GetArchiveList] ::
-      classOf[CreateSnapshot] ::
-      classOf[SnapshotCreated] ::
-      classOf[SnapshotCreated] ::
-      classOf[AddIgnoreSubscription] ::
-      //      classOf[ArchiveList] ::
-      classOf[SnapshotList] ::
-      //      classOf[AddFile] ::
-      //      //classOf[ArchiveCreation] ::
-      //      classOf[SnapshotFiles] ::
-      classOf[AttributeChange[_]] ::
-      classOf[AttributeListChange[_]] ::
-      classOf[CryoError] ::
-      classOf[Log] ::
-      classOf[GetJobList] ::
-      classOf[JobList] ::
-      classOf[Exit] ::
-      Nil
-
-  def hintFor(clazz: Class[_]) = clazz.getSimpleName
-  def classFor(hint: String) = hints find (hintFor(_) == hint)
-}
-object EventSerialization {
-  implicit object CryoFormats extends Formats {
-    override val typeHintFieldName = "type"
-    override val typeHints = EventTypeHints
-    override val customSerializers = Json.customSerializers
-    val dateFormat = Json.dateFormat
-  }
-}
-
 class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
-  import EventSerialization._
   implicit val timeout = Timeout(10 seconds)
   implicit val executionContext = context.system.dispatcher
   val ignore = ListBuffer[Regex]()
@@ -88,7 +45,7 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
 
   def send[T <: AnyRef](message: T)(implicit t : Manifest[T]) = {
     if (channel.isOpen) {
-      channel.write(new TextWebSocketFrame(Serialization.write(message)))
+      channel.write(new TextWebSocketFrame(Json.write(message)))
 //        message match {
 //          case m: CryoMessage => Serialization.write(m)
 //          case ml: Iterable[_] => Serialization.write(ml)
@@ -99,15 +56,10 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
     }
   }
   def receive = {
-//    new UnexceptionalPartial[Any, Unit]({
-//    case _: ClosedChannelException =>
-//      println("WebSocket is closed, stopping actor")
-//      context.stop(self)
-//  })({
-    case wsFrame: WebSocketFrameEvent =>
+   case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
       log.debug("Receive from websocket: " + m)
-      val event = Serialization.read[Request](m)
+      val event = Json.read[Request](m)
       log.info("Receive from websocket: " + event)
       event match {
         case Subscribe(subscription) =>
