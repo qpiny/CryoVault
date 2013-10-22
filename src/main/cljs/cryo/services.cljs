@@ -1,5 +1,8 @@
 (ns cryo.services
-  (:require [goog.net.WebSocket :as gws]))
+  (:require [goog.net.WebSocket]
+            [goog.events.EventHandler]
+            [goog.events.EventTarget]
+            [goog.net.WebSocket.EventType :as ws-event]))
 
 (doto (angular/module "cryoService" (array "ngResource"))
   (.factory "SnapshotSrv"
@@ -31,14 +34,52 @@
         (clj->js {})
         (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}}))))
   
-  (.factory "wsock"
-    (fn [$rootScope]
-      (let [service (clj->js {:callbacks {}
-                              :stash nil
-                              :ws (gws.)})])))
-      
-      
   (.factory "socket"
+    (fn [$rootScope]
+      (let [event-handler (goog.events.EventHandler.)
+            event-target (goog.events.EventTarget.)
+            ws (goog.net.WebSocket.)
+            on (fn [event cb] (.listen event-handler event-target event cb false nil))
+            service (clj->js {:stash nil
+                              :ws ws
+                              :on on})
+            subscribe (fn [subscription] (.send service {:type "Subscribe" :subscription subscription}))
+            ws-store (fn [message]
+                       (aset service "stash" (conj (aget service "stash") message)))
+            ws-send (fn [message]
+                      (let [msg (.stringify js/JSON (clj->js message))
+                            ws (aget service "ws")]
+                        (.log js/console (str "sending message : " msg))
+                        (.send ws msg)))
+            on-open (fn [e]
+                      (aset service "send" ws-send)
+                      (.log js/console (str "websocket is connected : " (.stringify js/JSON (clj->js e))))
+                      (doseq [m (aget service "stash")] (ws-send m))
+                      (aset service "stash" nil))
+            on-close (fn [e]
+                       (.log js/console (str "websocket is closed : " (.stringify js/JSON (clj->js e)))))
+            on-error (fn [e]
+                       (.log js/console (str "websocket error : " (.stringify js/JSON (clj->js e)))))
+            on-message (fn [e]
+                         (.log js/console (str "receive message : " (.stringify js/JSON (clj->js e))))
+                         (when-let [message (.-message e)]
+                           (when-let [msg (.parse js/JSON message)]
+                             (when-let [path (.-path msg)]
+                               (.dispatchEvent event-target (clj->js {:type path
+                                                                       :message msg}))))))]
+        (aset service "send" ws-store)
+        (aset service "subscribe" subscribe)
+        (try
+          (.open ws "ws://localhost:8888/websocket")
+          (.listen event-handler ws ws-event/OPENED on-open false nil)
+          (.listen event-handler ws ws-event/CLOSED on-close false nil)
+          (.listen event-handler ws ws-event/ERROR on-error false nil)
+          (.listen event-handler ws ws-event/MESSAGE on-message false nil)
+          (catch js/Error e
+            (.log js/console "No WebSocket supported, get a decent browser."))))))
+      
+      
+  (.factory "socket2"
     (fn [$rootScope]
       (let [service (clj->js {:callbacks {}
                               :stash nil
