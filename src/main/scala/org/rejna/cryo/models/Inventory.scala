@@ -212,7 +212,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           log.debug("Inventory is ready to die")
           _sender ! ReadyToDie()
         case Failure(e) =>
-          log.info("Inventory shutdown has generated an error", e)
+          log.error("Inventory shutdown has generated an error", e)
           _sender ! ReadyToDie()
       }
 

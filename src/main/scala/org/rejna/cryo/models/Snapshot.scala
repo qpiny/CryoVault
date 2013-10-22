@@ -121,6 +121,8 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
         case e: AccessDeniedException =>
           sender ! SnapshotFiles(id, path, List(new FileElement(
             FileSystems.getDefault.getPath(path).resolve("_Access_denied_"), false, None, 0, 0)))
+        case t: Throwable =>
+          sender ! CryoError("Error while getting snapshot files", t)
       }
 
     case SnapshotUpload(id) =>
@@ -131,7 +133,7 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
       }
       archiveUploader.flatMap {
         case UploaderState(out, aid, len) =>
-          (cryoctx.hashcatalog ? GetCatalogContent) map {
+          (cryoctx.hashcatalog ? GetCatalogContent()) map {
             case CatalogContent(catalog) =>
               //out.putCatalog(catalog)
               UploaderState(out, aid, len)

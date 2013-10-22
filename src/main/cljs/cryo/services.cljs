@@ -1,4 +1,5 @@
-(ns cryo.services)
+(ns cryo.services
+  (:require [goog.net.WebSocket :as gws]))
 
 (doto (angular/module "cryoService" (array "ngResource"))
   (.factory "SnapshotSrv"
@@ -30,23 +31,30 @@
         (clj->js {})
         (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}}))))
   
+  (.factory "wsock"
+    (fn [$rootScope]
+      (let [service (clj->js {:callbacks {}
+                              :stash nil
+                              :ws (gws.)})])))
+      
+      
   (.factory "socket"
     (fn [$rootScope]
       (let [service (clj->js {:callbacks {}
                               :stash nil
-                              :ws (js/WebSocket. "ws://localhost:8888/websocket")})
+                              :ws (js/WebSocket. "ws://10.112.112.100:8889/websocket")})
             ws-store (fn [message]
                        (aset service "stash" (conj (aget service "stash") message)))
             ws-send (fn [message]
                       (let [msg (.stringify js/JSON (clj->js message))
                             ws (aget service "ws")]
-                        (.log js/console (str "sending message : " msg))
+                        (.log js/console (str "sending message : " msg ", state = " (.-readyState ws)))
                         (.send ws msg)))
             ws (aget service "ws")]
         (.log js/console "new websocket connection")
         (aset ws "onopen" (fn []
                             (aset service "send" ws-send)
-                            (.log js/console "websocket is connected")
+                            (.log js/console (str "websocket is connected, state = " (.-readyState ws)))
                             (doseq [m (aget service "stash")] (.send service m))
                             (aset service "stash" nil)))
         (aset ws "onmessage" (fn [event]
@@ -56,6 +64,7 @@
                                      (.log js/console (str "Receive message : " messagestr))
                                      (doseq [x ((aget service "callbacks") path)] (.$apply $rootScope (x message))))))))
         (aset ws "onerror" (fn [] (.log js/console "WS ERROR !!")))
+        (aset ws "onclose" (fn [] (.log js/console "WS CLOSE !!")))
         (aset service "send" ws-store)
         (aset service "on" (fn [event callback]
                              (aset service "callbacks"

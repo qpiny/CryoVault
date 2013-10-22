@@ -48,16 +48,18 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     try {
       channel.truncate(0)
       log.debug("Writting repository :")
-      //repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}") }
+      repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}") }
       val repo = repository.values
-        .filter { d => d.status == Cached || d.status == Remote }
+        //.filter { d => d.status == Cached || d.status == Remote }
         .map { _.state }
-      //channel.write(ByteBuffer.wrap(Serialization.write(repo).getBytes))
+      channel.write(ByteBuffer.wrap(Json.write(repo).getBytes))
+    } catch {
+      case t: Throwable => log.error(CryoError("Datastore has failed to store its state", t))
     } finally {
       channel.close
     }
   } catch {
-    case t: Throwable => println(s"Datastore has failed to store its state", t)
+    case t: Throwable => log.error(CryoError("Datastore has failed to open its state file", t))
   }
 
   override def preStart = try {

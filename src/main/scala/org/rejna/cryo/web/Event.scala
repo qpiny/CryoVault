@@ -5,7 +5,10 @@ import java.util.Date
 
 import scala.concurrent.duration._
 
-import org.json4s.{ Formats, TypeHints }
+import akka.actor.ActorRef
+
+import org.json4s._
+import org.json4s.native.Serialization
 
 import org.rejna.cryo.models._
 
@@ -22,18 +25,33 @@ case class RemoveIgnoreSubscription(subscription: String) extends Request
 object JsonWithTypeHints extends Formats {
   implicit val format = this
 
-  override val typeHints = new TypeHints {
-    val hints = classOf[Subscribe] ::
-      Nil
-
-    def hintFor(clazz: Class[_]): String = clazz.getSimpleName
-    def classFor(hint: String): Option[Class[_]] = hints find (hintFor(_) == hint)
-  }
+  override val typeHints = ShortTypeHints(
+    classOf[Exit] ::
+      classOf[Subscribe] ::
+      classOf[Unsubscribe] ::
+      classOf[AttributeChange[_]] ::
+      classOf[AttributeListChange[_]] ::
+      classOf[DataStatus] ::
+      Nil)
 
   val dateFormat = Json.dateFormat
   override val typeHintFieldName = "type"
+  override val customSerializers = Json.customSerializers
+
+  def read[T](json: String)(implicit mf: Manifest[T]): T = {
+    Serialization.read[T](json)
+  }
+
+  def write[T <: AnyRef](t: T): String = {
+    Serialization.write(t)
+  }
 }
 
+
+private object JsonActorRef extends CustomSerializer[ActorRef](format => (PartialFunction.empty,
+    {
+      case ar: ActorRef => JString(ar.toString)
+    }))
 //case class Archive(id: String, creationDate: DateTime, )
 //case class CreateSnapshot() extends RequestEvent
 //case class UploadSnapshot(snapshotId: String) extends RequestEvent

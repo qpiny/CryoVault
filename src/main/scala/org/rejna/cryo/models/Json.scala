@@ -7,7 +7,7 @@ import java.util.Date
 import org.json4s._
 import org.json4s.native.Serialization
 import org.json4s.JsonDSL._
-//import org.json4s.ext.EnumNameSerializer
+import org.json4s.ext.EnumNameSerializer
 
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormatterBuilder
@@ -45,8 +45,7 @@ object Json extends Formats {
     def format(d: Date): String = jodaDateFormat.print(new DateTime(d))
   }
   override val typeHints = NoTypeHints
-  
-  //override val customSerializers = 
+  override val customSerializers = new EnumNameSerializer(EntryStatus) :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)

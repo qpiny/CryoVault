@@ -33,7 +33,8 @@ class UnexceptionalPartial[-A, +B](exceptionCatcher: Catcher[B])(unsafe: Partial
 
 case class Exit() extends Request
 
-class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
+class CryoSocket(val _cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
+  implicit val cryoctx = _cryoctx
   implicit val timeout = Timeout(10 seconds)
   implicit val executionContext = context.system.dispatcher
   val ignore = ListBuffer[Regex]()
@@ -43,23 +44,35 @@ class CryoSocket(val cryoctx: CryoContext, channel: Channel) extends Actor with 
     CryoEventBus.unsubscribe(self)
   }
 
-  def send[T <: AnyRef](message: T)(implicit t : Manifest[T]) = {
+  def send[T <: AnyRef](message: T)(implicit t: Manifest[T]) = {
     if (channel.isOpen) {
-      channel.write(new TextWebSocketFrame(Json.write(message)))
-//        message match {
-//          case m: CryoMessage => Serialization.write(m)
-//          case ml: Iterable[_] => Serialization.write(ml)
-//        }))
+      channel.write(new TextWebSocketFrame(JsonWithTypeHints.write(message)))
+      //        message match {
+      //          case m: CryoMessage => Serialization.write(m)
+      //          case ml: Iterable[_] => Serialization.write(ml)
+      //        }))
     } else {
       println("WebSocket is closed, stopping actor")
       context.stop(self)
     }
   }
-  def receive = {
-   case wsFrame: WebSocketFrameEvent =>
+
+  private def receiveWithExceptionCatch(r: Actor.Receive) = new Actor.Receive {
+    def isDefinedAt(o: Any): Boolean = r.isDefinedAt(o)
+    def apply(o: Any): Unit =
+      try {
+        r(o)
+      } catch {
+        case t: Throwable =>
+          log.error(CryoError(s"Message ${o} has generated an error", t))
+      }
+  }
+
+  def receive = receiveWithExceptionCatch {
+    case wsFrame: WebSocketFrameEvent =>
       val m = wsFrame.readText
       log.debug("Receive from websocket: " + m)
-      val event = Json.read[Request](m)
+      val event = JsonWithTypeHints.read[Request](m)
       log.info("Receive from websocket: " + event)
       event match {
         case Subscribe(subscription) =>

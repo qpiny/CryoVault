@@ -20,7 +20,6 @@ object Log {
   val lc = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
   lc.addTurboFilter(LogDispatcher)
 
-  //def getLogger(clazz: Class[_]) = LoggerFactory.getLogger(clazz)
   private def getMarker(markerNames: String*) = {
     val markers = markerNames.map(MarkerFactory.getDetachedMarker)
     val marker = markers.head
@@ -87,7 +86,7 @@ class SimpleLogger(source: String, cryoctx: CryoContext) {
 
 trait LoggingClass {
   val cryoctx: CryoContext
-  lazy val log = new SimpleLogger(getClass.getName, cryoctx) //Log.getLogger(this.getClass)
+  lazy val log = new SimpleLogger(getClass.getName, cryoctx)
 }
 
 object LogDispatcher extends TurboFilter {
@@ -161,6 +160,7 @@ class CryoLogger(cryoctx: CryoContext) extends Actor {
           protocolVersion + " " + 
           responseStatusCode + " " +
           responseSize))
+    case PrepareToDie() => sender ! ReadyToDie()
     case t: OptionalMessage =>
     case a: Any => println(s"*******************${a.toString}*************")
   }

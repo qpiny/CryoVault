@@ -45,6 +45,11 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   }
   
   def shutdown() = {
+    /* vvv DEBUG vvv */
+    //isShuttingDown = true
+    //inventory ! PrepareToDie()
+    /* ^^^ DEBUG ^^^ */
+    
     if (!isShuttingDown) {
       implicit val timeout = getTimeout(classOf[PrepareToDie])
 
@@ -88,7 +93,7 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
     else 1 gibi
   }
 
-  def getTimeout(clazz: Class[_]) = Timeout(5 seconds)
+  def getTimeout(clazz: Class[_]) = Timeout(10 seconds)
 
   val cipher = Cipher.getInstance(config.getString("cryo.cipher"));
   val key = {
@@ -133,7 +138,7 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
 
   val logger = system.actorOf(
       Props(Class.forName(config.getString("cryo.services.logger")), this), "logger")
-  children = logger :: children
+  //children = logger :: children
   
   val hashcatalog = system.actorOf(
     Props(Class.forName(config.getString("cryo.services.hashcatalog")), this), "catalog")
