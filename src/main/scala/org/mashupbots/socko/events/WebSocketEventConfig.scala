@@ -1,5 +1,5 @@
 //
-// Copyright 2013 Vibul Imtarnasan, David Bolton and Socko contributors.
+// Copyright 2012 Vibul Imtarnasan, David Bolton and Socko contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,11 +13,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-package org.mashupbots.socko
+package org.mashupbots.socko.events
+
+import akka.actor.ActorRef
 
 /**
- * REST API processor for Socko
+ * Web Socket configuration used by [[org.mashupbots.socko.events.WebSocketFrameEvent]]
+ *
+ * @param serverName Name of this instance of the Socko Web Server
+ * @param webLogWriter Actor to which web log events to be sent
  */
-package org.mashupbots.socko.rest {
-  
+case class WebSocketEventConfig(
+  serverName: String,
+  webLogWriter: Option[ActorRef]) {
 }

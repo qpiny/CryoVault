@@ -22,8 +22,6 @@ import akka.event.EventBus
 import akka.event.SubchannelClassification
 import akka.util.Subclassification
 import org.mashupbots.socko.events.WebSocketFrameEvent
-import org.jboss.netty.channel.Channel
-import org.jboss.netty.handler.codec.http.websocketx.TextWebSocketFrame
 import org.rejna.cryo.models._
 
 class UnexceptionalPartial[-A, +B](exceptionCatcher: Catcher[B])(unsafe: PartialFunction[A, B]) extends PartialFunction[A, B] {
@@ -33,20 +31,20 @@ class UnexceptionalPartial[-A, +B](exceptionCatcher: Catcher[B])(unsafe: Partial
 
 case class Exit() extends Request
 
-class CryoSocket(val _cryoctx: CryoContext, channel: Channel) extends Actor with LoggingClass {
+class CryoSocket(val _cryoctx: CryoContext, frame: WebSocketFrameEvent) extends Actor with LoggingClass {
   implicit val cryoctx = _cryoctx
   implicit val timeout = Timeout(10 seconds)
   implicit val executionContext = context.system.dispatcher
   val ignore = ListBuffer[Regex]()
 
   override def postStop = {
-    CryoWeb.unregisterWebSocket(channel)
+    CryoWeb.unregisterWebSocket(frame.context.name)
     CryoEventBus.unsubscribe(self)
   }
 
   def send[T <: AnyRef](message: T)(implicit t: Manifest[T]) = {
-    if (channel.isOpen) {
-      channel.write(new TextWebSocketFrame(JsonWithTypeHints.write(message)))
+    if (true) { //frame.isOpen) {
+      frame.writeText(JsonWithTypeHints.write(message))
       //        message match {
       //          case m: CryoMessage => Serialization.write(m)
       //          case ml: Iterable[_] => Serialization.write(ml)

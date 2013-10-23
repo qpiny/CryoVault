@@ -19,8 +19,8 @@ import scala.collection.mutable.HashMap
 import scala.reflect.runtime.{ universe => ru }
 import org.json4s.NoTypeHints
 import org.json4s.native.{ Serialization => json }
-import org.mashupbots.socko.infrastructure.CharsetUtil
 import org.mashupbots.socko.infrastructure.Logger
+import org.mashupbots.socko.infrastructure.CharsetUtil
 import org.mashupbots.socko.events.EndPoint
 
 /**
@@ -421,8 +421,6 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
         thisType.members
           .filter(s => s.isTerm && !s.isMethod && !s.isMacro)
           .map(s => {
-            // if s is enum or option[enum]
-            // SwaggerModelProperty("string", description, termRequired, allowableValues, None))
             val dot = s.fullName.lastIndexOf('.')
             val termName = if (dot > 0) s.fullName.substring(dot + 1) else s.fullName
             val required = !(s.typeSignature <:< SwaggerReflector.optionAnyRefType)
@@ -439,9 +437,7 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
               if (metaData.isEmpty) {
                 if (isEnumeration(s.typeSignature)) Some(enumerationValues(s.typeSignature))
                 else None
-              } else {
-                metaData.get.allowableValues
-              }
+              } else { metaData.get.allowableValues }
 
             // Return name-value for map
             (termName, SwaggerModelProperty(termType, description, termRequired, allowableValues, termItems))
@@ -456,24 +452,6 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
     }
   }
 
-  @Deprecated
-  private def registerEnumType(tpe: ru.Type) = {
-    val allowableValues = tpe.asInstanceOf[ru.TypeRef]
-      .pre
-      .members
-      .view
-      .filter(_.isTerm)
-      .filterNot(_.isMethod)
-      .filterNot(_.isMethod)
-      .filterNot(_.isClass)
-      .toList // list of values (+ object ValueSet, object ValueOrdering)
-      .map(_.name.decoded)
-    //tpe.asInstanceOf[ru.TypeRef].pre.members.view.filter(_.isTerm).filterNot(_.isMethod).filterNot(_.isMethod).filterNot(_.isClass).toList
-    for (value <- allowableValues) {
-      val model = SwaggerModel(value, None, Map.empty[String, SwaggerModelProperty])
-      models.put(value, model)
-    }
-  }
   /**
    * Parse the type of a property and output the Swagger API details
    *
@@ -485,6 +463,7 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
    */
   private def parsePropertyType(tpe: ru.Type, subModels: collection.mutable.Set[ru.Type]): (String, Map[String, String]) = {
     if (isEnumeration(tpe)) {
+      // treat Enumeration as String
       ("string", Map.empty[String, String])
     } else if (SwaggerReflector.isPrimitive(tpe)) {
       // Primitive
@@ -520,9 +499,10 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
    * @return Sequence of [[org.mashupbots.socko.rest.RestModelMetaData]]. Empty if no extra meta data found.
    */
   private def locatePropertiesMetaData(tpe: ru.Type): Seq[RestPropertyMetaData] = {
-    val cs = tpe.typeSymbol.asClass
-    try {
-      val companionModuleSymbol = cs.companionSymbol.asModule
+    val cs = tpe.typeSymbol.asClass.companionSymbol
+    // if there is no module return empty MetaData
+    if (cs != ru.NoSymbol) {
+      val companionModuleSymbol = cs.asModule
       val moduleType = companionModuleSymbol.typeSignature
       if (moduleType <:< typeRestModelMetaData) {
         val moduleMirror = rm.reflectModule(companionModuleSymbol)
@@ -531,19 +511,32 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
       } else {
         Seq.empty
       }
-    } catch {
-      case e: Exception => Seq.empty
+    } else {
+      Seq.empty
     }
   }
 
-  private def enumerationValues(tpe: ru.Type) = {
-    val list = rm.reflectModule(tpe.asInstanceOf[ru.TypeRef].pre.typeSymbol.asClass.companionSymbol.asModule).instance.asInstanceOf[Enumeration].values.toList.map(_.toString)
+  /**
+   * Retrieves enumeration values and returns AllowableValuesList
+   */
+  private def enumerationValues(tpe: ru.Type): AllowableValuesList[String] = {
+    val module = tpe.asInstanceOf[ru.TypeRef]
+      .pre
+      .typeSymbol
+      .asClass
+      .companionSymbol.asModule
+    val companion = rm.reflectModule(module).instance.asInstanceOf[Enumeration]
+    val list = companion.values.toList.map(_.toString)
     AllowableValuesList(list)
   }
-  
+
+  /**
+   * Determines if type is an Enumeration
+   */
   private def isEnumeration(tpe: ru.Type): Boolean = {
     tpe.declaration(ru.newTermName("scala$Enumeration$$outerEnum")) != ru.NoSymbol
   }
+
   /**
    * Determines if we need to register a type as a model. Primitives are ignored.
    *
@@ -564,7 +557,8 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
         if (SwaggerReflector.isPrimitive(contentType) || isEnumeration(contentType))
           // Ignore primitive containers
           Unit
-        else // Register Container of complex types
+        else
+          // Register Container of complex types
           registerComplexType(contentType)
       }
     }

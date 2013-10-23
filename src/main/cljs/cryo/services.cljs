@@ -36,6 +36,7 @@
   
   (.factory "socket"
     (fn [$rootScope]
+      (.log js/console ">>>>>>Instantiate socket service<<<<<<")
       (let [event-handler (goog.events.EventHandler.)
             event-target (goog.events.EventTarget.)
             ws (goog.net.WebSocket.)
@@ -76,14 +77,15 @@
           (.listen event-handler ws ws-event/ERROR on-error false nil)
           (.listen event-handler ws ws-event/MESSAGE on-message false nil)
           (catch js/Error e
-            (.log js/console "No WebSocket supported, get a decent browser."))))))
+            (.log js/console "No WebSocket supported, get a decent browser.")))
+        service)))
       
       
   (.factory "socket2"
     (fn [$rootScope]
       (let [service (clj->js {:callbacks {}
                               :stash nil
-                              :ws (js/WebSocket. "ws://10.112.112.100:8889/websocket")})
+                              :ws nil}) ; (js/WebSocket. "ws://10.112.112.100:8889/websocket")})
             ws-store (fn [message]
                        (aset service "stash" (conj (aget service "stash") message)))
             ws-send (fn [message]

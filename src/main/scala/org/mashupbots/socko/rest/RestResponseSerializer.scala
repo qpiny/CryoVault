@@ -15,16 +15,16 @@
 //
 package org.mashupbots.socko.rest
 
+import io.netty.handler.codec.http.HttpHeaders
 import java.util.Date
 
 import scala.reflect.runtime.{ universe => ru }
 
-import org.jboss.netty.handler.codec.http.HttpHeaders
-import org.json4s.{ NoTypeHints, Formats, Serializer, TypeInfo, JValue, JString }
+import org.json4s.{ NoTypeHints, Formats, Serializer, JString }
 import org.json4s.native.{ Serialization => json }
 import org.mashupbots.socko.events.HttpRequestEvent
-import org.mashupbots.socko.infrastructure.CharsetUtil
 import org.mashupbots.socko.infrastructure.Logger
+import org.mashupbots.socko.infrastructure.CharsetUtil
 
 /**
  * Serialized outgoing data from a [[org.mashupbots.socko.rest.RestResponse]]
@@ -210,42 +210,17 @@ case class ObjectDataSerializer(
   rm: ru.Mirror,
   customFormats: Option[Formats]) extends NonVoidDataSerializer {
 
-  def serialize(data: Any): Array[Byte] = {
-    if (data == null) Array.empty
-    else {
-      val baseFormat = customFormats.getOrElse(json.formats(NoTypeHints))
-      implicit val formats = baseFormat + new Serializer[Any] {
-        def deserialize(implicit format: Formats) = new PartialFunction[(TypeInfo, JValue), Any] {
-          def isDefinedAt(a: (TypeInfo, JValue)) = {
-            println(s"ObjectDataSerializer.serialize.deserialize(${a._1}, ${a._2})")
-            false
-          }
-          def apply(a: (TypeInfo, JValue)) = JString("")
-        }
-        def serialize(implicit format: Formats) = {
-          case e: Enumeration$Val => JString(e.toString)
-        }
-      }
-      val s = json.write(data.asInstanceOf[AnyRef])
-      s.getBytes(CharsetUtil.UTF_8)
+  private object EnumSerializer extends Serializer[Any] {
+    def deserialize(implicit format: Formats) = PartialFunction.empty
+    def serialize(implicit format: Formats) = {
+      case e: Enumeration$Val => JString(e.toString)
     }
   }
-
-  val contentType = "application/json; charset=UTF-8"
-
-  val forceContentType = true
-}
-
-case class EnumDataSerializer(
-  tpe: ru.Type,
-  responseDataTerm: ru.TermSymbol,
-  rm: ru.Mirror,
-  customFormats: Option[Formats]) extends NonVoidDataSerializer {
-
+  
   def serialize(data: Any): Array[Byte] = {
     if (data == null) Array.empty
     else {
-      implicit val formats = customFormats.getOrElse(json.formats(NoTypeHints))
+      implicit val formats = customFormats.getOrElse(json.formats(NoTypeHints)) + EnumSerializer
       val s = json.write(data.asInstanceOf[AnyRef])
       s.getBytes(CharsetUtil.UTF_8)
     }

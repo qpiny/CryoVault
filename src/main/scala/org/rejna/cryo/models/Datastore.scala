@@ -50,7 +50,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       log.debug("Writting repository :")
       repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}") }
       val repo = repository.values
-        //.filter { d => d.status == Cached || d.status == Remote }
+        .filter { d => d.status == Cached || d.status == Remote }
         .map { _.state }
       channel.write(ByteBuffer.wrap(Json.write(repo).getBytes))
     } catch {

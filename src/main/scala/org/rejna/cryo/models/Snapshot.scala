@@ -285,6 +285,7 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
 class RemoteSnapshot(_cryoctx: CryoContext, id: String) extends CryoActor(_cryoctx) {
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
+    case SnapshotGetFiles(id, path) => sender ! SnapshotFiles(id, path, List.empty[FileElement])
     case _ =>
   }
 }

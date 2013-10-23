@@ -7,13 +7,12 @@ import akka.actor.Props
 
 import com.typesafe.config.ConfigFactory
 
-import org.mashupbots.socko.events.{ HttpResponseStatus, WebSocketHandshakeEvent }
+import org.mashupbots.socko.events.{ HttpResponseStatus, WebSocketHandshakeEvent, WebSocketFrameEvent }
 import org.mashupbots.socko.routes._
 import org.mashupbots.socko.handlers.{ StaticContentHandler, StaticContentHandlerConfig, StaticResourceRequest }
 import org.mashupbots.socko.rest.{ RestRegistry, RestConfig, RestHandler, ReportRuntimeException }
 import org.mashupbots.socko.webserver.{ WebServer, WebServerConfig, WebLogConfig }
 import org.mashupbots.socko.infrastructure.LocalCache
-import org.jboss.netty.channel.Channel
 
 import org.rejna.cryo.models.{ Glacier, LoggingClass, CryoContext, Event, CryoEventBus }
 
@@ -21,7 +20,7 @@ object CryoWeb extends LoggingClass {
   val config = ConfigFactory.load()
   val system = ActorSystem("cryo", config)
   val cryoctx = new CryoContext(system, config)
-  val wsHandlers = HashMap.empty[Channel, ActorRef]
+  val wsHandlers = HashMap.empty[String, ActorRef]
   val staticHandler = system.actorOf(Props(classOf[StaticContentHandler], StaticContentHandlerConfig(
     cache = new LocalCache(0, 16))), "staticHandler")
   val restRegistry = RestRegistry("org.rejna.cryo.web",
@@ -29,7 +28,7 @@ object CryoWeb extends LoggingClass {
   val restHandler = system.actorOf(Props(classOf[RestHandler], restRegistry), "restHandler") //.withRouter(FromConfig())
 
   def newRestProcessor(cls: Class[_]) = system.actorOf(Props(cls, cryoctx))
-  
+
   val routes = Routes({
     case HttpRequest(request) => request match {
       case GET(Path("/exit")) =>
@@ -48,33 +47,40 @@ object CryoWeb extends LoggingClass {
       case _: Any => request.response.write(HttpResponseStatus.BAD_REQUEST, "Invalid request")
     }
 
-    case WebSocketHandshake(wsHandshake) => wsHandshake match {
-      case Path("/websocket") =>
-        registerWebSocket(wsHandshake)
+    case event @ Path("/websocket") => event match {
+      case event: WebSocketHandshakeEvent =>
+        log.info("Authorize new websocket connection")
+        event.authorize() // onComplete = Some(unregisterWebSocket))
+      case event: WebSocketFrameEvent =>
+        log.info("Receive websocket packet")
+        wsHandlers.getOrElseUpdate(event.context.name, registerWebSocket(event)) ! event
+        //registerWebSocket(event)
       case o: Any => log.error("Unexpected message : ${o.toString}")
     }
 
-    case WebSocketFrame(wsFrame) => {
-      log.debug(s"Receive web socket packet : ${wsFrame.readText}")
-      wsHandlers.get(wsFrame.channel).map(_ ! wsFrame)
-    }
+//    case WebSocketFrame(wsFrame) => {
+//      log.debug(s"Receive web socket packet : ${wsFrame.readText}")
+//      wsHandlers.get(wsFrame.context.name).map(_ ! wsFrame).getOrElse {
+//        log.error("Got unregistered websocket frame")
+//      }
+//    }
     case o: Any => log.error("Unexpected message2 : ${o.toString}")
   })
 
-  def unregisterWebSocket(channel: Channel) = {
-    log.info(s"Unregister websocket connection: ${channel}")
-    wsHandlers.get(channel) match {
+  def unregisterWebSocket(socketName: String) = {
+    log.info(s"Unregister websocket connection: ${socketName}")
+    wsHandlers.get(socketName) match {
       case Some(aref) =>
         //aref ! PoisonPill
-        wsHandlers -= channel
+        wsHandlers -= socketName
       case None =>
         log.warn("Should not happen")
     }
   }
-  def registerWebSocket(event: WebSocketHandshakeEvent) = {
+  def registerWebSocket(event: WebSocketFrameEvent) = {
     log.info("Register a new websocket connection")
-    event.authorize() //onComplete = Some(unregisterWebSocket))
-    wsHandlers += event.channel -> system.actorOf(Props(classOf[CryoSocket], cryoctx, event.channel))
+    //wsHandlers += event.context.name ->
+    system.actorOf(Props(classOf[CryoSocket], cryoctx, event))
   }
 
   def main(args: Array[String]) = {

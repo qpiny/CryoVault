@@ -17,10 +17,10 @@ package org.mashupbots.socko.rest
 
 import scala.reflect.runtime.{universe => ru}
 
-import org.json4s.Formats
-
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
+
+import org.json4s.Formats
 
 /**
  * Binds a [[org.mashupbots.socko.rest.RestRequest]], [[org.mashupbots.socko.rest.RestResponse]] and
@@ -81,7 +81,11 @@ abstract class RestRegistration {
    */
   def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef
 
+  /**
+   * 
+   */
   val customFormats: Option[Formats] = None
+  
   /**
    * Flag to denote if the [[org.mashupbots.socko.events.SockoEvent]] is to be made
    * accessible from [[org.mashupbots.socko.rest.RestRequestEvents]] so that the REST processing

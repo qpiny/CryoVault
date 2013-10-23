@@ -1,5 +1,5 @@
 //
-// Copyright 2013 Vibul Imtarnasan, David Bolton and Socko contributors.
+// Copyright 2012 Vibul Imtarnasan, David Bolton and Socko contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,11 +13,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-package org.mashupbots.socko
+package org.mashupbots.socko.events
 
 /**
- * REST API processor for Socko
+ * Abstract event triggered on HTTP related activity
  */
-package org.mashupbots.socko.rest {
-  
+trait HttpEvent extends SockoEvent {
+
+  /**
+   * Event processing configuration
+   */
+  val config: HttpEventConfig
+
+  /**
+   * Write a web log entry
+   *
+   * @param responseStatusCode HTTP status code
+   * @param responseSize length of response content in bytes
+   */
+  def writeWebLog(responseStatusCode: Int, responseSize: Long)
 }
