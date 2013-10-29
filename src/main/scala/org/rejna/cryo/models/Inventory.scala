@@ -38,11 +38,16 @@ case class CreateArchive() extends InventoryRequest
 case class ArchiveCreated(id: String) extends InventoryResponse
 case class CreateSnapshot() extends InventoryRequest
 case class SnapshotCreated(id: String) extends InventoryResponse
+case class DeleteSnapshot(id: String) extends InventoryRequest
+case class SnapshotDeleted(id: String) extends InventoryResponse
+case class DeleteArchive(id: String) extends InventoryRequest
+case class ArchiveDeleted(id: String) extends InventoryResponse
 case class GetArchiveList() extends InventoryRequest
 case class ArchiveList(date: Date, status: EntryStatus, archives: List[DataStatus]) extends InventoryResponse
 
 case class GetSnapshotList() extends InventoryRequest
 case class SnapshotList(date: Date, status: EntryStatus, snapshots: List[DataStatus]) extends InventoryResponse
+case class ArchiveNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
 
 //case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DatastoreResponse
@@ -78,11 +83,10 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   implicit val timeout = 10 seconds
   val snapshotIds = attributeBuilder.map("snapshotIds", Map[String, ActorRef]())
   val snapshots = attributeBuilder.futureList("snapshots", () => {
-    log.info(s"attribute snapshots content computation is starting ...")
     Future.sequence(snapshotIds.keys.map {
       case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
     } toList)
-  })
+  }) // FIXME kill actor if snapshot is removed
   snapshots <* snapshotIds
   snapshots <+> updateArchiveSubscription
 
@@ -248,6 +252,30 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           _sender ! ArchiveCreated(id)
         case e: Any =>
           _sender ! CryoError("Error while creating a new archive", e)
+      }
+
+    case DeleteArchive(id) =>
+      val _sender = sender
+      archiveIds -= id
+      (cryoctx.datastore ? DeleteData(id)).onComplete {
+        case Success(DataDeleted(id)) =>
+          _sender ! ArchiveDeleted(id)
+        case Success(DataNotFoundError(id, str, _)) =>
+          _sender ! ArchiveNotFound(id, s"Archive ${id} was not found")
+        case e: Any =>
+          _sender ! CryoError(s"Error while deleting archive ${id}", e)
+      }
+
+    case DeleteSnapshot(id) =>
+      val _sender = sender
+      snapshotIds -= id
+      (cryoctx.datastore ? DeleteData(id)).onComplete {
+        case Success(DataDeleted(id)) =>
+          _sender ! SnapshotDeleted(id)
+        case Success(DataNotFoundError(id, str, _)) =>
+          _sender ! SnapshotNotFound(id, s"Snapshot ${id} was not found")
+        case e: Any =>
+          _sender ! CryoError(s"Error while deleting snapshot ${id}", e)
       }
 
     case CreateSnapshot() =>

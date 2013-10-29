@@ -38,13 +38,14 @@
   (.subscribe socket "/cryo/inventory")
   (.on socket "/cryo/inventory#snapshots"
     (fn [e]
-      (let [added (.-addedValues e)
-            removed (.-removedValues e)
+      (let [added (js->clj (-> e .-message .-addedValues))
+            removed (js->clj (-> e .-message .-removedValues))
             previous-snapshots (aget $scope "snapshots")
-            new-snapshots (conj
-                            (.filter previous-snapshots (fn [s] (list-contains? removed (.-id s) #(.-id %))))
-                            added)]
-        (aset $scope "snapshots" new-snapshots)))))
+            new-snapshots (concat
+                            added
+                            (js->clj (.filter previous-snapshots (fn [s] (list-contains? removed (.-id s) #(.-id %)))))
+                            )]
+        (aset $scope "snapshots" (clj->js new-snapshots))))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 

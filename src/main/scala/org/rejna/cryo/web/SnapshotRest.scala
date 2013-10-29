@@ -21,10 +21,6 @@ object GetSnapshotListRegistration extends RestRegistration {
   val method = Method.GET
   val path = "/snapshots/list"
   val requestParams = Seq.empty
-  //override val customFormats = Some(new Formats {
-  //    val dateFormat = DefaultFormats.lossless.dateFormat
-  //    override val typeHints = NoTypeHints
-  //  })
   def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef = CryoWeb.newRestProcessor(classOf[SnapshotRestProcessor])
   override val description = "Retrieve list of snapshots"
 }
@@ -39,6 +35,15 @@ object GetSnapshotRegistration extends RestRegistration {
   override val description = "Retrieve specified list information"
 }
 
+case class DeleteSnapshotRequest(context: RestRequestContext, snapshotId: String) extends RestRequest
+case class DeleteSnapshotResponse(context: RestResponseContext) extends RestResponse
+object DeleteSnapshotRegistration extends RestRegistration {
+  val method = Method.DELETE
+  val path = "/snapshots/{snapshotId}"
+  val requestParams = Seq(PathParam("snapshotId", "ID of snapshot that needs to be deleted"))
+  def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef = CryoWeb.newRestProcessor(classOf[SnapshotRestProcessor])
+  override val description = "Remove the specified snapshot"
+}
 case class GetSnapshotFilesRequest(context: RestRequestContext, snapshotId: String, path: String) extends RestRequest
 case class GetSnapshotFilesResponse(context: RestResponseContext, files: List[FileElement]) extends RestResponse
 object GetSnapshotFilesRegistration extends RestRegistration {
@@ -132,6 +137,15 @@ class SnapshotRestProcessor(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       }
       context.stop(self)
 
+    case DeleteSnapshotRequest(ctx, snapshotId) =>
+      val _sender = sender
+      (cryoctx.inventory ? DeleteSnapshot(snapshotId)) onComplete {
+        case Success(SnapshotDeleted(_)) => _sender ! DeleteSnapshotResponse(ctx.responseContext)
+        case Success(SnapshotNotFound(_, _, _)) => _sender ! DeleteSnapshotResponse(ctx.responseContext(404))
+        case Success(o) => _sender ! DeleteSnapshotResponse(ctx.responseContext(501, Map("message" -> o.toString)))
+        case Failure(o) => _sender ! DeleteSnapshotResponse(ctx.responseContext(502, Map("message" -> o.getMessage)))
+      }
+      
     case GetSnapshotFilesRequest(ctx, snapshotId, path) =>
       val _sender = sender
       (cryoctx.inventory ? SnapshotGetFiles(snapshotId, path.replace('!', '/'))) onComplete {

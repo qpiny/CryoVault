@@ -9,6 +9,7 @@ import akka.util.{ ByteString, ByteIterator, Timeout }
 
 import java.io.{ InputStream, OutputStream, IOException }
 import java.nio.channels.FileChannel
+import java.nio.file.Files
 import java.nio.file.StandardOpenOption._
 import java.nio.ByteBuffer
 import java.util.{ Date, UUID }
@@ -23,6 +24,8 @@ case class CreateData(idOption: Option[String], description: String, size: Long 
 case class DataCreated(id: String) extends DatastoreResponse
 case class DefineData(id: String, description: String, creationDate: Date, size: Long, checksum: String) extends DatastoreRequest
 case class DataDefined(id: String) extends DatastoreResponse
+case class DeleteData(id: String) extends DatastoreRequest
+case class DataDeleted(id: String) extends DatastoreResponse
 case class WriteData(id: String, position: Long, buffer: ByteString) extends DatastoreRequest
 object WriteData { def apply(id: String, buffer: ByteString): WriteData = WriteData(id, -1, buffer) } // AppendData
 case class DataWritten(id: String, position: Long, length: Long) extends DatastoreResponse
@@ -106,6 +109,15 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       }
       sender ! DataDefined(id)
 
+    case DeleteData(id) =>
+      repository.remove(id) match {
+        case Some(e) =>
+          Files.deleteIfExists(e.file)
+          sender ! DataDeleted(id)
+        case None =>
+          sender ! DataNotFoundError(id, s"Data ${id} not found")
+      }
+      
     case WriteData(id, position, buffer) =>
       repository.get(id) match {
         case Some(de: DataEntryLoading) if position >= 0 =>

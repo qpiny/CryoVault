@@ -54,15 +54,15 @@
                         (.send ws msg)))
             on-open (fn [e]
                       (aset service "send" ws-send)
-                      (.log js/console (str "websocket is connected : " (.stringify js/JSON (clj->js e))))
+                      (.log js/console (str "websocket is connected : " (.stringify js/JSON e)))
                       (doseq [m (aget service "stash")] (ws-send m))
                       (aset service "stash" nil))
             on-close (fn [e]
-                       (.log js/console (str "websocket is closed : " (.stringify js/JSON (clj->js e)))))
+                       (.log js/console (str "websocket is closed : " (.stringify js/JSON e))))
             on-error (fn [e]
-                       (.log js/console (str "websocket error : " (.stringify js/JSON (clj->js e)))))
+                       (.log js/console (str "websocket error : " (.stringify js/JSON e))))
             on-message (fn [e]
-                         (.log js/console (str "receive message : " (.stringify js/JSON (clj->js e))))
+                         (.log js/console (str "receive message : " (.stringify js/JSON (.-message e))))
                          (when-let [message (.-message e)]
                            (when-let [msg (.parse js/JSON message)]
                              (when-let [path (.-path msg)]
@@ -85,7 +85,7 @@
     (fn [$rootScope]
       (let [service (clj->js {:callbacks {}
                               :stash nil
-                              :ws nil}) ; (js/WebSocket. "ws://10.112.112.100:8889/websocket")})
+                              :ws nil}) ; (js/WebSocket. "ws://127.0.0.1:8888/websocket")})
             ws-store (fn [message]
                        (aset service "stash" (conj (aget service "stash") message)))
             ws-send (fn [message]
