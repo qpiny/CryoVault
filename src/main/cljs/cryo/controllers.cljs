@@ -31,6 +31,7 @@
                                 (if (= "with-sidebar" (.-sidebarStatus $scope))
                                   "without-sidebar"
                                   "with-sidebar"))
+         :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
          :createSnapshot #(.create SnapshotSrv)
          :exit #(.open $modal
                   (clj->js {:templateUrl "partials/exit.html"

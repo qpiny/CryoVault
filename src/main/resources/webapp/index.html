@@ -16,9 +16,10 @@
 						<ul class="nav nav-tabs nav-stacked">
 							<li x-ng-repeat="snapshot in snapshots" x-ng-class="{active: snapshot.id==params.snapshotId}"">
 								<a href="#/snapshots/{{snapshot.id}}">
-									{{snapshot.id}}<br/>
+									{{snapshot.description}}<br/>
 									{{snapshot.creationDate}}
 								</a>
+								<span><i x-ng-click="deleteSnapshot(snapshot.id)" class="icon-remove-circle"></i></span>
 							</li>
 						</ul>
 					</accordion-group>
