@@ -94,9 +94,13 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   }
 
   private def sameContent(block: Block, bl: BlockLocation): Future[Option[Boolean]] = {
-    cryoctx.datastore ? ReadData(bl.archiveId, bl.offset, bl.size) map {
+    (cryoctx.datastore ? ReadData(bl.archiveId, bl.offset, bl.size)) map {
       case DataRead(_, _, buffer) => Some(block.data.deep == buffer.toArray.deep)
       case _: Any => None
+    } recover {
+      case t =>
+        log.error("Fail to read data", t)
+        None
     }
   }
   //    None

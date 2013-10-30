@@ -124,28 +124,28 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           sender ! DataWritten(id, position, de.write(position, buffer))
         case Some(de: DataEntryCreating) if position == -1 =>
           sender ! DataWritten(id, position, de.write(buffer))
-        case None =>
-          sender ! DataNotFoundError(id, s"Data ${id} not found")
         case Some(de: DataEntry) =>
           sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for write")
+        case None =>
+          sender ! DataNotFoundError(id, s"Data ${id} not found")
       }
 
     case GetDataStatus(id) =>
       repository.get(id) match {
-        case None =>
-          sender ! DataNotFoundError(id, s"Data ${id} not found")
         case Some(de: DataEntry) =>
           sender ! DataStatus(id, de.description, de.creationDate, de.status, de.size, de.checksum)
+        case None =>
+          sender ! DataNotFoundError(id, s"Data ${id} not found")
       }
 
     case ReadData(id, position, length) =>
       repository.get(id) match {
         case Some(de: DataEntryCreated) =>
           sender ! DataRead(id, position, de.read(position, length))
-        case None =>
-          sender ! DataNotFoundError(id, s"Data ${id} not found")
         case Some(de: DataEntry) =>
           sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for read")
+        case None =>
+          sender ! DataNotFoundError(id, s"Data ${id} not found")
       }
 
     case CloseData(id) =>

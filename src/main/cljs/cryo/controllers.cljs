@@ -38,9 +38,9 @@
                             :controller exitCtrl})))
   (.subscribe socket "/cryo/inventory")
   (.on socket "/cryo/inventory#snapshots"
-    (fn [e]
-      (let [added (js->clj (-> e .-message .-addedValues))
-            removed (js->clj (-> e .-message .-removedValues))
+    (fn [m]
+      (let [added (js->clj (-> m .-addedValues))
+            removed (js->clj (-> m .-removedValues))
             previous-snapshots (aget $scope "snapshots")
             new-snapshots (concat
                             added

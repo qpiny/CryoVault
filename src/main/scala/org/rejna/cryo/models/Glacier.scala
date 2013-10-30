@@ -50,11 +50,11 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case PrepareToDie() =>
       sender ! ReadyToDie()
 
-    case AttributeListChange(path, addedJobs, removedJobs) if path == "/cryo/manager#jobs" =>
+    case AttributeListChange("/cryo/manager#jobs", addedJobs, removedJobs) =>
       val succeededJobs = addedJobs
         .asInstanceOf[List[(String, Job)]]
-        .filter(_._2.status.isSucceeded)
-        .toMap // remove duplicates
+        .filter { case (_, j) => j.status.isSucceeded }
+        .toMap
 
       succeededJobs.map {
         case (dataId, job) =>
@@ -117,7 +117,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         .getJobList
         .map(Job(_))
         .toList
-      cryoctx.manager ? UpdateJobList(jobList) onComplete {
+      (cryoctx.manager ? UpdateJobList(jobList)) onComplete {
         case Success(JobListUpdated(jobs)) => _sender ! JobListRefreshed()
         case o: Any => _sender ! CryoError("Fail to update job list", o)
       }

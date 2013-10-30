@@ -1,8 +1,4 @@
-(ns cryo.services
-  (:require [goog.net.WebSocket]
-            [goog.events.EventHandler]
-            [goog.events.EventTarget]
-            [goog.net.WebSocket.EventType :as ws-event]))
+(ns cryo.services)
 
 (doto (angular/module "cryoService" (array "ngResource"))
   (.factory "SnapshotSrv"
@@ -12,7 +8,7 @@
         (clj->js {})
         (clj->js {:query {:method "GET" :params {:snapshotId "list"} :isArray true}
                   :create {:method "POST" :params {:snapshotId ""}}
-                  :remove {:method "DELETE" :params {:spanshotId ""}}}))))
+                  :remove {:method "DELETE" :params {:snapshotId ""}}}))))
   
   (.factory "SnapshotFileSrv"
     (fn [$resource]
@@ -37,22 +33,22 @@
   
   (.factory "socket"
     (fn [$rootScope]
-      (let [service (clj->js {:callbacks {}
-                              :stash nil
-                              :ws (js/WebSocket. "ws://localhost:8888/websocket")})
+      (let [ws (js/WebSocket. "ws://localhost:8888/websocket")
+            service (js-obj "callbacks" nil
+                            "stash" nil
+                            "ws" ws)
             ws-store (fn [message]
                        (aset service "stash" (conj (aget service "stash") message)))
             ws-send (fn [message]
                       (let [msg (.stringify js/JSON (clj->js message))
                             ws (aget service "ws")]
                         (.log js/console (str "sending message : " msg))
-                        (.send ws msg)))
-            ws (aget service "ws")]
+                        (.send ws msg)))]
         (.log js/console "new websocket connection")
         (aset ws "onopen" (fn []
                             (aset service "send" ws-send)
                             (.log js/console "websocket is connected")
-                            (doseq [m (aget service "stash")] (.send service m))
+                            (doseq [m (aget service "stash")] (ws-send m))
                             (aset service "stash" nil)))
         (aset ws "onmessage" (fn [event]
                                (when-let [messagestr (.-data event)]

@@ -28,7 +28,7 @@ object CryoError {
     case e: Throwable => new CryoError(marker, message, e)
     case e: Any => new CryoError(marker, s"${message}: unexpected message: ${e}")
   }
-  def apply(message: String, a: Any): CryoError = apply(Log.errMsgMarker, message, a)
+  def apply(message: String, a: Any): CryoError = CryoError(Log.errMsgMarker, message, a)
   def apply(message: String): CryoError = new CryoError(Log.errMsgMarker, message)
 }
 

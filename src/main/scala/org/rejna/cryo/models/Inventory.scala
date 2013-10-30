@@ -2,7 +2,6 @@ package org.rejna.cryo.models
 
 import scala.io.Source
 import scala.concurrent.Future
-import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConversions._
 import scala.util.{ Success, Failure }
 import scala.concurrent.duration._
@@ -72,32 +71,41 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
       log.info(s"MetaAttribute(${name}).updateArchiveSubscription")
       addedValues foreach {
-        case ds: DataStatus => CryoEventBus.subscribe(self, s"/cryo/datastore/${ds.id}")
+        case id: String => CryoEventBus.subscribe(self, s"/cryo/datastore/${id}")
+        case (id: String, _) => CryoEventBus.subscribe(self, s"/cryo/datastore/${id}")
       }
       removedValues foreach {
-        case ds: DataStatus => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${ds.id}")
+        case id: String => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${id}")
+        case (id: String, _) => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${id}")
       }
     }
   }
 
   implicit val timeout = 10 seconds
-  val snapshotIds = attributeBuilder.map("snapshotIds", Map[String, ActorRef]())
-  val snapshots = attributeBuilder.futureList("snapshots", () => {
-    Future.sequence(snapshotIds.keys.map {
-      case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
-    } toList)
-  }) // FIXME kill actor if snapshot is removed
-  snapshots <* snapshotIds
-  snapshots <+> updateArchiveSubscription
+  val snapshotIds = attributeBuilder.list("snapshotIds", List[String]())
+  //  val snapshots = attributeBuilder.futureList("snapshots", () => {
+  //    Future.sequence(snapshotIds.keys.map {
+  //      case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
+  //    } toList)
+  //  }) // FIXME kill actor if snapshot is removed
+  //  //snapshots <* snapshotIds
+  //  snapshotIds <+> new AttributeListCallback {
+  //    override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
+  //      val add = addedValues.asInstanceOf[List[]]
+  //    }
+  //  }
+  val snapshotActors = 
+  snapshotIds <+> updateArchiveSubscription
+  
 
   val archiveIds = attributeBuilder.list("archiveIds", List[String]())
-  val archives = attributeBuilder.futureList("archives", () => {
-    Future.sequence(archiveIds.map {
-      case aid => (cryoctx.datastore ? GetDataStatus(aid)).mapTo[DataStatus]
-    } toList)
-  })
-  archives <* archiveIds
-  archives <+> updateArchiveSubscription
+  //  val archives = attributeBuilder.futureList("archives", () => {
+  //    Future.sequence(archiveIds.map {
+  //      case aid => (cryoctx.datastore ? GetDataStatus(aid)).mapTo[DataStatus]
+  //    } toList)
+  //  })
+  //  archives <* archiveIds
+  archiveIds <+> updateArchiveSubscription
 
   CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
 
@@ -105,14 +113,15 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     reload
   }
 
+  private def getDataStatusList(ids: TraversableOnce[String]) = {
+    Future.sequence(ids.map(id => (cryoctx.datastore ? GetDataStatus(id)).mapTo[DataStatus]).toList)
+  }
+
   private def save() = {
     cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
       case DataCreated(id) =>
-        val fArchList = for {
-          s <- snapshots.futureNow;
-          a <- archives.futureNow
-        } yield (a ++ s)
-        
+        val fArchList = getDataStatusList(archiveIds ++ snapshotIds)
+
         fArchList flatMap {
           case archiveList =>
             val inventoryMsg = InventoryMessage(date, archiveList)
@@ -198,8 +207,9 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     cryoctx.datastore ? CreateData(None, "Index") map {
       case DataCreated(id) =>
         val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx, id))
-        // TODO watch aref
-        (id, aref)
+        snapshotIds += id
+        snapshot
+        id
       case e: Any =>
         throw CryoError("Error while creating a new snapshot", e)
     }
@@ -237,11 +247,11 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           }
         case AttributePath("datastore", id, attr) =>
           if (archiveIds contains id)
-            archives.invalidate
-          //CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", previous, now))
+            //archives.invalidate
+            CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", previous, now))
           else if (snapshotIds contains id)
-            snapshots.invalidate
-        //CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", previous, now))
+            //snapshots.invalidate
+            CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", previous, now))
       }
 
     case CreateArchive() =>
@@ -281,20 +291,25 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case CreateSnapshot() =>
       val _sender = sender
       createSnapshot onComplete {
-        case Success((id, aref)) =>
-          snapshotIds += id -> aref
+        case Success(id) =>
           _sender ! SnapshotCreated(id)
         case Failure(e) =>
-          _sender ! e
+          _sender ! CryoError("Fail to create snapshot", e)
       }
 
     case GetArchiveList() =>
       val _sender = sender
-      archives.futureNow map { _sender ! ArchiveList(date, status, _) }
+      getDataStatusList(archiveIds) onComplete {
+        case Success(al) => _sender ! ArchiveList(date, status, al)
+        case e: Any => _sender ! CryoError("Can't get archive list", e)
+      }
 
     case GetSnapshotList() =>
       val _sender = sender
-      snapshots.futureNow map { _sender ! SnapshotList(date, status, _) }
+      getDataStatusList(snapshotIds.keys) onComplete {
+        case Success(sl) => _sender ! SnapshotList(date, status, sl)
+        case e: Any => _sender ! CryoError("Can't get snapshot list", e)
+      }
 
     case sr: SnapshotRequest =>
       snapshotIds.get(sr.id) match {
