@@ -179,21 +179,21 @@ trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
     }
   })
 
-  def onAdd(cb: (=> Unit) => Unit) = {
-    lazy val ac: AttributeListCallback = new AttributeListCallback {
-      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
-        cb { removeCallback(ac) }
-    }
-    addCallback(ac)
-  }
-
-  def onRemove(cb: (=> Unit) => Unit) = {
-    lazy val ac: AttributeListCallback = new AttributeListCallback {
-      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
-        cb { removeCallback(ac) }
-    }
-    addCallback(ac)
-  }
+//  def onAdd(cb: (=> Unit) => Unit) = {
+//    lazy val ac: AttributeListCallback = new AttributeListCallback {
+//      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
+//        cb { removeCallback(ac) }
+//    }
+//    addCallback(ac)
+//  }
+//
+//  def onRemove(cb: (=> Unit) => Unit) = {
+//    lazy val ac: AttributeListCallback = new AttributeListCallback {
+//      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
+//        cb { removeCallback(ac) }
+//    }
+//    addCallback(ac)
+//  }
 }
 
 class ListAttribute[A](name: String)(__previous: Option[List[A]], __now: List[A])(implicit cryoctx: CryoContext)

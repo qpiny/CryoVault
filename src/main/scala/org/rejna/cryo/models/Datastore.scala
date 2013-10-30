@@ -120,7 +120,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       
     case WriteData(id, position, buffer) =>
       repository.get(id) match {
-        case Some(de: DataEntryLoading) if position >= 0 =>
+        case Some(de: DataEntryDownloading) if position >= 0 =>
           sender ! DataWritten(id, position, de.write(position, buffer))
         case Some(de: DataEntryCreating) if position == -1 =>
           sender ! DataWritten(id, position, de.write(buffer))
@@ -155,10 +155,10 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           repository += id -> newde
           CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Creating), Cached))
           sender ! DataClosed(id)
-        case Some(de: DataEntryLoading) =>
+        case Some(de: DataEntryDownloading) =>
           val newde = de.close
           repository += id -> newde
-          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Loading), Cached))
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Downloading), Cached))
           sender ! DataClosed(id)
         case Some(de: DataEntryCreated) =>
           sender ! InvalidDataStatus(s"Data ${id}(${de.status}) has invalid status for close")

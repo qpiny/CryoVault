@@ -20,7 +20,7 @@ import org.rejna.util.MultiRange
 
 object EntryStatus extends Enumeration {
   type EntryStatus = Value
-  val Creating, Loading, Cached, Remote, Downloading, Unknown = Value
+  val Creating, Uploading, Cached, Remote, Downloading, Unknown = Value
 }
 import EntryStatus._
 
@@ -48,7 +48,7 @@ object DataEntry {
     val entryAttributeBuilder = attributeBuilder / state.id
     state.status match {
       //case Creating => // not supported
-      //case Loading => // not supported yet
+      //case Uploading => // not supported yet
       case Cached =>
         new DataEntryCreated(
           cryoctx,
@@ -84,7 +84,7 @@ class DataEntryRemote(
   def status = Remote
   val sizeAttribute = entryAttributeBuilder("size", initSize)
 
-  def prepareForDownload = new DataEntryLoading(cryoctx, id, description, creationDate, size, checksum, entryAttributeBuilder)
+  def prepareForDownload = new DataEntryDownloading(cryoctx, id, description, creationDate, size, checksum, entryAttributeBuilder)
 }
 
 class DataEntryCreating(
@@ -176,7 +176,7 @@ class DataEntryCreated(
   def close = channel.close
 }
 
-class DataEntryLoading(
+class DataEntryDownloading(
   cryoctx: CryoContext,
   id: String,
   description: String,
@@ -186,7 +186,7 @@ class DataEntryLoading(
   entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, description, creationDate, checksum) {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".loading")
-  def status = Loading
+  def status = Downloading
   val sizeAttribute = entryAttributeBuilder("size", 0L)
   val channel = FileChannel.open(file, WRITE, CREATE)
   var range = MultiRange.empty[Long] // TODO Resume
