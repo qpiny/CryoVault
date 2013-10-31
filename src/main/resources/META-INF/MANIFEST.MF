@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+Implementation-Vendor: org.mashupbots.socko
+Implementation-Title: socko-webserver
+Implementation-Version: 0.3.1
+Implementation-Vendor-Id: org.mashupbots.socko
+Specification-Vendor: org.mashupbots.socko
+Specification-Title: socko-webserver
+Specification-Version: 0.3.1
+

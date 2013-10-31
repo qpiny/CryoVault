@@ -73,17 +73,27 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       log.info(s"MetaAttribute(${name}).updateArchiveSubscription")
       addedValues foreach {
         case id: String => CryoEventBus.subscribe(self, s"/cryo/datastore/${id}")
-        case (id: String, _) => CryoEventBus.subscribe(self, s"/cryo/datastore/${id}")
       }
       removedValues foreach {
         case id: String => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${id}")
-        case (id: String, _) => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${id}")
       }
     }
   }
 
+  def publishDataStatusChange(path: String) = new AttributeListCallback {
+    def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
+      Future.sequence(addedValues.map {
+        case id: String => cryoctx.datastore ? GetDataStatus(id)
+      }) onComplete {
+        case Success(addedDataStatus) =>
+          log.debug(s"attribute[${path}] add: ${addedValues.take(10)} remove: ${removedValues.take(10)}")
+          CryoEventBus.publish(AttributeListChange(path, addedDataStatus, removedValues))
+        case e: Any => log.error(CryoError("Fail to publish inventory change", e))
+      }
+    }
+  }
   //implicit val timeout = 10 seconds
-  val snapshots = attributeBuilder.list("snapshots", List[String]())
+  val snapshotIds = attributeBuilder.list("snapshotIds", List[String]())
   //  val snapshots = attributeBuilder.futureList("snapshots", () => {
   //    Future.sequence(snapshotIds.keys.map {
   //      case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]
@@ -96,8 +106,8 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   //    }
   //  }
   val snapshotActors = HashMap.empty[String, ActorRef]
-  snapshots <+> updateArchiveSubscription
-  snapshots <+> new AttributeListCallback {
+  snapshotIds <+> updateArchiveSubscription
+  snapshotIds <+> new AttributeListCallback {
     def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
       val ids = removedValues.asInstanceOf[List[String]]
       for (
@@ -106,15 +116,17 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       ) aref ! PoisonPill
     }
   }
+  snapshotIds <+> publishDataStatusChange("/cryo/inventory#snapshots")
 
-  val archives = attributeBuilder.list("archives", List[String]())
+  val archiveIds = attributeBuilder.list("archiveIds", List[String]())
   //  val archives = attributeBuilder.futureList("archives", () => {
   //    Future.sequence(archiveIds.map {
   //      case aid => (cryoctx.datastore ? GetDataStatus(aid)).mapTo[DataStatus]
   //    } toList)
   //  })
   //  archives <* archiveIds
-  archives <+> updateArchiveSubscription
+  archiveIds <+> updateArchiveSubscription
+  archiveIds <+> publishDataStatusChange("/cryo/inventory#archives")
 
   CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryDataId}")
 
@@ -129,7 +141,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   private def save() = {
     cryoctx.datastore ? CreateData(Some(inventoryDataId), "Inventory") flatMap {
       case DataCreated(id) =>
-        val fArchList = getDataStatusList(archives ++ snapshots)
+        val fArchList = getDataStatusList(archiveIds ++ snapshotIds)
 
         fArchList flatMap {
           case archiveList =>
@@ -216,7 +228,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     cryoctx.datastore ? CreateData(None, "Index") map {
       case DataCreated(id) =>
         val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx, id))
-        snapshots += id
+        snapshotIds += id
         id
       case e: Any =>
         throw CryoError("Error while creating a new snapshot", e)
@@ -240,9 +252,8 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     ////// private messages //////////////
     case UpdateInventoryDate(d) => date = d
-    case AddArchive(id) => archives += id
-    case AddSnapshot(id) =>
-        snapshots += id
+    case AddArchive(id) => archiveIds += id
+    case AddSnapshot(id) => snapshotIds += id
     //////////////////////////////////////
 
     case AttributeChange(path, previous, now) =>
@@ -253,19 +264,18 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             reload
           }
         case AttributePath("datastore", id, attr) =>
-          if (archives contains id)
-            //archives.invalidate
+          if (archiveIds contains id)
             CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", previous, now))
-          else if (snapshots contains id)
-            //snapshots.invalidate
+          else if (snapshotIds contains id)
             CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", previous, now))
+          else log.warn(s"Data ${id} has changed but it is not an archive nor a snapshot")
       }
 
     case CreateArchive() =>
       val _sender = sender
       (cryoctx.datastore ? CreateData(None, "Data")).onComplete { // TODO set better description
         case Success(DataCreated(id)) =>
-          archives += id
+          archiveIds += id
           _sender ! ArchiveCreated(id)
         case e: Any =>
           _sender ! CryoError("Error while creating a new archive", e)
@@ -273,7 +283,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     case DeleteArchive(id) =>
       val _sender = sender
-      archives -= id
+      archiveIds -= id
       (cryoctx.datastore ? DeleteData(id)).onComplete {
         case Success(DataDeleted(id)) =>
           _sender ! ArchiveDeleted(id)
@@ -285,7 +295,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     case DeleteSnapshot(id) =>
       val _sender = sender
-      snapshots -= id
+      snapshotIds -= id
       (cryoctx.datastore ? DeleteData(id)).onComplete {
         case Success(DataDeleted(id)) =>
           _sender ! SnapshotDeleted(id)
@@ -306,36 +316,36 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     case GetArchiveList() =>
       val _sender = sender
-      getDataStatusList(archives) onComplete {
+      getDataStatusList(archiveIds) onComplete {
         case Success(al) => _sender ! ArchiveList(date, status, al)
         case e: Any => _sender ! CryoError("Can't get archive list", e)
       }
 
     case GetSnapshotList() =>
       val _sender = sender
-      getDataStatusList(snapshots) onComplete {
+      getDataStatusList(snapshotIds) onComplete {
         case Success(sl) => _sender ! SnapshotList(date, status, sl)
         case e: Any => _sender ! CryoError("Can't get snapshot list", e)
       }
 
     case sr: SnapshotRequest =>
       val id = sr.id
-      if (snapshots.contains(id)) {
+      if (snapshotIds.contains(id)) {
         snapshotActors.get(id) match {
           case Some(aref) => aref.forward(sr)
           case None =>
-            val _context = context
+            val _sender = sender
             (cryoctx.datastore ? GetDataStatus(id)) onComplete {
               case Success(DataStatus(_, _, _, Creating, _, _)) =>
                 val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx, id))
                 snapshotActors += id -> aref
-                aref.forward(sr)(_context)
-              case Success(DataStatus) =>
+                aref.tell(sr, _sender)
+              case Success(d: DataStatus) =>
                 val aref = context.actorOf(Props(classOf[RemoteSnapshot], cryoctx, id))
                 snapshotActors += id -> aref
-                aref.forward(sr)(_context)
+                aref.tell(sr, _sender)
               case e: Any => 
-                _context.sender ! CryoError(s"Fail to process snapshot request ${sr}", e) 
+                _sender ! CryoError(s"Fail to process snapshot request ${sr}", e) 
             }
         }
       } else {

@@ -15,6 +15,7 @@
 					<accordion-group heading="Snapshots">
 						<ul class="nav nav-tabs nav-stacked">
 							<li x-ng-repeat="snapshot in snapshots" x-ng-class="{active: snapshot.id==params.snapshotId}"">
+								<span><i class="{{snapshotIcon(snapshot.status)}}"></i></span>
 								<a href="#/snapshots/{{snapshot.id}}">
 									{{snapshot.description}}<br/>
 									{{snapshot.creationDate}}

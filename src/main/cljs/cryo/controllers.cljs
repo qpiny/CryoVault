@@ -15,9 +15,9 @@
 
 (aset exitCtrl "$inject" (array "$scope" "socket"))
 
-(defn list-contains? [coll value fun]
+(defn list-contains? [coll value]
   (if-let [s (seq coll)]
-    (if (= (fun (first s)) value) true (recur (rest s) value fun))
+    (if (= (first s) value) true (recur (rest s) value))
     false))
 
 (defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv socket]
@@ -33,20 +33,28 @@
                                   "with-sidebar"))
          :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
          :createSnapshot #(.create SnapshotSrv)
+         :snapshotIcon (fn [status]
+                         (condp status
+                           "Creating" "icon-edit"
+                           "Uploading" "icon-upload"
+                           "Cached" "icon-star"
+                           "Remote" "icon-star-empty"
+                           "Downloading" "icon-download"
+                           "icon-warning-sign"))
          :exit #(.open $modal
                   (clj->js {:templateUrl "partials/exit.html"
                             :controller exitCtrl})))
   (.subscribe socket "/cryo/inventory")
   (.on socket "/cryo/inventory#snapshots"
     (fn [m]
-      (let [added (js->clj (-> m .-addedValues))
-            removed (js->clj (-> m .-removedValues))
-            previous-snapshots (aget $scope "snapshots")
+      (let [added (set (-> m .-addedValues))
+            removed (set (-> m .-removedValues))
+            previous-snapshots (js->clj (aget $scope "snapshots"))
+            not-removed-snapshots (filter #(not (list-contains? removed (.-id %))) previous-snapshots)
             new-snapshots (concat
                             added
-                            (js->clj (.filter previous-snapshots (fn [s] (list-contains? removed (.-id s) #(.-id %)))))
-                            )]
-        (aset $scope "snapshots" (clj->js new-snapshots))))))
+                            not-removed-snapshots)]
+        (.$apply $scope #(aset $scope "snapshots" (clj->js new-snapshots)))))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 
