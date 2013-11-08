@@ -103,7 +103,7 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
       }
 
     case SnapshotGetFiles(id, path) =>
-      val absolutePath = cryoctx.baseDirectory.resolve(path).normalize
+      val absolutePath = cryoctx.baseDirectory.resolve("." + path).normalize
       if (!absolutePath.startsWith(cryoctx.baseDirectory))
         sender ! SnapshotFiles(id, path, List.empty[FileElement])
       else try {

@@ -34,7 +34,7 @@
          :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
          :createSnapshot #(.create SnapshotSrv)
          :snapshotIcon (fn [status]
-                         (condp status
+                         (condp = status
                            "Creating" "icon-edit"
                            "Uploading" "icon-upload"
                            "Cached" "icon-star"
@@ -47,14 +47,14 @@
   (.subscribe socket "/cryo/inventory")
   (.on socket "/cryo/inventory#snapshots"
     (fn [m]
-      (let [added (set (-> m .-addedValues))
-            removed (set (-> m .-removedValues))
-            previous-snapshots (js->clj (aget $scope "snapshots"))
-            not-removed-snapshots (filter #(not (list-contains? removed (.-id %))) previous-snapshots)
+      (let [added (set (.-addedValues m))
+            removed (set (.-removedValues m))
+            previous-snapshots (set (aget $scope "snapshots"))
+            not-removed-snapshots (filter #(not (contains? removed (.-id %))) previous-snapshots)
             new-snapshots (concat
                             added
                             not-removed-snapshots)]
-        (.$apply $scope #(aset $scope "snapshots" (clj->js new-snapshots)))))))
+        (aset $scope "snapshots" (clj->js new-snapshots))))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
 
