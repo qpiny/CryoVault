@@ -15,6 +15,7 @@
 //
 package org.mashupbots.socko.rest
 
+import scala.reflect.runtime.{ universe => ru }
 import akka.actor.Extension
 import com.typesafe.config.Config
 import org.mashupbots.socko.infrastructure.ConfigUtil
@@ -115,7 +116,8 @@ case class RestConfig(
   sockoEventCacheTimeoutSeconds: Int = 5,
   maxWorkerCount: Int = 100,
   maxWorkerRescheduleMilliSeconds: Int = 500,
-  reportRuntimeException: ReportRuntimeException.Value = ReportRuntimeException.Never) extends Extension {
+  reportRuntimeException: ReportRuntimeException.Value = ReportRuntimeException.Never,
+  typeTransformer: Function1[ru.Type, ru.Type] = (t) => t /* TODO add custom serializer */) extends Extension {
 
   val rootApiURI = new URI(rootApiUrl)
   val schemeDomainPort = s"${rootApiURI.getScheme}://${rootApiURI.getHost}" + 
@@ -136,7 +138,8 @@ case class RestConfig(
     ConfigUtil.getInt(config, prefix + ".socko-event-cache-timeout-seconds", 5),
     ConfigUtil.getInt(config, prefix + ".max-worker-count", 100),
     ConfigUtil.getInt(config, prefix + ".max-worker-reschedule-milliseconds", 500),
-    ReportRuntimeException.withName(ConfigUtil.getString(config, prefix + ".report-runtime-exception", "Never")))
+    ReportRuntimeException.withName(ConfigUtil.getString(config, prefix + ".report-runtime-exception", "Never")),
+    PartialFunction.empty)
 
   val reportOn400BadRequests = (reportRuntimeException == ReportRuntimeException.BadRequestsOnly ||
     reportRuntimeException == ReportRuntimeException.All)

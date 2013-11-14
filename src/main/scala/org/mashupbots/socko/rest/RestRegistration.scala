@@ -82,11 +82,6 @@ abstract class RestRegistration {
   def processorActor(actorSystem: ActorSystem, request: RestRequest): ActorRef
 
   /**
-   * 
-   */
-  val customFormats: Option[Formats] = None
-  
-  /**
    * Flag to denote if the [[org.mashupbots.socko.events.SockoEvent]] is to be made
    * accessible from [[org.mashupbots.socko.rest.RestRequestEvents]] so that the REST processing
    * actor can access the raw request data for custom deserialization.

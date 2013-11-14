@@ -190,7 +190,7 @@ object SwaggerApiDeclaration {
    */
   def apply(resourcePath: String, ops: Seq[RestOperation], config: RestConfig, rm: ru.Mirror): SwaggerApiDeclaration = {
     // Context for this resource path
-    val ctx = SwaggerContext(config, SwaggerModelRegistry(rm))
+    val ctx = SwaggerContext(config, SwaggerModelRegistry(rm, config))
 
     // Group by path so we can list the operations
     val pathGrouping: Map[String, Seq[RestOperation]] = ops.groupBy(op => op.registration.path)
@@ -285,7 +285,7 @@ object SwaggerApiOperation {
         "void"
       case s: ObjectDataSerializer =>
         ctx.modelRegistry.register(s.tpe)
-        SwaggerReflector.dataType(s.tpe)
+        SwaggerReflector.dataType(ctx.config.typeTransformer(s.tpe))
       case s: PrimitiveDataSerializer =>
         SwaggerReflector.dataType(s.tpe)
       case s: ByteArrayDataSerializer =>
@@ -395,7 +395,7 @@ case class SwaggerModel(
  *
  * @param rm Runtime Mirror
  */
-case class SwaggerModelRegistry(rm: ru.Mirror) {
+case class SwaggerModelRegistry(rm: ru.Mirror, config: RestConfig) {
   val models: HashMap[String, SwaggerModel] = new HashMap[String, SwaggerModel]()
 
   val typeRestModelMetaData = ru.typeOf[RestModelMetaData]
@@ -543,18 +543,19 @@ case class SwaggerModelRegistry(rm: ru.Mirror) {
    * @param tpe Type to register
    */
   def register(tpe: ru.Type): Unit = {
-    if (SwaggerReflector.isPrimitive(tpe) || isEnumeration(tpe))
+    val t = config.typeTransformer(tpe)
+    if (SwaggerReflector.isPrimitive(t))
       // Ignore primitive
       Unit
     else {
-      val containerType = SwaggerReflector.containerType(tpe)
+      val containerType = SwaggerReflector.containerType(t)
       if (containerType == "") {
         // Register complex type
-        registerComplexType(tpe)
+        registerComplexType(t)
       } else {
         // Container type
-        val contentType = SwaggerReflector.containerContentType(tpe)
-        if (SwaggerReflector.isPrimitive(contentType) || isEnumeration(contentType))
+        val contentType = config.typeTransformer(SwaggerReflector.containerContentType(t))
+        if (SwaggerReflector.isPrimitive(contentType))
           // Ignore primitive containers
           Unit
         else

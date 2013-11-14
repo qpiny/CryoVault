@@ -24,7 +24,9 @@ object CryoWeb extends LoggingClass {
   val staticHandler = system.actorOf(Props(classOf[StaticContentHandler], StaticContentHandlerConfig(
     cache = new LocalCache(0, 16))), "staticHandler")
   val restRegistry = RestRegistry("org.rejna.cryo.web",
-    RestConfig("1.0", "http://localhost:8888/api", reportRuntimeException = ReportRuntimeException.All))
+    RestConfig("1.0", "http://localhost:8888/api",
+        typeTransformer = CryoTypeTransformer,
+        reportRuntimeException = ReportRuntimeException.All))
   val restHandler = system.actorOf(Props(classOf[RestHandler], restRegistry), "restHandler") //.withRouter(FromConfig())
 
   def newRestProcessor(cls: Class[_]) = system.actorOf(Props(cls, cryoctx))

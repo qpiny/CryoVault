@@ -1,10 +1,26 @@
-//package org.rejna.cryo.web
+package org.rejna.cryo.web
 //
 //import java.nio.file.Files
 //
 //import net.liftweb.json._
 //
 //import org.rejna.cryo.models._
+
+import scala.reflect.runtime.{ universe => ru }
+
+object CryoTypeTransformer extends Function1[ru.Type, ru.Type] {
+  // => SwaggerModelProperty ?
+  
+  private def isEnumeration(tpe: ru.Type): Boolean = {
+    tpe.declaration(ru.newTermName("scala$Enumeration$$outerEnum")) != ru.NoSymbol
+  }
+  
+  def apply(from: ru.Type) = {
+    if (isEnumeration(from))
+      ru.typeOf[String]
+    else from
+  }
+}
 //
 //object JsonSerializer extends Serializer[Int] {
 //  import net.liftweb.json.JsonDSL._

@@ -92,23 +92,23 @@ object RestResponseSerializer {
     } else {
       // Instance the correct data serializer
       val paramDataTerm = responseConstructorParams(1)
-      val paramDataType = paramDataTerm.typeSignature
+      val paramDataType = config.typeTransformer(paramDataTerm.typeSignature)
 
       // The data term name assumed to be in the constructor of a "case class"
       // Get the term name and reflect it as a field in order to read its value in getData()
       val responseDataTerm = responseClassSymbol.toType.declaration(paramDataTerm.name).asTerm.accessed.asTerm
 
       val dataSerializer = if (PrimitiveDataSerializer.IsPrimitiveDataType(paramDataType)) {
-        PrimitiveDataSerializer(paramDataType, responseDataTerm, rm)
-      } else if (paramDataType <:< byteSeqType) {
-        ByteSeqDataSerializer(responseDataTerm, rm)
-      } else if (paramDataType =:= byteArrayType) {
-        ByteArrayDataSerializer(responseDataTerm, rm)
-      } else if (paramDataType <:< anyRefType) {
-        ObjectDataSerializer(paramDataType, responseDataTerm, rm, registration.customFormats)
-      } else {
-        throw new IllegalArgumentException(s"Unsupported REST response data type ${paramDataType} in ${responseClassSymbol.fullName}.")
-      }
+          PrimitiveDataSerializer(paramDataType, responseDataTerm, rm)
+        } else if (paramDataType <:< byteSeqType) {
+          ByteSeqDataSerializer(responseDataTerm, rm)
+        } else if (paramDataType =:= byteArrayType) {
+          ByteArrayDataSerializer(responseDataTerm, rm)
+        } else if (paramDataType <:< anyRefType) {
+          ObjectDataSerializer(paramDataType, responseDataTerm, rm)
+        } else {
+          throw new IllegalArgumentException(s"Unsupported REST response data type ${paramDataType} in ${responseClassSymbol.fullName}.")
+        }
 
       dataSerializer
     }
@@ -207,20 +207,19 @@ case class VoidDataSerializer() extends DataSerializer {
 case class ObjectDataSerializer(
   tpe: ru.Type,
   responseDataTerm: ru.TermSymbol,
-  rm: ru.Mirror,
-  customFormats: Option[Formats]) extends NonVoidDataSerializer {
+  rm: ru.Mirror) extends NonVoidDataSerializer {
 
-  private object EnumSerializer extends Serializer[Any] {
-    def deserialize(implicit format: Formats) = PartialFunction.empty
-    def serialize(implicit format: Formats) = {
-      case e: Enumeration$Val => JString(e.toString)
-    }
-  }
-  
+//  private object EnumSerializer extends Serializer[Any] {
+//    def deserialize(implicit format: Formats) = PartialFunction.empty
+//    def serialize(implicit format: Formats) = {
+//      case e: Enumeration$Val => JString(e.toString)
+//    }
+//  }
+//
   def serialize(data: Any): Array[Byte] = {
     if (data == null) Array.empty
     else {
-      implicit val formats = customFormats.getOrElse(json.formats(NoTypeHints)) + EnumSerializer
+      implicit val formats = json.formats(NoTypeHints)//customFormats.getOrElse(json.formats(NoTypeHints)) + EnumSerializer
       val s = json.write(data.asInstanceOf[AnyRef])
       s.getBytes(CharsetUtil.UTF_8)
     }
