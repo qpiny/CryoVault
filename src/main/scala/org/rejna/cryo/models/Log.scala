@@ -9,7 +9,6 @@ import org.slf4j.helpers.MessageFormatter
 import ch.qos.logback.classic.turbo.TurboFilter
 import ch.qos.logback.classic.{ Level, Logger, LoggerContext }
 import ch.qos.logback.core.spi.FilterReply
-import org.mashupbots.socko.infrastructure.WebLogEvent
 
 import java.net.InetSocketAddress
 
@@ -151,15 +150,15 @@ object CryoLogger {
 class CryoLogger(cryoctx: CryoContext) extends Actor {
   def receive = {
     case log: Log => CryoLogger(log)
-    case WebLogEvent(timestamp, serverName, channelId, clientAddress, serverAddress, username, method, uri, requestSize, responseStatusCode, responseSize, timeTaken, protocolVersion, userAgent, referrer) =>
-      CryoLogger(Log(serverName, Level.INFO, Some(Log.webLogMarker),
-          clientAddress.asInstanceOf[InetSocketAddress].getAddress.getHostAddress + " " +
-          username.getOrElse("-") + " " +
-          method + " " +
-          uri + " " +
-          protocolVersion + " " + 
-          responseStatusCode + " " +
-          responseSize))
+//    case WebLogEvent(timestamp, serverName, channelId, clientAddress, serverAddress, username, method, uri, requestSize, responseStatusCode, responseSize, timeTaken, protocolVersion, userAgent, referrer) =>
+//      CryoLogger(Log(serverName, Level.INFO, Some(Log.webLogMarker),
+//          clientAddress.asInstanceOf[InetSocketAddress].getAddress.getHostAddress + " " +
+//          username.getOrElse("-") + " " +
+//          method + " " +
+//          uri + " " +
+//          protocolVersion + " " + 
+//          responseStatusCode + " " +
+//          responseSize))
     case PrepareToDie() => sender ! ReadyToDie()
     case t: OptionalMessage =>
     case a: Any => println(s"*******************${a.toString}*************")
