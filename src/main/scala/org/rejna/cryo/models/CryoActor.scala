@@ -27,11 +27,11 @@ class CryoAskableActorRef(val cryoctx: CryoContext, actorRef: ActorRef)(implicit
   }
 }
 
-abstract class CryoActor(_cryoctx: CryoContext) extends Actor with LoggingClass {
-  implicit val cryoctx = _cryoctx
-  implicit val executionContext = context.system.dispatcher
-  implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(cryoctx, actorRef)
+trait CryoAskSupport {
+  implicit def ask(actorRef: ActorRef)(implicit executionContext: ExecutionContext, cryoctx : CryoContext) = new CryoAskableActorRef(cryoctx, actorRef)
+}
 
+trait CryoActorLogger extends LoggingClass { self: Actor =>
   def cryoReceive(f: Actor.Receive) = new Actor.Receive {
     def isDefinedAt(o: Any): Boolean = {
       val handled = f.isDefinedAt(o)
@@ -56,4 +56,9 @@ abstract class CryoActor(_cryoctx: CryoContext) extends Actor with LoggingClass 
       }
     }
   }
+}
+
+abstract class CryoActor(_cryoctx: CryoContext) extends Actor with CryoActorLogger with CryoAskSupport {
+  implicit val cryoctx = _cryoctx
+  implicit val executionContext = context.system.dispatcher
 }
