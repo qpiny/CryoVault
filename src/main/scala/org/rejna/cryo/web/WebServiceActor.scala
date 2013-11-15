@@ -1,19 +1,26 @@
 package org.rejna.cryo.web
 
 import scala.concurrent.{ Future, ExecutionContext }
-import scala.util.{ Success, Failure }
+import scala.util.{ Success, Failure, Try }
+import scala.reflect.ClassTag
 
 import spray.http.MediaTypes.{ `text/html` }
-import spray.routing.{ HttpService, Route }
+import spray.http.StatusCodes._
+import spray.routing.{ HttpService, Route, ExceptionHandler, PathMatchers }
 import spray.httpx.Json4sSupport
 import spray.httpx.marshalling.ToResponseMarshallable
-
 
 import org.rejna.cryo.models._
 
 class WebServiceActor(_cryoctx: CryoContext)
   extends CryoActor(_cryoctx)
   with SnapshotService {
+
+  implicit def myExceptionHandler = ExceptionHandler {
+    case e: ArithmeticException => ctx =>
+      ctx.withHttpResponseMapped(_.copy(status = InternalServerError))
+        .complete("Bad numbers, bad result!!!")
+  }
 
   def actorRefFactory = context
   def receive = cryoReceive(runRoute(routes))
@@ -27,42 +34,95 @@ trait ComposableRoute extends HttpService {
 
 trait CryoExpectableSupport { self: HttpService =>
   implicit val executionContext: ExecutionContext
-  
+// TODO needs improvement
   class ExpectableFuture(f: Future[_]) {
-    def expect[T](pf: PartialFunction[Any, T])(implicit ee: T => ToResponseMarshallable) = {
+    def expect[T](pf: PartialFunction[Any, T])(implicit ee: T => ToResponseMarshallable): Unit = {
       f onComplete {
         case Success(m) if pf.isDefinedAt(m) => complete(pf(m))
-        case Success(m) => complete(s"Unexpexted message : ${m}")
-        case Failure(t) => complete("Error")
+        case Success(m) => respondWithStatus(InternalServerError) { complete(s"Unexpexted message : ${m}") }
+        case Failure(t) => respondWithStatus(InternalServerError) { complete("Error") }
       }
     }
-//      case x => pf.applyOrElse(x,{
-//        case m => complete(s"Unexpected message $")))
-//      }
-//      case t: T => //complete(t)
-//      case e: Any => 
-//    }
+
+    def expect[T](implicit ee: T => ToResponseMarshallable, tag: ClassTag[T]): Unit = {
+      val expectedClass = tag.runtimeClass
+      val a = f.map(m => Try(complete(expectedClass.cast(m).asInstanceOf[T]))
+        .recover { case _ => complete(s"Unpexpected message : ${m}") })
+        .recover { case t => complete(s"Internal error : ${t}") }
+      
+    }
   }
-  //implicit def expect[T](f: Future[_]) = 
+ implicit def aa(f: Future[_]) = new ExpectableFuture(f)
 }
 
 trait SnapshotService
   extends ComposableRoute
   with CryoAskSupport
-  with Json4sSupport {
+  with Json4sSupport
+  with CryoExpectableSupport {
 
   implicit val cryoctx: CryoContext
   implicit val executionContext: ExecutionContext
 
+  val FilePath = Segment.map(_.replace('!', '/'))
+  
   def unexpected(m: Any)
   addRoute {
     pathPrefix("snapshots") {
-      path("list") { ctx =>
-        (cryoctx.inventory ? GetSnapshotList()) onComplete {
-          case Success(sl: SnapshotList) => complete(sl.snapshots)
+      path(PathMatchers.PathEnd) { post { ctx =>
+        (cryoctx.inventory ? CreateSnapshot()) expect {
+          case SnapshotCreated(snapshotId) => snapshotId
         }
-        //          case Success(o) => _sender ! GetSnapshotListResponse(ctx.responseContext(501, Map("message" -> o.toString)), List.empty[DataStatus])
-        //          case Failure(e) => _sender ! GetSnapshotListResponse(ctx.responseContext(500, Map("message" -> e.getMessage)), List.empty[DataStatus])
+      } } ~
+      path("list") { get { ctx =>
+        (cryoctx.inventory ? GetSnapshotList()) expect {
+          case sl: SnapshotList => sl.snapshots
+        }
+      } } ~
+      path(Segment) { snapshotId =>
+        get { ctx =>
+          (cryoctx.datastore ? GetDataStatus(snapshotId)).expect[DataStatus]
+        } ~
+        delete { ctx =>
+          (cryoctx.inventory ? DeleteSnapshot(snapshotId)) expect {
+            case sd: SnapshotDeleted => "OK"
+          }
+        }
+      } ~
+      pathPrefix(Segment) { snapshotId =>
+        path("files" / FilePath) { filepath =>
+          get { ctx =>
+            (cryoctx.inventory ? SnapshotGetFiles(snapshotId, filepath)) expect {
+              case SnapshotFiles(_, _, fe) => fe
+            }
+          }
+        } ~
+        path("filter" / FilePath) { filepath =>
+          get { ctx =>
+            (cryoctx.inventory ? SnapshotGetFilter(snapshotId, filepath)) expect {
+              case SnapshotFilter(_, _, filter) => filter
+            }
+          } ~
+          delete { ctx =>
+            (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, NoOne)) expect {
+              case FilterUpdated() => "OK"
+            }
+          } ~
+          post {
+            entity(as[FileFilter]) { filter => ctx =>
+              (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
+                case FilterUpdated() => "OK"
+              }
+            }
+          } ~
+          put {
+            entity(as[FileFilter]) { filter => ctx =>
+              (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
+                case FilterUpdated() => "OK"
+              }
+            }
+          }
+        }
       }
 
     }
@@ -89,18 +149,5 @@ trait SnapshotService
         }
     }
   }
-  
-  def doCreate(json: Any) = {
-    //We use the Ask pattern to return
-    //a future from our worker Actor,
-    //which then gets passed to the complete
-    //directive to finish the request.
- 
-    val response = (cryoctx.inventory ? json)
-                  .mapTo[String]
-                  .map(result => s"I got a response: ${result}")
-                  .recover { case _ => "error" }
 
-    complete(response)
-  }
 }
