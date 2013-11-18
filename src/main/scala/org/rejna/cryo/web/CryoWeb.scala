@@ -15,14 +15,15 @@ import spray.can.Http
 import org.rejna.cryo.models.{ Glacier, LoggingClass, CryoContext, Event, CryoEventBus, CryoActor }
 
 object CryoWeb {
-  def main(args: Array[String]) = {
-    println("Cryo is starting ...")
-    val config = ConfigFactory.load()
-    val system = ActorSystem("cryo", config)
-    val cryoctx = new CryoContext(system, config)
+  println("Cryo is starting ...")
+  val config = ConfigFactory.load()
+  val system = ActorSystem("cryo", config)
+  val cryoctx = new CryoContext(system, config)
 
-    val mainActor = system.actorOf(Props(classOf[CryoWeb]), "main")
-    val webActor = system.actorOf(Props(classOf[WebServiceActor]), "cryo-web-service")
+  val mainActor = system.actorOf(Props(classOf[CryoWeb], cryoctx), "main")
+  val webActor = system.actorOf(Props(classOf[WebServiceActor], cryoctx), "cryo-web-service")
+  
+  def main(args: Array[String]) = {
     IO(Http)(system).tell(Http.Bind(webActor, interface = "localhost", port = 8080), mainActor)
   }
 }

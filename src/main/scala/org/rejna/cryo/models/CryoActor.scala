@@ -10,7 +10,7 @@ import org.slf4j.{ Logger, MarkerFactory }
 
 trait OptionalMessage
 
-class CryoAskableActorRef(val cryoctx: CryoContext, actorRef: ActorRef)(implicit executionContext: ExecutionContext) extends LoggingClass {
+class CryoAskableActorRef(actorName: String, val cryoctx: CryoContext, actorRef: ActorRef)(implicit executionContext: ExecutionContext) extends LoggingClass {
   
   def ?(message: Any) = {
     log.debug(Log.askMsgMarker, s"${message} - ${actorRef}")

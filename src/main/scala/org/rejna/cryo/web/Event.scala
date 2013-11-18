@@ -26,7 +26,7 @@ object JsonWithTypeHints extends Formats {
   implicit val format = this
 
   override val typeHints = ShortTypeHints(
-    classOf[Exit] ::
+    //classOf[Exit] ::
       classOf[Subscribe] ::
       classOf[Unsubscribe] ::
       classOf[AttributeChange[_]] ::
