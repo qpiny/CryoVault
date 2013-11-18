@@ -21,10 +21,9 @@ import com.amazonaws.{ ClientConfiguration, Protocol }
 case class PrepareToDie()
 case class ReadyToDie()
 
-class CryoContext(val system: ActorSystem, val config: Config) extends LoggingClass {
+class CryoContext(val system: ActorSystem, val config: Config) extends LoggingClass with CryoAskSupport {
   import org.rejna.util.IsoUnit._
   implicit val executionContext = system.dispatcher
-  implicit def ask(actorRef: ActorRef) = new CryoAskableActorRef(this, actorRef)
   implicit val cryoctx = this
   val attributeBuilder = CryoAttributeBuilder("/cryo")
   val statusAttribute = attributeBuilder("status", "starting")

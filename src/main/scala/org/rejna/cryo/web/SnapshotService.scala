@@ -17,64 +17,70 @@ trait SnapshotService
   implicit val executionContext: ExecutionContext
 
   val FilePath = Segment.map(_.replace('!', '/'))
-  
+
   addRoute {
-    pathPrefix("snapshots") {
-      path(PathMatchers.PathEnd) { post { ctx =>
-        (cryoctx.inventory ? CreateSnapshot()) expect {
-          case SnapshotCreated(snapshotId) => snapshotId
-        }
-      } } ~
-      path("list") { get { ctx =>
-        (cryoctx.inventory ? GetSnapshotList()) expect {
-          case SnapshotList(_, _, snapshots) => snapshots
-        }
-      } } ~
-      path(Segment) { snapshotId =>
-        get { ctx =>
-          (cryoctx.datastore ? GetDataStatus(snapshotId)).expect[DataStatus]
-        } ~
-        delete { ctx =>
-          (cryoctx.inventory ? DeleteSnapshot(snapshotId)) expect {
-            case SnapshotDeleted(id) => s"OK snapshot ${id} deleted"
+    pathPrefix("api" / "snapshots") {
+      path(PathMatchers.PathEnd) {
+        post { implicit ctx =>
+          (cryoctx.inventory ? CreateSnapshot()) expect {
+            case SnapshotCreated(snapshotId) => snapshotId
           }
         }
       } ~
-      pathPrefix(Segment) { snapshotId =>
-        path("files" / FilePath) { filepath =>
-          get { ctx =>
-            (cryoctx.inventory ? SnapshotGetFiles(snapshotId, filepath)) expect {
-              case SnapshotFiles(_, _, fe) => fe
+        path("list") {
+          get { implicit ctx =>
+            (cryoctx.inventory ? GetSnapshotList()) expect {
+              case SnapshotList(_, _, snapshots) => snapshots
             }
           }
         } ~
-        path("filter" / FilePath) { filepath =>
-          get { ctx =>
-            (cryoctx.inventory ? SnapshotGetFilter(snapshotId, filepath)) expect {
-              case SnapshotFilter(_, _, filter) => filter
-            }
+        path(Segment) { snapshotId =>
+          get { implicit ctx =>
+            (cryoctx.datastore ? GetDataStatus(snapshotId)).expect[DataStatus]
           } ~
-          delete { ctx =>
-            (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, NoOne)) expect {
-              case FilterUpdated() => "OK filter removed"
+            delete { implicit ctx =>
+              (cryoctx.inventory ? DeleteSnapshot(snapshotId)) expect {
+                case SnapshotDeleted(id) => s"OK snapshot ${id} deleted"
+              }
             }
-          } ~
-          post {
-            entity(as[FileFilter]) { filter => ctx =>
-              (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
-                case FilterUpdated() => "OK filter updated"
+        } ~
+        pathPrefix(Segment) { snapshotId =>
+          path("files" / FilePath) { filepath =>
+            get { implicit ctx =>
+              (cryoctx.inventory ? SnapshotGetFiles(snapshotId, filepath)) expect {
+                case SnapshotFiles(_, _, fe) => fe
               }
             }
           } ~
-          put {
-            entity(as[FileFilter]) { filter => ctx =>
-              (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
-                case FilterUpdated() => "OK filter updated"
-              }
+            path("filter" / FilePath) { filepath =>
+              get { implicit ctx =>
+                (cryoctx.inventory ? SnapshotGetFilter(snapshotId, filepath)) expect {
+                  case SnapshotFilter(_, _, filter) => filter
+                }
+              } ~
+                delete { implicit ctx =>
+                  (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, NoOne)) expect {
+                    case FilterUpdated() => "OK filter removed"
+                  }
+                } ~
+                post {
+                  entity(as[FileFilter]) { filter =>
+                    implicit ctx =>
+                      (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
+                        case FilterUpdated() => "OK filter updated"
+                      }
+                  }
+                } ~
+                put {
+                  entity(as[FileFilter]) { filter =>
+                    implicit ctx =>
+                      (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
+                        case FilterUpdated() => "OK filter updated"
+                      }
+                  }
+                }
             }
-          }
         }
-      }
     }
   }
 }

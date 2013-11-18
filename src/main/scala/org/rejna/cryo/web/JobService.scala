@@ -12,22 +12,24 @@ trait JobService
   with CryoAskSupport
   with Json4sSupport
   with CryoExpectableSupport {
-  
+
   implicit val cryoctx: CryoContext
   implicit val executionContext: ExecutionContext
 
   addRoute {
-    pathPrefix("jobs") {
-      path("list") { get { ctx =>
-        (cryoctx.manager ? GetJobList()) expect {
-          case JobList(jobs) => jobs
+    pathPrefix("api" / "jobs") {
+      path("list") {
+        get { implicit ctx =>
+          (cryoctx.manager ? GetJobList()) expect {
+            case JobList(jobs) => jobs
+          }
         }
-     } } ~
-     path(Segment) { jobId =>
-       get { ctx =>
-         (cryoctx.manager ? GetJob(jobId)).expect[Job]
-       }
-     }
+      } ~
+        path(Segment) { jobId =>
+          get { implicit ctx =>
+            (cryoctx.manager ? GetJob(jobId)).expect[Job]
+          }
+        }
     }
   }
 }
