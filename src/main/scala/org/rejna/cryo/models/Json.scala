@@ -45,7 +45,8 @@ object Json extends Formats {
     def format(d: Date): String = jodaDateFormat.print(new DateTime(d))
   }
   override val typeHints = NoTypeHints
-  override val customSerializers = new EnumNameSerializer(EntryStatus) :: Nil
+  override val customSerializers = new EnumNameSerializer(EntryStatus) ::
+    JsonDataEntry :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
@@ -62,31 +63,39 @@ object Json extends Formats {
   }
 }
 
+case object JsonDataEntry extends CustomSerializer[DataEntry](format => (
+  {
+    case JNull => null
+  },
+  {
+    case de: DataEntry => Json.write(de.state)
+  }))
+
 private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
-    {
-      case o @ JObject(
-          JField("id", JString(id)) ::
-          JField("description", JString(description)) ::
-          JField("creationDate", JString(creationDate)) ::
-          JField("size", JInt(size)) ::
-          JField("checksum", JString(checksum)) ::
-          Nil) =>
-            val status = (o \ "status") match {
-              case JString(s) =>
-                EntryStatus.values.find(_.toString == s).getOrElse(Unknown)
-              case _: Any => Unknown
-            }
-            DataStatus(id, description, Json.readDate(creationDate).getOrElse(new Date), status, size.toLong, checksum)
-    },
-    {
-      case ds: DataStatus =>
-        ("id" -> JString(ds.id)) ~
+  {
+    case o @ JObject(
+      JField("id", JString(id)) ::
+        JField("description", JString(description)) ::
+        JField("creationDate", JString(creationDate)) ::
+        JField("size", JInt(size)) ::
+        JField("checksum", JString(checksum)) ::
+        Nil) =>
+      val status = (o \ "status") match {
+        case JString(s) =>
+          EntryStatus.values.find(_.toString == s).getOrElse(Unknown)
+        case _: Any => Unknown
+      }
+      DataStatus(id, description, Json.readDate(creationDate).getOrElse(new Date), status, size.toLong, checksum)
+  },
+  {
+    case ds: DataStatus =>
+      ("id" -> JString(ds.id)) ~
         ("description" -> JString(ds.description)) ~
         ("creationDate" -> Json.writeDate(ds.creationDate)) ~
         ("status" -> ds.status.toString) ~
         ("size" -> ds.size) ~
         ("checksum" -> ds.checksum)
-    }))
+  }))
 //
 //  def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
 //    case j: Job =>

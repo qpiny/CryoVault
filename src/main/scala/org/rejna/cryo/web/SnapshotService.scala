@@ -2,7 +2,6 @@ package org.rejna.cryo.web
 
 import scala.concurrent.ExecutionContext
 
-import spray.routing.PathMatchers
 import spray.httpx.Json4sSupport
 
 import org.rejna.cryo.models._
@@ -20,7 +19,7 @@ trait SnapshotService
 
   addRoute {
     pathPrefix("api" / "snapshots") {
-      path(PathMatchers.PathEnd) {
+      pathEndOrSingleSlash {
         post { implicit ctx =>
           (cryoctx.inventory ? CreateSnapshot()) expect {
             case SnapshotCreated(snapshotId) => snapshotId

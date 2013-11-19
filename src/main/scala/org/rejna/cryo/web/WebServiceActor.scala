@@ -6,7 +6,7 @@ import scala.reflect.ClassTag
 
 import spray.http.MediaTypes.{ `text/html` }
 import spray.http.StatusCodes._
-import spray.routing.{ HttpService, Route, ExceptionHandler, PathMatchers, RequestContext }
+import spray.routing.{ HttpService, Route, ExceptionHandler, RequestContext }
 import spray.httpx.Json4sSupport
 import spray.httpx.marshalling.ToResponseMarshaller
 
@@ -16,7 +16,8 @@ class WebServiceActor(_cryoctx: CryoContext)
   extends CryoActor(_cryoctx)
   with SnapshotService
   with ArchiveService
-  with JobService {
+  with JobService
+  with NotificationService {
 
   implicit def myExceptionHandler = ExceptionHandler {
     case e: ArithmeticException => ctx =>
@@ -24,7 +25,7 @@ class WebServiceActor(_cryoctx: CryoContext)
         .complete("Bad numbers, bad result!!!")
   }
 
-  val staticContent = path(PathMatchers.PathEnd) {
+  val staticContent = pathEndOrSingleSlash {
     getFromResource("webapp/index.html")
   } ~
   path("exit") { ctx =>
