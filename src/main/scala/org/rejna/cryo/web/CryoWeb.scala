@@ -24,7 +24,7 @@ object CryoWeb {
   val webActor = system.actorOf(Props(classOf[WebServiceActor], cryoctx), "cryo-web-service")
   
   def main(args: Array[String]) = {
-    IO(Http)(system).tell(Http.Bind(webActor, interface = "localhost", port = 8080), mainActor)
+    IO(Http)(system).tell(Http.Bind(webActor, interface = "0.0.0.0", port = 8080), mainActor)
   }
 }
 
