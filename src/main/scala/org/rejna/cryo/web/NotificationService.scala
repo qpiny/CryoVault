@@ -5,6 +5,7 @@ import akka.actor.Props
 import spray.routing.RequestContext
 import spray.httpx.Json4sSupport
 import spray.http._
+import spray.http.HttpHeaders.`Content-Type`
 import spray.can.Http
 
 import org.rejna.cryo.models._
@@ -21,17 +22,22 @@ trait NotificationService
   MediaTypes.register(`text/event-stream`)
   addRoute {
     pathPrefix("notification" / Rest) { subscribe }
+    //anyParams { complete("pl") }
   }
 
   def subscribe(subscription: String)(ctx: RequestContext): Unit = {
     actorRefFactory.actorOf {
       Props {
         new CryoActor(cryoctx) {
-          ctx.responder ! ChunkedResponseStart(HttpResponse(entity = HttpEntity(`text/event-stream`, ""))) //" " * 2048 + "\n\ndata: Start\n\n")))
+          ctx.responder ! ChunkedResponseStart(HttpResponse(headers = `Content-Type`(`text/event-stream`) :: Nil))
           CryoEventBus.subscribe(self, '/' + subscription)
           log.info(s"Subscribe to /${subscription}")
 
           def receive = cryoReceive {
+            case evt: Event =>
+              val message = s"event: ${evt.path}\ndata: " + JsonWithTypeHints.write(evt) + "\n\n"
+              log.info(s"Sending message : ${message}")
+              ctx.responder ! MessageChunk(message)
             case msg: CryoMessage =>
               val message = "data: " + JsonWithTypeHints.write(msg) + "\n\n"
               log.info(s"Sending message : ${message}")

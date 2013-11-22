@@ -6,7 +6,9 @@ import scala.reflect.ClassTag
 
 import spray.http.MediaTypes.{ `text/html` }
 import spray.http.StatusCodes._
+import spray.http.HttpRequest
 import spray.routing.{ HttpService, Route, ExceptionHandler, RequestContext }
+import spray.routing.directives.LoggingMagnet
 import spray.httpx.Json4sSupport
 import spray.httpx.marshalling.ToResponseMarshaller
 
@@ -19,11 +21,11 @@ class WebServiceActor(_cryoctx: CryoContext)
   with JobService
   with NotificationService {
 
-  implicit def myExceptionHandler = ExceptionHandler {
-    case e: ArithmeticException => ctx =>
-      ctx.withHttpResponseMapped(_.copy(status = InternalServerError))
-        .complete("Bad numbers, bad result!!!")
-  }
+//  implicit def myExceptionHandler = ExceptionHandler {
+//    case e: ArithmeticException => ctx =>
+//      ctx.withHttpResponseMapped(_.copy(status = InternalServerError))
+//        .complete("Bad numbers, bad result!!!")
+//  }
 
   val staticContent = pathEndOrSingleSlash {
     getFromResource("webapp/index.html")
@@ -34,7 +36,9 @@ class WebServiceActor(_cryoctx: CryoContext)
   } ~ getFromResourceDirectory("webapp")
   def json4sFormats = Json
   def actorRefFactory = context
-  def receive = cryoReceive(runRoute(routes ~ staticContent))
+  //def receive = cryoReceive(runRoute(logRequestResponse(x => Unit) { routes ~ staticContent }))
+  val logger = LoggingMagnet.forRequestResponseFromMarker("webaccess")
+  def receive = cryoReceive(runRoute(logRequestResponse(logger) { routes ~ staticContent }))
 }
 
 trait ComposableRoute extends HttpService {

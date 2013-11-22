@@ -258,8 +258,9 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     case AttributeChange(path, previous, now) =>
       if (!isDying) path match {
-        case AttributePath("datastore", `inventoryDataId`, "status") =>
-          CryoEventBus.publish(AttributeChange("/cryo/inventory#status", previous, now))
+        case AttributePath("datastore", `inventoryDataId`, attr) =>
+          if (attr == "status")
+            CryoEventBus.publish(AttributeChange("/cryo/inventory#status", previous, now))
           if (now == Cached) {
             reload
           }
@@ -268,7 +269,8 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             CryoEventBus.publish(AttributeChange(s"/cryo/archives/${id}#${attr}", previous, now))
           else if (snapshotIds contains id)
             CryoEventBus.publish(AttributeChange(s"/cryo/snapshots/${id}#${attr}", previous, now))
-          else log.warn(s"Data ${id} has changed but it is not an archive nor a snapshot")
+          else if (id != inventoryDataId)
+            log.warn(s"Data ${id} has changed but it is not an archive nor a snapshot")
       }
 
     case CreateArchive() =>

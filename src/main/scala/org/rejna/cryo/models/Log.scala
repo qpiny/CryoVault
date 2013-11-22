@@ -3,8 +3,9 @@ package org.rejna.cryo.models
 import scala.language.implicitConversions
 
 import akka.actor.{ Actor, ActorContext, ActorRef }
+import akka.event.Logging._
 
-import org.slf4j.{ Marker, LoggerFactory, MarkerFactory }
+import org.slf4j.{ Marker, LoggerFactory, MarkerFactory, MDC }
 import org.slf4j.helpers.MessageFormatter
 import ch.qos.logback.classic.turbo.TurboFilter
 import ch.qos.logback.classic.{ Level, Logger, LoggerContext }
@@ -146,21 +147,49 @@ object CryoLogger {
     case Log(source, Level.ERROR, Some(marker), message, Some(cause)) =>
       LoggerFactory.getLogger(source).error(marker, message, cause)
   }
+  
+  def apply(error: Error) = 
 }
 class CryoLogger(cryoctx: CryoContext) extends Actor {
+
+  val mdcThreadAttributeName = "sourceThread"
+  val mdcAkkaSourceAttributeName = "akkaSource"
+  val mdcAkkaTimestamp = "akkaTimestamp"
+
   def receive = {
     case log: Log => CryoLogger(log)
-//    case WebLogEvent(timestamp, serverName, channelId, clientAddress, serverAddress, username, method, uri, requestSize, responseStatusCode, responseSize, timeTaken, protocolVersion, userAgent, referrer) =>
-//      CryoLogger(Log(serverName, Level.INFO, Some(Log.webLogMarker),
-//          clientAddress.asInstanceOf[InetSocketAddress].getAddress.getHostAddress + " " +
-//          username.getOrElse("-") + " " +
-//          method + " " +
-//          uri + " " +
-//          protocolVersion + " " + 
-//          responseStatusCode + " " +
-//          responseSize))
+    case event @ Error(cause, logSource, logClass, message) =>
+      withMdc(logSource, event) {
+        cause match {
+          case Error.NoCause | null => Logger(logClass, logSource).error(if (message != null) message.toString else null)
+          case cause => Logger(logClass, logSource).error(if (message != null) message.toString else cause.getLocalizedMessage, cause)
+        }
+      }
+
+    case event @ Warning(logSource, logClass, message) =>
+      withMdc(logSource, event) { Logger(logClass, logSource).warn("{}", message.asInstanceOf[AnyRef]) }
+
+    case event @ Info(logSource, logClass, message) =>
+      withMdc(logSource, event) { Logger(logClass, logSource).info("{}", message.asInstanceOf[AnyRef]) }
+
+    case event @ Debug(logSource, logClass, message) =>
+      withMdc(logSource, event) { Logger(logClass, logSource).debug("{}", message.asInstanceOf[AnyRef]) }
+    case InitializeLogger(_) => sender ! LoggerInitialized
     case PrepareToDie() => sender ! ReadyToDie()
     case t: OptionalMessage =>
     case a: Any => println(s"*******************${a.toString}*************")
   }
+
+  @inline
+  final def withMdc(logSource: String, logEvent: LogEvent)(logStatement: => Unit) {
+    MDC.put(mdcAkkaSourceAttributeName, logSource)
+    MDC.put(mdcThreadAttributeName, logEvent.thread.getName)
+    //MDC.put(mdcAkkaTimestamp, formatTimestamp(logEvent.timestamp))
+    try logStatement finally {
+      MDC.remove(mdcAkkaSourceAttributeName)
+      MDC.remove(mdcThreadAttributeName)
+      MDC.remove(mdcAkkaTimestamp)
+    }
+  }
+
 }

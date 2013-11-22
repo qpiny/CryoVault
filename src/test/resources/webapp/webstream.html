@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="ISO-8859-1">
+<title>webstream test</title>
+<script src="jquery-1.10.1.min.js"></script>
+<script src="jquery-migrate-1.2.1.min.js"></script>
+<script type="text/javascript">
+	function onmessage(e) {
+		$("#responseText").append("onmessage : " + JSON.stringify(e) + "<br/>");
+	}
+
+	function onerror(e) {
+		$("#responseText").append("onerror : " + JSON.stringify(e) + "<br/>");
+	}
+	
+	function onevent(e) {
+		$("#responseText").append("onevent : " + JSON.stringify(e) + "<br/>");
+	}
+
+	function onopen(e) {
+		$("#responseText").append("onopen : " + JSON.stringify(e) + "<br/>");
+	}
+
+	function transferCanceled(e) {
+		$("#responseText").append("transferCanceled : " + JSON.stringify(e) + "<br/>");
+	}
+	$(function() {
+		source = new EventSource("http://127.0.0.1:8080/notification/cryo");
+		source.onmessage = onmessage;
+		source.onerror = onerror;
+		source.onopen = onopen;
+		source.addEventListener("open", onevent);
+		source.addEventListener("message", onevent);
+		source.addEventListener("error", onevent);
+		//source.onopen = transferCanceled
+		//source.addEventListener('message', updateProgress, false);
+		//source.addEventListener('open', transferComplete, false);
+		//source.addEventListener('error', transferFailed, false);
+	});
+
+	function testClick() {
+		$("#responseText").append("state = " + source.readyState + "<br/>");
+		$.post("http://10.112.112.75:8080/api/snapshots");
+	}
+
+	function testClick2() {
+		$("#responseText").append("state = " + source.readyState + "<br/>");
+		$.get("http://10.112.112.75:8080/api/snapshots/list");
+	}
+
+</script>
+</head>
+<body>
+	<input type="button" onClick="testClick();" value="test">
+	<input type="button" onClick="testClick2();" value="test2">
+	<div id="responseText"></div>
+</body>
+</html>
