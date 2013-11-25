@@ -77,7 +77,7 @@ object Job {
 
 sealed abstract class ManagerRequest extends Request
 sealed abstract class ManagerResponse extends Response
-sealed class ManagerError(message: String, cause: Throwable) extends CryoError(message, cause)
+sealed class ManagerError(message: String, cause: Throwable) extends CryoError(classOf[Manager].getName, message, cause = cause)
 
 case class AddJobs(jobs: List[Job]) extends ManagerRequest
 object AddJobs { def apply(jobs: Job*): AddJobs = AddJobs(jobs.toList) }
@@ -105,7 +105,7 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     log.info("Refreshing job list")
     (cryoctx.cryo ? RefreshJobList()) onComplete {
       case Success(JobListRefreshed()) => log.info("Job list has been refreshed")
-      case o: Any => log.error(CryoError("Fail to refresh job list", o))
+      case o: Any => log(CryoError("Fail to refresh job list", o))
     }
 
     (cryoctx.datastore ? GetDataStatus("finalizedJobs")) flatMap {
@@ -144,7 +144,7 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           log.info("FinalizedJobs data has been stored")
         case o: Any =>
           _sender ! ReadyToDie()
-          log.error(CryoError("Fail to save finalized jobs", o))
+          log(CryoError("Fail to save finalized jobs", o))
       }
 
     case AddJobs(addedJobs) =>

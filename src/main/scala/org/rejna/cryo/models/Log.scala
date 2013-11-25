@@ -1,6 +1,7 @@
 package org.rejna.cryo.models
 
 import scala.language.implicitConversions
+import scala.util.{ Success, Failure }
 
 import akka.actor.{ Actor, ActorContext, ActorRef }
 import akka.event.Logging._
@@ -13,18 +14,27 @@ import ch.qos.logback.core.spi.FilterReply
 
 import java.net.InetSocketAddress
 
-case class Log(source: String, level: Level, marker: Option[Marker], message: String, cause: Option[Throwable] = None) extends Event {
-  val path = Log.levelToPath(level) + "#" + marker
+sealed trait CryoLog extends Event {
+  val source: String
+  val level: Level
+  val marker: Marker
+  val message: String
+  val cause: Throwable
+
+  val path = CryoLog.levelToPath(level) + "#" + marker
+  @transient
+  val timestamp = new java.util.Date
 }
-object Log {
+object CryoLog {
   val lc = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
   lc.addTurboFilter(LogDispatcher)
 
-  private def getMarker(markerNames: String*) = {
-    val markers = markerNames.map(MarkerFactory.getDetachedMarker)
-    val marker = markers.head
-    markers.tail.foreach(marker.add)
-    marker
+  def apply(source: String, level: Level, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) = level match {
+    case Level.TRACE => CryoTrace(source, message, marker, cause)
+    case Level.DEBUG => CryoDebug(source, message, marker, cause)
+    case Level.INFO => CryoInfo(source, message, marker, cause)
+    case Level.WARN => CryoWarn(source, message, marker, cause)
+    case Level.ERROR => CryoError(source, message, marker, cause)
   }
 
   val levelToPath = Map(
@@ -34,7 +44,10 @@ object Log {
     Level.INFO -> "/log/trace/debug/info",
     Level.WARN -> "/log/trace/debug/info/warn",
     Level.ERROR -> "/log/trace/debug/info/warn/error")
+}
 
+object Markers {
+  val noMarker = getMarker("")
   val msgMarker = getMarker("message")
   val askMsgMarker = getMarker("message", "ask")
   val replyMsgMarker = getMarker("message", "reply")
@@ -43,45 +56,55 @@ object Log {
   val handledMsgMarker = getMarker("message", "handled")
   val successMsgMarker = getMarker("message", "success")
   val webLogMarker = getMarker("weblog")
+  
+  private def getMarker(markerNames: String*): Marker = {
+    val markers = markerNames.map(MarkerFactory.getDetachedMarker)
+    val marker = markers.head
+    markers.tail.foreach(marker.add)
+    marker
+  }
+}
+
+case class CryoTrace(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.TRACE }
+case class CryoDebug(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.DEBUG }
+case class CryoInfo(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.INFO }
+case class CryoWarn(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.WARN }
+class CryoError(val source: String, val message: String, val marker: Marker = Markers.errMsgMarker, val cause: Throwable = Error.NoCause) extends Exception with CryoLog { val level = Level.ERROR }
+
+object CryoError {
+  private def apply(message: String, marker: Marker, a: Any): CryoError = a match {
+    case Failure(e) => CryoError(s"${message}: failure", marker, e)
+    case Success(e) => CryoError(s"${message}: success", marker, e)
+    case e: Throwable => new CryoError("", message, marker, e)
+    case e: Any => new CryoError("", s"${message}: unexpected message: ${e}", marker)
+  }
+  def apply(source: String, message: String, marker: Marker, cause: Throwable) = new CryoError(source, message, marker, cause)
+  def apply(message: String, a: Any): CryoError = CryoError(message, Markers.errMsgMarker, a)
+  def apply(message: String): CryoError = new CryoError(org.slf4j.Logger.ROOT_LOGGER_NAME, message)
 }
 
 class SimpleLogger(source: String, cryoctx: CryoContext) {
-  def apply(log: Log) = {
+  import Markers._
+  @inline
+  final def apply(log: CryoLog) = {
     if (cryoctx.logger == null)
       CryoLogger(log)
     else
       cryoctx.logger ! log
   }
 
-  def trace(message: String) = apply(Log(source, Level.TRACE, None, message))
-  def debug(message: String) = apply(Log(source, Level.DEBUG, None, message))
-  def info(message: String) = apply(Log(source, Level.INFO, None, message))
-  def warn(message: String) = apply(Log(source, Level.WARN, None, message))
-  def error(message: String) = apply(Log(source, Level.ERROR, None, message))
+  def trace(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoTrace(source, message, marker, cause))
+  def debug(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoDebug(source, message, marker, cause))
+  def info(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoInfo(source, message, marker, cause))
+  def warn(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoWarn(source, message, marker, cause))
+  def error(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoError(source, message, marker, cause))
+  
+    def trace(message: String, cause: Throwable) = apply(CryoTrace(source, message, noMarker, cause))
+  def debug(message: String, cause: Throwable) = apply(CryoDebug(source, message, noMarker, cause))
+  def info(message: String, cause: Throwable) = apply(CryoInfo(source, message, noMarker, cause))
+  def warn(message: String, cause: Throwable) = apply(CryoWarn(source, message, noMarker, cause))
+  def error(message: String, cause: Throwable) = apply(CryoError(source, message, noMarker, cause))
 
-  def trace(marker: Marker, message: String) = apply(Log(source, Level.TRACE, Some(marker), message))
-  def debug(marker: Marker, message: String) = apply(Log(source, Level.DEBUG, Some(marker), message))
-  def info(marker: Marker, message: String) = apply(Log(source, Level.INFO, Some(marker), message))
-  def warn(marker: Marker, message: String) = apply(Log(source, Level.WARN, Some(marker), message))
-  def error(marker: Marker, message: String) = apply(Log(source, Level.ERROR, Some(marker), message))
-
-  def trace(message: String, cause: Throwable) = apply(Log(source, Level.TRACE, None, message, Some(cause)))
-  def debug(message: String, cause: Throwable) = apply(Log(source, Level.DEBUG, None, message, Some(cause)))
-  def info(message: String, cause: Throwable) = apply(Log(source, Level.INFO, None, message, Some(cause)))
-  def warn(message: String, cause: Throwable) = apply(Log(source, Level.WARN, None, message, Some(cause)))
-  def error(message: String, cause: Throwable) = apply(Log(source, Level.ERROR, None, message, Some(cause)))
-
-  def trace(marker: Marker, message: String, cause: Throwable) = apply(Log(source, Level.TRACE, Some(marker), message, Some(cause)))
-  def debug(marker: Marker, message: String, cause: Throwable) = apply(Log(source, Level.DEBUG, Some(marker), message, Some(cause)))
-  def info(marker: Marker, message: String, cause: Throwable) = apply(Log(source, Level.INFO, Some(marker), message, Some(cause)))
-  def warn(marker: Marker, message: String, cause: Throwable) = apply(Log(source, Level.WARN, Some(marker), message, Some(cause)))
-  def error(marker: Marker, message: String, cause: Throwable) = apply(Log(source, Level.ERROR, Some(marker), message, Some(cause)))
-
-  def trace(e: CryoError) = apply(Log(source, Level.TRACE, Some(e.marker), e.getMessage, Some(e.getCause)))
-  def debug(e: CryoError) = apply(Log(source, Level.DEBUG, Some(e.marker), e.getMessage, Some(e.getCause)))
-  def info(e: CryoError) = apply(Log(source, Level.INFO, Some(e.marker), e.getMessage, Some(e.getCause)))
-  def warn(e: CryoError) = apply(Log(source, Level.WARN, Some(e.marker), e.getMessage, Some(e.getCause)))
-  def error(e: CryoError) = apply(Log(source, Level.ERROR, Some(e.marker), e.getMessage, Some(e.getCause)))
 }
 
 trait LoggingClass {
@@ -95,101 +118,65 @@ object LogDispatcher extends TurboFilter {
       (if (format != null) MessageFormatter.arrayFormat(format, params).getMessage else "") +
         (if (t != null) t.getMessage else "")
     if (message != "")
-      CryoEventBus.publish(Log(logger.getName, level, Option(marker), message))
+      CryoEventBus.publish(CryoLog(logger.getName, level, message, marker))
     FilterReply.NEUTRAL
   }
 }
 
 object CryoLogger {
-  def apply(log: Log) = log match {
-    case Log(source, Level.TRACE, None, message, None) =>
-      LoggerFactory.getLogger(source).trace(message)
-    case Log(source, Level.TRACE, Some(marker), message, None) =>
-      LoggerFactory.getLogger(source).trace(marker, message)
-    case Log(source, Level.TRACE, None, message, Some(cause)) =>
-      LoggerFactory.getLogger(source).trace(message, cause)
-    case Log(source, Level.TRACE, Some(marker), message, Some(cause)) =>
-      LoggerFactory.getLogger(source).trace(marker, message, cause)
-
-    case Log(source, Level.DEBUG, None, message, None) =>
-      LoggerFactory.getLogger(source).debug(message)
-    case Log(source, Level.DEBUG, Some(marker), message, None) =>
-      LoggerFactory.getLogger(source).debug(marker, message)
-    case Log(source, Level.DEBUG, None, message, Some(cause)) =>
-      LoggerFactory.getLogger(source).debug(message, cause)
-    case Log(source, Level.DEBUG, Some(marker), message, Some(cause)) =>
-      LoggerFactory.getLogger(source).debug(marker, message, cause)
-
-    case Log(source, Level.INFO, None, message, None) =>
-      LoggerFactory.getLogger(source).info(message)
-    case Log(source, Level.INFO, Some(marker), message, None) =>
-      LoggerFactory.getLogger(source).info(marker, message)
-    case Log(source, Level.INFO, None, message, Some(cause)) =>
-      LoggerFactory.getLogger(source).info(message, cause)
-    case Log(source, Level.INFO, Some(marker), message, Some(cause)) =>
-      LoggerFactory.getLogger(source).info(marker, message, cause)
-
-    case Log(source, Level.WARN, None, message, None) =>
-      LoggerFactory.getLogger(source).warn(message)
-    case Log(source, Level.WARN, Some(marker), message, None) =>
-      LoggerFactory.getLogger(source).warn(marker, message)
-    case Log(source, Level.WARN, None, message, Some(cause)) =>
-      LoggerFactory.getLogger(source).warn(message, cause)
-    case Log(source, Level.WARN, Some(marker), message, Some(cause)) =>
-      LoggerFactory.getLogger(source).warn(marker, message, cause)
-
-    case Log(source, Level.ERROR, None, message, None) =>
-      LoggerFactory.getLogger(source).error(message)
-    case Log(source, Level.ERROR, Some(marker), message, None) =>
-      LoggerFactory.getLogger(source).error(marker, message)
-    case Log(source, Level.ERROR, None, message, Some(cause)) =>
-      LoggerFactory.getLogger(source).error(message, cause)
-    case Log(source, Level.ERROR, Some(marker), message, Some(cause)) =>
-      LoggerFactory.getLogger(source).error(marker, message, cause)
-  }
-  
-  def apply(error: Error) = 
-}
-class CryoLogger(cryoctx: CryoContext) extends Actor {
 
   val mdcThreadAttributeName = "sourceThread"
   val mdcAkkaSourceAttributeName = "akkaSource"
   val mdcAkkaTimestamp = "akkaTimestamp"
 
-  def receive = {
-    case log: Log => CryoLogger(log)
-    case event @ Error(cause, logSource, logClass, message) =>
-      withMdc(logSource, event) {
-        cause match {
-          case Error.NoCause | null => Logger(logClass, logSource).error(if (message != null) message.toString else null)
-          case cause => Logger(logClass, logSource).error(if (message != null) message.toString else cause.getLocalizedMessage, cause)
-        }
-      }
-
-    case event @ Warning(logSource, logClass, message) =>
-      withMdc(logSource, event) { Logger(logClass, logSource).warn("{}", message.asInstanceOf[AnyRef]) }
-
-    case event @ Info(logSource, logClass, message) =>
-      withMdc(logSource, event) { Logger(logClass, logSource).info("{}", message.asInstanceOf[AnyRef]) }
-
-    case event @ Debug(logSource, logClass, message) =>
-      withMdc(logSource, event) { Logger(logClass, logSource).debug("{}", message.asInstanceOf[AnyRef]) }
-    case InitializeLogger(_) => sender ! LoggerInitialized
-    case PrepareToDie() => sender ! ReadyToDie()
-    case t: OptionalMessage =>
-    case a: Any => println(s"*******************${a.toString}*************")
-  }
-
   @inline
-  final def withMdc(logSource: String, logEvent: LogEvent)(logStatement: => Unit) {
-    MDC.put(mdcAkkaSourceAttributeName, logSource)
-    MDC.put(mdcThreadAttributeName, logEvent.thread.getName)
+  final def withMdc(log: CryoLog)(logStatement: => Unit) {
+    //MDC.put(mdcAkkaSourceAttributeName, logSource)
+    //MDC.put(mdcThreadAttributeName, logEvent.thread.getName)
     //MDC.put(mdcAkkaTimestamp, formatTimestamp(logEvent.timestamp))
     try logStatement finally {
       MDC.remove(mdcAkkaSourceAttributeName)
       MDC.remove(mdcThreadAttributeName)
       MDC.remove(mdcAkkaTimestamp)
     }
+  }
+
+  @inline
+  final def withMdc(log: LogEvent)(logStatement: => Unit) {
+    //MDC.put(mdcAkkaSourceAttributeName, logSource)
+    //MDC.put(mdcThreadAttributeName, logEvent.thread.getName)
+    //MDC.put(mdcAkkaTimestamp, formatTimestamp(logEvent.timestamp))
+    try logStatement finally {
+      MDC.remove(mdcAkkaSourceAttributeName)
+      MDC.remove(mdcThreadAttributeName)
+      MDC.remove(mdcAkkaTimestamp)
+    }
+  }
+
+  def apply(e: CryoLog) = e match {
+    case l: CryoTrace => withMdc(l)(LoggerFactory.getLogger(l.source).trace(l.marker, l.message, l.cause))
+    case l: CryoDebug => withMdc(l)(LoggerFactory.getLogger(l.source).debug(l.marker, l.message, l.cause))
+    case l: CryoInfo => withMdc(l)(LoggerFactory.getLogger(l.source).info(l.marker, l.message, l.cause))
+    case l: CryoWarn => withMdc(l)(LoggerFactory.getLogger(l.source).warn(l.marker, l.message, l.cause))
+    case l: CryoError => withMdc(l)(LoggerFactory.getLogger(l.source).error(l.marker, l.message, l.cause))
+  }
+
+  def apply(e: LogEvent) = e match {
+    case l: Debug => withMdc(l)(LoggerFactory.getLogger(l.logSource).debug("{}", l.message))
+    case l: Info => withMdc(l)(LoggerFactory.getLogger(l.logSource).info("{}", l.message))
+    case l: Warning => withMdc(l)(LoggerFactory.getLogger(l.logSource).warn("{}", l.message))
+    case l: Error => withMdc(l)(LoggerFactory.getLogger(l.logSource).error("{}", l.message, l.cause))
+  }
+}
+
+class CryoLogger(cryoctx: CryoContext) extends Actor {
+  def receive = {
+    case e: CryoLog => CryoLogger(e)
+    case e: LogEvent => CryoLogger(e)
+    case InitializeLogger(_) => sender ! LoggerInitialized
+    case PrepareToDie() => sender ! ReadyToDie()
+    case t: OptionalMessage =>
+    case a: Any => println(s"*******************${a.toString}*************")
   }
 
 }

@@ -18,7 +18,7 @@ import EntryStatus._
 
 sealed abstract class DatastoreRequest extends Request
 sealed abstract class DatastoreResponse extends Response { val id: String }
-sealed abstract class DatastoreError(message: String, cause: Throwable) extends CryoError(message, cause)
+sealed abstract class DatastoreError(message: String, cause: Throwable) extends CryoError(classOf[Datastore].getName, message, cause = cause)
 
 case class CreateData(idOption: Option[String], description: String, size: Long = 0L) extends DatastoreRequest
 case class DataCreated(id: String) extends DatastoreResponse
@@ -57,12 +57,12 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         .map { _.state }
       channel.write(ByteBuffer.wrap(Json.write(repo).getBytes))
     } catch {
-      case t: Throwable => log.error(CryoError("Datastore has failed to store its state", t))
+      case t: Throwable => log(CryoError("Datastore has failed to store its state", t))
     } finally {
       channel.close
     }
   } catch {
-    case t: Throwable => log.error(CryoError("Datastore has failed to open its state file", t))
+    case t: Throwable => log(CryoError("Datastore has failed to open its state file", t))
   }
 
   override def preStart = try {

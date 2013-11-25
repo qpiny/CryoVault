@@ -14,7 +14,7 @@ import com.amazonaws.services.sns.model._
 
 sealed abstract class NotificationRequest extends Request
 sealed abstract class NotificationResponse extends Response
-sealed class NotificationError(message: String, cause: Throwable) extends CryoError(message, cause)
+sealed class NotificationError(message: String, cause: Throwable) extends CryoError(classOf[Notification].getName, message, cause = cause)
 
 case class GetNotification() extends NotificationRequest
 case class NotificationGot() extends NotificationResponse 

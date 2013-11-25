@@ -15,22 +15,9 @@ import org.slf4j.Marker
 
 trait CryoMessage
 
-abstract class Event extends CryoMessage { val path: String }
-abstract class Request extends CryoMessage
-abstract class Response extends CryoMessage
-class CryoError(val marker: Marker, message: String, cause: Throwable = null) extends Exception(message, cause) with CryoMessage {
-  def this(message: String, cause: Throwable = null) = this(Log.errMsgMarker, message, cause)
-}
-object CryoError {
-  private def apply(marker: Marker, message: String, a: Any): CryoError = a match {
-    case Failure(e) => CryoError(marker, s"${message}: failure", e)
-    case Success(e) => CryoError(marker, s"${message}: success", e)
-    case e: Throwable => new CryoError(marker, message, e)
-    case e: Any => new CryoError(marker, s"${message}: unexpected message: ${e}")
-  }
-  def apply(message: String, a: Any): CryoError = CryoError(Log.errMsgMarker, message, a)
-  def apply(message: String): CryoError = new CryoError(Log.errMsgMarker, message)
-}
+trait Event extends CryoMessage { val path: String }
+trait Request extends CryoMessage
+trait Response extends CryoMessage
 
 object CryoEventBus extends EventBus with SubchannelClassification {
   type Event = org.rejna.cryo.models.Event

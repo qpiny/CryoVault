@@ -11,7 +11,7 @@ import java.nio.channels.FileChannel
 
 sealed abstract class HashCatalogRequest extends Request
 sealed abstract class HashCatalogResponse extends Response
-sealed abstract class HashCatalogError(message: String, cause: Throwable = null) extends CryoError(message, cause)
+sealed abstract class HashCatalogError(message: String, cause: Throwable = null) extends CryoError(classOf[HashCatalog].getName, message, cause = cause)
 
 case class GetHashBlockLocation(hashVersion: HashVersion) extends HashCatalogRequest
 case class GetBlockLocation(block: Block) extends HashCatalogRequest
@@ -67,7 +67,7 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
                 _sender ! BlockLocationNotFound(HashVersion(block.hash.value, maxVersion + 1))
               }
             case Failure(e: CryoError) => _sender ! e
-            case Failure(e) => _sender ! new CryoError("", e)
+            case Failure(e) => _sender ! CryoError("", e)
           }
       }
     case AddBlockLocation(blockLocations @ _*) =>

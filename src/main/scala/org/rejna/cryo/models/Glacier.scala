@@ -62,7 +62,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           var transfer = (cryoctx.datastore ? GetDataStatus(dataId)) map {
             case DataStatus(_, _, _, status, _, _) if status != Creating => // TODO will be Loading when implemented
             case DataNotFoundError(_, _, _) =>
-            case o: Any => throw new CryoError(s"Invalid data status ${o}")
+            case o: Any => throw CryoError(s"Invalid data status ${o}")
           } flatMap {
             Unit => (cryoctx.datastore ? CreateData(Some(dataId), job.description))
           } map {
@@ -106,7 +106,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           }
           (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
             case Success(j: Job) => log.info(s"Data ${dataId} download job finalized")
-            case o: Any => log.error(CryoError(s"Fail to finalize data ${dataId}", o))
+            case o: Any => log(CryoError(s"Fail to finalize data ${dataId}", o))
           }
       }
 

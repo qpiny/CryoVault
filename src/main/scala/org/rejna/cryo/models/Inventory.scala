@@ -29,7 +29,7 @@ import EntryStatus._
 sealed abstract class InventoryInternalMessage
 sealed abstract class InventoryRequest extends Request
 sealed abstract class InventoryResponse extends Response
-sealed class InventoryError(message: String, cause: Throwable) extends CryoError(message, cause)
+sealed class InventoryError(message: String, cause: Throwable) extends CryoError(classOf[Inventory].getName, message, cause = cause)
 
 case class UpdateInventoryDate(date: Date) extends InventoryInternalMessage
 case class AddArchive(id: String) extends InventoryInternalMessage
@@ -88,7 +88,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case Success(addedDataStatus) =>
           log.debug(s"attribute[${path}] add: ${addedValues.take(10)} remove: ${removedValues.take(10)}")
           CryoEventBus.publish(AttributeListChange(path, addedDataStatus, removedValues))
-        case e: Any => log.error(CryoError("Fail to publish inventory change", e))
+        case e: Any => log(CryoError("Fail to publish inventory change", e))
       }
     }
   }
@@ -197,7 +197,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         log.info("No inventory found in datastore")
         (cryoctx.notification ? GetNotification()) map {
           case NotificationGot() =>
-          case e: Any => log.warn(CryoError("Fail to get notification", e))
+          case e: Any => log(CryoError("Fail to get notification", e))
         } flatMap { _ =>
           (cryoctx.manager ? GetJobList())
         } flatMap {
@@ -218,7 +218,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         throw CryoError("Fail to get inventory status", o)
     } onComplete {
       case Failure(t) =>
-        log.error(CryoError("An error has occured while updating inventory", t))
+        log(CryoError("An error has occured while updating inventory", t))
       case Success(s) =>
         status = s
     }

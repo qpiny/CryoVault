@@ -15,11 +15,11 @@ class CryoAskableActorRef(actorName: String, val cryoctx: CryoContext, actorRef:
   val log = new SimpleLogger(actorName, cryoctx)
   
   def ?(message: Any) = {
-    log.debug(Log.askMsgMarker, s"${message} - ${actorRef}")
+    log.debug(s"${message} - ${actorRef}", marker = Markers.askMsgMarker)
     val timeout = cryoctx.getTimeout(message.getClass)
     actorRef.ask(message)(timeout) map {
       case x =>
-        log.debug(Log.replyMsgMarker, s"${message} - ${actorRef} - ${x}")
+        log.debug(s"${message} - ${actorRef} - ${x}", marker = Markers.replyMsgMarker)
         x
     } recover {
       case e =>
@@ -34,14 +34,16 @@ trait CryoAskSupport {
 }
 
 trait CryoActorLogger extends LoggingClass { self: Actor =>
+  import Markers._
+  
   def cryoReceive(f: Actor.Receive) = new Actor.Receive {
     def isDefinedAt(o: Any): Boolean = {
       val handled = f.isDefinedAt(o)
       o match {
-        case a: Any if handled => log.debug(Log.handledMsgMarker, s"Receiving message: ${a}")
-        case o: OptionalMessage => log.debug(Log.unhandledMshMarker, s"Ignored message: ${o}")
-        case t: Throwable => log.warn(Log.errMsgMarker, s"Unhandled error", t)
-        case a: Any => log.warn(Log.unhandledMshMarker, s"Unhandled message: ${a}")
+        case a: Any if handled => log.debug(s"Receiving message: ${a}", marker = handledMsgMarker)
+        case o: OptionalMessage => log.debug(s"Ignored message: ${o}", marker = unhandledMshMarker)
+        case t: Throwable => log.warn(s"Unhandled error", marker = errMsgMarker, cause = t)
+        case a: Any => log.warn(s"Unhandled message: ${a}", marker = unhandledMshMarker)
       }
       handled
     }
@@ -49,12 +51,12 @@ trait CryoActorLogger extends LoggingClass { self: Actor =>
       val sender = context.sender
       try {
         f(o)
-        log.debug(Log.successMsgMarker, s"${o}")
+        log.debug(s"${o}", marker = successMsgMarker)
       } catch {
         case t: Throwable =>
           val e = CryoError(s"Message ${o} has generated an error", t)
           sender ! e
-          log.error(e)
+          log(e)
       }
     }
   }

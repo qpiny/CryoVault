@@ -67,7 +67,7 @@ object DataEntry {
           state.checksum,
           entryAttributeBuilder)
       case e =>
-        throw new CryoError(s"Unsupported data entry status ${e}")
+        throw CryoError(s"Unsupported data entry status ${e}")
     }
   }
 }
