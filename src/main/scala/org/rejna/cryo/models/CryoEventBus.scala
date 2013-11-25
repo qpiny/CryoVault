@@ -15,7 +15,10 @@ import org.slf4j.Marker
 
 trait CryoMessage
 
-trait Event extends CryoMessage { val path: String }
+trait Event extends CryoMessage {
+  val path: EventPath
+  val classifier = path.classifier
+}
 trait Request extends CryoMessage
 trait Response extends CryoMessage
 
@@ -24,7 +27,7 @@ object CryoEventBus extends EventBus with SubchannelClassification {
   type Classifier = String
   type Subscriber = ActorRef
 
-  protected def classify(event: Event) = event.path
+  protected def classify(event: Event) = event.classifier
 
   protected def subclassification = new Subclassification[Classifier] {
     def isEqual(x: Classifier, y: Classifier) = x == y
@@ -36,52 +39,54 @@ object CryoEventBus extends EventBus with SubchannelClassification {
   }
 }
 
-object CryoAttributeBuilder {
+object EventPath {
   def apply(path: String*)(implicit cryoctx: CryoContext) = new CryoAttributeBuilder(path.toList)
 }
 
-class CryoAttributeBuilder(path: List[String])(implicit val cryoctx: CryoContext) extends LoggingClass {
+class EventPath(path: List[String])(implicit val cryoctx: CryoContext) extends LoggingClass {
+  val classifier = path.mkString(".") + '#' + name
+  
   object callback extends AttributeSimpleCallback {
-    override def onChange[A](name: String, previous: Option[A], now: A) = {
+    override def onChange[A](eventPath: EventPath, previous: Option[A], now: A) = {
       log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), name, previous, now))
-      for (p <- path) CryoEventBus.publish(AttributeChange(p + '#' + name, previous, now))
+      CryoEventBus.publish(AttributeChange(eventPath, previous, now))
     }
   }
   object listCallback extends AttributeListCallback {
-    override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit = {
+    override def onListChange[B](eventPath: EventPath, addedValues: List[B], removedValues: List[B]): Unit = {
       log.debug("attribute[%s#%s] add: %s remove: %s".format(path.mkString("(", ",", ")"), name, addedValues.take(10), removedValues.take(10)))
-      for (p <- path) CryoEventBus.publish(AttributeListChange(p + '#' + name, addedValues, removedValues))
+      CryoEventBus.publish(AttributeListChange(eventPath, addedValues, removedValues))
     }
   }
 
-  def apply[A](name: String, initValue: A): SimpleAttribute[A] =
-    Attribute(name, initValue) <+> callback
+  def apply[A](eventPath: EventPath, initValue: A): SimpleAttribute[A] =
+    Attribute(eventPath, initValue) <+> callback
 
-  def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration) =
-    Attribute(name, body) <+> callback
+  def apply[A](eventPath: EventPath, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute(eventPath, body) <+> callback
 
-  def future[A](name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    Attribute.future(name, body) <+> callback
+  def future[A](eventPath: EventPath, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.future(eventPath, body) <+> callback
 
-  def list[A](name: String, initValue: List[A]): ListAttribute[A] =
-    Attribute.list(name, initValue) <+> listCallback
+  def list[A](eventPath: EventPath, initValue: List[A]): ListAttribute[A] =
+    Attribute.list(eventPath, initValue) <+> listCallback
 
-  def list[A](name: String, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    Attribute.list(name, body) <+> listCallback
+  def list[A](eventPath: EventPath, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.list(eventPath, body) <+> listCallback
 
-  def futureList[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    Attribute.futureList(name, body) <+> listCallback
+  def futureList[A](eventPath: EventPath, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.futureList(eventPath, body) <+> listCallback
 
-  def map[A, B](name: String, initValue: Map[A, B]): MapAttribute[A, B] =
-    Attribute.map(name, initValue) <+> listCallback
+  def map[A, B](eventPath: EventPath, initValue: Map[A, B]): MapAttribute[A, B] =
+    Attribute.map(eventPath, initValue) <+> listCallback
 
-  def map[A, B](name: String, body: () => Map[A, B])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    Attribute.map(name, body) <+> listCallback
+  def map[A, B](eventPath: EventPath, body: () => Map[A, B])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.map(eventPath, body) <+> listCallback
 
-  def futureMap[A, B](name: String, body: () => Future[Map[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration) =
-    Attribute.futureMap(name, body) <+> listCallback
+  def futureMap[A, B](eventPath: EventPath, body: () => Future[Map[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.futureMap(eventPath, body) <+> listCallback
 
-  def /(subpath: String) = CryoAttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
+  def /(subpath: String) = new EventPath(subpath :: path, name)
 
-  def withAlias(alias: String) = CryoAttributeBuilder(alias :: path: _*)
+  //def withAlias(alias: String) = CryoAttributeBuilder(alias :: path: _*)
 }

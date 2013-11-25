@@ -69,7 +69,8 @@ case class CryoTrace(source: String, message: String, marker: Marker = Markers.n
 case class CryoDebug(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.DEBUG }
 case class CryoInfo(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.INFO }
 case class CryoWarn(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.WARN }
-class CryoError(val source: String, val message: String, val marker: Marker = Markers.errMsgMarker, val cause: Throwable = Error.NoCause) extends Exception with CryoLog { val level = Level.ERROR }
+case class CryoError(source: String, message: String, marker: Marker = Markers.errMsgMarker, cause: Throwable = Error.NoCause) extends Exception with CryoLog { val level = Level.ERROR }
+abstract class GenericError extends Exception with CryoLog { val level = Level.ERROR }
 
 object CryoError {
   private def apply(message: String, marker: Marker, a: Any): CryoError = a match {
@@ -78,7 +79,7 @@ object CryoError {
     case e: Throwable => new CryoError("", message, marker, e)
     case e: Any => new CryoError("", s"${message}: unexpected message: ${e}", marker)
   }
-  def apply(source: String, message: String, marker: Marker, cause: Throwable) = new CryoError(source, message, marker, cause)
+  //def apply(source: String, message: String, marker: Marker, cause: Throwable) = new CryoError(source, message, marker, cause)
   def apply(message: String, a: Any): CryoError = CryoError(message, Markers.errMsgMarker, a)
   def apply(message: String): CryoError = new CryoError(org.slf4j.Logger.ROOT_LOGGER_NAME, message)
 }
@@ -159,6 +160,7 @@ object CryoLogger {
     case l: CryoInfo => withMdc(l)(LoggerFactory.getLogger(l.source).info(l.marker, l.message, l.cause))
     case l: CryoWarn => withMdc(l)(LoggerFactory.getLogger(l.source).warn(l.marker, l.message, l.cause))
     case l: CryoError => withMdc(l)(LoggerFactory.getLogger(l.source).error(l.marker, l.message, l.cause))
+    case l: GenericError => withMdc(l)(LoggerFactory.getLogger(l.source).error(l.marker, l.message, l.cause))
   }
 
   def apply(e: LogEvent) = e match {

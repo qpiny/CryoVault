@@ -3,6 +3,7 @@ package org.rejna.cryo.web
 import scala.concurrent.{ Future, ExecutionContext }
 import scala.util.{ Success, Failure, Try }
 import scala.reflect.ClassTag
+import scala.language.implicitConversions
 
 import spray.http.MediaTypes.{ `text/html` }
 import spray.http.StatusCodes._

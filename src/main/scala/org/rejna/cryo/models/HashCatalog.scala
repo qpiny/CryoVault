@@ -9,9 +9,14 @@ import java.nio.ByteBuffer
 import java.nio.file.StandardOpenOption._
 import java.nio.channels.FileChannel
 
+import akka.event.Logging.Error
+
 sealed abstract class HashCatalogRequest extends Request
 sealed abstract class HashCatalogResponse extends Response
-sealed abstract class HashCatalogError(message: String, cause: Throwable = null) extends CryoError(classOf[HashCatalog].getName, message, cause = cause)
+sealed abstract class HashCatalogError(val message: String, val cause: Throwable = Error.NoCause) extends GenericError {
+  val source = classOf[HashCatalog].getName
+  val marker = Markers.errMsgMarker
+}
 
 case class GetHashBlockLocation(hashVersion: HashVersion) extends HashCatalogRequest
 case class GetBlockLocation(block: Block) extends HashCatalogRequest
@@ -21,7 +26,7 @@ case class AddBlockLocation(blockLocations: BlockLocation*) extends HashCatalogR
 case class BlockLocationAdded(added: List[BlockLocation], failed: List[BlockLocation])
 
 case class BlockLocationNotFound(hashVersion: HashVersion) extends HashCatalogError("Blocklocation was not found")
-case class HashCollision(message: String) extends HashCatalogError("Blocklocation was not found")
+case class HashCollision(_message: String) extends HashCatalogError(_message)
 
 case class GetCatalogContent() extends HashCatalogRequest
 case class CatalogContent(catalog: Map[HashVersion, BlockLocation]) extends HashCatalogResponse

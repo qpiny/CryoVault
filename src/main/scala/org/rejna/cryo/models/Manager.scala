@@ -12,6 +12,7 @@ import java.nio.ByteBuffer
 import java.util.Date
 
 import akka.util.ByteString
+import akka.event.Logging.Error
 
 import com.amazonaws.services.glacier.model.GlacierJobDescription
 
@@ -77,7 +78,10 @@ object Job {
 
 sealed abstract class ManagerRequest extends Request
 sealed abstract class ManagerResponse extends Response
-sealed class ManagerError(message: String, cause: Throwable) extends CryoError(classOf[Manager].getName, message, cause = cause)
+sealed abstract class ManagerError(message: String, cause: Throwable) extends GenericError {
+  val source = classOf[Manager].getName
+  val marker = Markers.errMsgMarker
+}
 
 case class AddJobs(jobs: List[Job]) extends ManagerRequest
 object AddJobs { def apply(jobs: Job*): AddJobs = AddJobs(jobs.toList) }
@@ -90,7 +94,7 @@ case class JobListUpdated(jobs: List[Job]) extends ManagerResponse
 case class GetJobList() extends ManagerRequest
 case class JobList(jobs: List[Job]) extends ManagerResponse
 case class GetJob(jobId: String) extends ManagerRequest
-case class JobNotFound(jobId: String, message: String, cause: Throwable = null) extends ManagerError(message, cause)
+case class JobNotFound(jobId: String, message: String, cause: Throwable = Error.NoCause) extends ManagerError(message, cause)
 case class FinalizeJob(jobId: String) extends ManagerRequest
 
 class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {

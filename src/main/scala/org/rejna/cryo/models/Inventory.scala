@@ -10,6 +10,7 @@ import scala.language.postfixOps
 
 import akka.actor.{ ActorRef, Props, PoisonPill }
 import akka.util.ByteString
+import akka.event.Logging.Error
 
 import java.io.FileOutputStream
 import java.nio.file.{ Files, Path }
@@ -29,7 +30,10 @@ import EntryStatus._
 sealed abstract class InventoryInternalMessage
 sealed abstract class InventoryRequest extends Request
 sealed abstract class InventoryResponse extends Response
-sealed class InventoryError(message: String, cause: Throwable) extends CryoError(classOf[Inventory].getName, message, cause = cause)
+sealed abstract class InventoryError(message: String, cause: Throwable) extends GenericError {
+  val source = classOf[Inventory].getName
+  val marker = Markers.errMsgMarker
+}
 
 case class UpdateInventoryDate(date: Date) extends InventoryInternalMessage
 case class AddArchive(id: String) extends InventoryInternalMessage
@@ -47,8 +51,8 @@ case class ArchiveList(date: Date, status: EntryStatus, archives: List[DataStatu
 
 case class GetSnapshotList() extends InventoryRequest
 case class SnapshotList(date: Date, status: EntryStatus, snapshots: List[DataStatus]) extends InventoryResponse
-case class ArchiveNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
-case class SnapshotNotFound(id: String, message: String, cause: Throwable = null) extends InventoryError(message, cause)
+case class ArchiveNotFound(id: String, message: String, cause: Throwable = Error.NoCause) extends InventoryError(message, cause)
+case class SnapshotNotFound(id: String, message: String, cause: Throwable = Error.NoCause) extends InventoryError(message, cause)
 
 //case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DatastoreResponse
 //case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)

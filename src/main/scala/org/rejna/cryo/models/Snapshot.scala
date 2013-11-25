@@ -15,6 +15,7 @@ import java.nio.file.attribute._
 import java.nio.channels.FileChannel
 
 import akka.util.{ ByteString, ByteStringBuilder }
+import akka.event.Logging.Error
 
 import com.typesafe.config.Config
 
@@ -37,7 +38,10 @@ class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] 
 
 sealed abstract class SnapshotRequest extends Request { val id: String }
 sealed abstract class SnapshotResponse extends Response
-sealed class SnapshotError(message: String, cause: Option[Throwable]) extends CryoError(message, cause.orNull)
+sealed abstract class SnapshotError(val message: String, cause: Throwable) extends GenericError {
+  val source = classOf[SnapshotBuilder].getName
+  val marker = Markers.errMsgMarker
+}
 
 case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) extends SnapshotRequest
 case class SnapshotGetFiles(id: String, path: String) extends SnapshotRequest
@@ -50,7 +54,7 @@ case class SnapshotUpload(id: String) extends SnapshotRequest
 case class SnapshotUploaded(id: String) extends SnapshotResponse
 case class GetID() extends Request
 case class ID(id: String) extends SnapshotResponse
-case class DirectoryTraversalError(path: String) extends SnapshotError(s"Directory traversal attempt : ${path}", None)
+case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause) extends SnapshotError(s"Directory traversal attempt : ${directory}", cause)
 
 //case class ArchiveCreated(id: String) extends SnapshotResponse
 //case object CreateSnapshot extends SnapshotRequest

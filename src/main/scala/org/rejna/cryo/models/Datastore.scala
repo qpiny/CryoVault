@@ -6,6 +6,7 @@ import scala.language.postfixOps
 
 import akka.actor.{ ActorRefFactory }
 import akka.util.{ ByteString, ByteIterator, Timeout }
+import akka.event.Logging.Error
 
 import java.io.{ InputStream, OutputStream, IOException }
 import java.nio.channels.FileChannel
@@ -18,7 +19,10 @@ import EntryStatus._
 
 sealed abstract class DatastoreRequest extends Request
 sealed abstract class DatastoreResponse extends Response { val id: String }
-sealed abstract class DatastoreError(message: String, cause: Throwable) extends CryoError(classOf[Datastore].getName, message, cause = cause)
+sealed abstract class DatastoreError(message: String, cause: Throwable) extends GenericError {
+  val source = classOf[Datastore].getName
+  val marker = Markers.errMsgMarker
+}
 
 case class CreateData(idOption: Option[String], description: String, size: Long = 0L) extends DatastoreRequest
 case class DataCreated(id: String) extends DatastoreResponse
@@ -36,11 +40,11 @@ case class DataClosed(id: String) extends DatastoreResponse
 case class GetDataStatus(id: String) extends DatastoreRequest
 case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus, size: Long, checksum: String) extends DatastoreResponse
 
-case class OpenError(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
-case class WriteError(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
-case class ReadError(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
-case class DataNotFoundError(id: String, message: String, cause: Throwable = null) extends DatastoreError(message, cause)
-case class InvalidDataStatus(message: String, cause: Throwable = null) extends DatastoreError(message, cause)
+case class OpenError(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
+case class WriteError(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
+case class ReadError(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
+case class DataNotFoundError(id: String, message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
+case class InvalidDataStatus(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
 
 class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder("/cryo/datastore")
