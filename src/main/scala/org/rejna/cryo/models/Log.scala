@@ -21,7 +21,7 @@ sealed trait CryoLog extends Event {
   val message: String
   val cause: Throwable
 
-  val path = CryoLog.levelToPath(level) + "#" + marker
+  lazy val path = CryoLog.levelToPath(level) + "#" + marker
   @transient
   val timestamp = new java.util.Date
 }
@@ -56,7 +56,7 @@ object Markers {
   val handledMsgMarker = getMarker("message", "handled")
   val successMsgMarker = getMarker("message", "success")
   val webLogMarker = getMarker("weblog")
-  
+
   private def getMarker(markerNames: String*): Marker = {
     val markers = markerNames.map(MarkerFactory.getDetachedMarker)
     val marker = markers.head
@@ -99,8 +99,8 @@ class SimpleLogger(source: String, cryoctx: CryoContext) {
   def info(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoInfo(source, message, marker, cause))
   def warn(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoWarn(source, message, marker, cause))
   def error(message: String, marker: Marker = noMarker, cause: Throwable = Error.NoCause) = apply(CryoError(source, message, marker, cause))
-  
-    def trace(message: String, cause: Throwable) = apply(CryoTrace(source, message, noMarker, cause))
+
+  def trace(message: String, cause: Throwable) = apply(CryoTrace(source, message, noMarker, cause))
   def debug(message: String, cause: Throwable) = apply(CryoDebug(source, message, noMarker, cause))
   def info(message: String, cause: Throwable) = apply(CryoInfo(source, message, noMarker, cause))
   def warn(message: String, cause: Throwable) = apply(CryoWarn(source, message, noMarker, cause))
@@ -154,13 +154,17 @@ object CryoLogger {
     }
   }
 
-  def apply(e: CryoLog) = e match {
-    case l: CryoTrace => withMdc(l)(LoggerFactory.getLogger(l.source).trace(l.marker, l.message, l.cause))
-    case l: CryoDebug => withMdc(l)(LoggerFactory.getLogger(l.source).debug(l.marker, l.message, l.cause))
-    case l: CryoInfo => withMdc(l)(LoggerFactory.getLogger(l.source).info(l.marker, l.message, l.cause))
-    case l: CryoWarn => withMdc(l)(LoggerFactory.getLogger(l.source).warn(l.marker, l.message, l.cause))
-    case l: CryoError => withMdc(l)(LoggerFactory.getLogger(l.source).error(l.marker, l.message, l.cause))
-    case l: GenericError => withMdc(l)(LoggerFactory.getLogger(l.source).error(l.marker, l.message, l.cause))
+  def apply(e: CryoLog) = {
+    val logger = LoggerFactory.getLogger(e.source)
+    val cause = if (e.cause == Error.NoCause) null else e.cause
+    e match {
+      case l: CryoTrace => withMdc(l)(logger.trace(l.marker, l.message, cause))
+      case l: CryoDebug => withMdc(l)(logger.debug(l.marker, l.message, cause))
+      case l: CryoInfo => withMdc(l)(logger.info(l.marker, l.message, cause))
+      case l: CryoWarn => withMdc(l)(logger.warn(l.marker, l.message, cause))
+      case l: CryoError => withMdc(l)(logger.error(l.marker, l.message, cause))
+      case l: GenericError => withMdc(l)(logger.error(l.marker, l.message, cause))
+    }
   }
 
   def apply(e: LogEvent) = e match {

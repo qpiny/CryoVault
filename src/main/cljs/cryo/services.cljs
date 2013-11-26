@@ -31,6 +31,9 @@
         (clj->js {})
         (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}}))))
   
+  (.factory "notification"
+    (fn [$rootScope]
+      (let [sse (js/
   (.factory "socket"
     (fn [$rootScope]
       (let [ws (js/WebSocket. "ws://localhost:8888/websocket")
