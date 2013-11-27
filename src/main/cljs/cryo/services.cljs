@@ -33,7 +33,8 @@
   
   (.factory "notification"
     (fn [$rootScope]
-      (let [sse (js/
+      (js-obj "subscribe" (fn [subscription & ignore]
+                            (let [sse (js/EventSource. "http://127.0.0.1:8080/notification/cryo");
   (.factory "socket"
     (fn [$rootScope]
       (let [ws (js/WebSocket. "ws://localhost:8888/websocket")
