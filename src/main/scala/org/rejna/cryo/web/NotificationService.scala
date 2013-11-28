@@ -10,9 +10,6 @@ import spray.httpx.Json4sSupport
 import spray.http._
 import spray.http.HttpHeaders.`Content-Type`
 import spray.can.Http
-import spray.http.StatusCodes.ServerError
-
-import java.util.UUID
 
 import org.rejna.cryo.models._
 
@@ -27,30 +24,20 @@ trait NotificationService
   val `text/event-stream` = MediaType.custom("text/event-stream")
   MediaTypes.register(`text/event-stream`)
 
-  val notificationActors = HashMap.empty[UUID, ActorRef]
-
   addRoute {
-    get { path("notification" / Rest) { subscribe } } ~
-      post {
-        pathPrefix(JavaUUID) { nid =>
-          path("ignore" / Rest) { ignore =>
-            ctx =>
-              notificationActors.get(nid) match {
-                case Some(aref) =>
-                  aref ! "plop"
-                  ctx.complete("ok")
-                case None =>
-                  ctx.withHttpResponseMapped(_.copy(status = InternalServerError)).complete("Error")
-              }
+    get {
+      path("notification") {
+        parameter("subscription") { subscription =>
+          parameterMultiMap { params =>
+            subscribe(subscription, params.getOrElse("except", Nil))
           }
         }
       }
-    //anyParams { complete("pl") }
+    }
   }
 
-  def subscribe(subscription: String)(ctx: RequestContext): Unit = {
-    val nid = UUID.randomUUID
-    val aref = actorRefFactory.actorOf {
+  def subscribe(subscription: String, exception: List[String])(ctx: RequestContext): Unit = {
+    actorRefFactory.actorOf {
       Props {
         new CryoActor(cryoctx) {
           ctx.responder ! ChunkedResponseStart(HttpResponse(headers = `Content-Type`(`text/event-stream`) :: Nil))
@@ -76,11 +63,9 @@ trait NotificationService
 
           override def postStop() = {
             ctx.responder ! ChunkedMessageEnd
-            notificationActors -= nid
           }
         }
       }
     }
-    notificationActors += nid -> aref
   }
 }

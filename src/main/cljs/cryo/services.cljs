@@ -1,4 +1,5 @@
-(ns cryo.services)
+(ns cryo.services
+  (:use [goog.string :only [urlEncode]]))
 
 (doto (angular/module "cryoService" (array "ngResource"))
   (.factory "SnapshotSrv"
@@ -31,78 +32,84 @@
         (clj->js {})
         (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}}))))
   
-  (.factory "notification"
+  (.factory "NotificationFactory"
     (fn [$rootScope]
-      (js-obj "subscribe" (fn [subscription & ignore]
-                            (let [sse (js/EventSource. "http://127.0.0.1:8080/notification/cryo");
-  (.factory "socket"
-    (fn [$rootScope]
-      (let [ws (js/WebSocket. "ws://localhost:8888/websocket")
-            service (js-obj "callbacks" nil
-                            "stash" nil
-                            "ws" ws)
-            ws-store (fn [message]
-                       (aset service "stash" (conj (aget service "stash") message)))
-            ws-send (fn [message]
-                      (let [msg (.stringify js/JSON (clj->js message))
-                            ws (aget service "ws")]
-                        (.log js/console (str "sending message : " msg))
-                        (.send ws msg)))]
-        (.log js/console "new websocket connection")
-        (aset ws "onopen" (fn []
-                            (aset service "send" ws-send)
-                            (.log js/console "websocket is connected")
-                            (doseq [m (aget service "stash")] (ws-send m))
-                            (aset service "stash" nil)))
-        (aset ws "onmessage" (fn [event]
-                               (when-let [messagestr (.-data event)]
-                                 (when-let [message (.parse js/JSON messagestr)]
-                                   (when-let [path (.-path message)]
-                                     (.log js/console (str "Receive message : " messagestr))
-                                     (doseq [x ((aget service "callbacks") path)] (.$apply $rootScope (x message))))))))
-        (aset ws "onerror" (fn [] (.log js/console "WS ERROR !!")))
-        (aset service "send" ws-store)
-        (aset service "on" (fn [event callback]
-                             (aset service "callbacks"
-                                   (update-in (aget "callbacks" service) [event] #(conj % callback)))))
-        (aset service "subscribe" (fn [subscription]
-                                    (.log js/console "Subscribe !")
-                                    (.send service {:type "Subscribe" :subscription subscription})))
-        service)))
-      
-      
-  (.factory "socket2"
-    (fn [$rootScope]
-      (let [service (clj->js {:callbacks {}
-                              :stash nil
-                              :ws nil}) ; (js/WebSocket. "ws://127.0.0.1:8888/websocket")})
-            ws-store (fn [message]
-                       (aset service "stash" (conj (aget service "stash") message)))
-            ws-send (fn [message]
-                      (let [msg (.stringify js/JSON (clj->js message))
-                            ws (aget service "ws")]
-                        (.log js/console (str "sending message : " msg ", state = " (.-readyState ws)))
-                        (.send ws msg)))
-            ws (aget service "ws")]
-        (.log js/console "new websocket connection")
-        (aset ws "onopen" (fn []
-                            (aset service "send" ws-send)
-                            (.log js/console (str "websocket is connected, state = " (.-readyState ws)))
-                            (doseq [m (aget service "stash")] (.send service m))
-                            (aset service "stash" nil)))
-        (aset ws "onmessage" (fn [event]
-                               (when-let [messagestr (.-data event)]
-                                 (when-let [message (.parse js/JSON messagestr)]
-                                   (when-let [path (.-path message)]
-                                     (.log js/console (str "Receive message : " messagestr))
-                                     (doseq [x ((aget service "callbacks") path)] (.$apply $rootScope (x message))))))))
-        (aset ws "onerror" (fn [] (.log js/console "WS ERROR !!")))
-        (aset ws "onclose" (fn [] (.log js/console "WS CLOSE !!")))
-        (aset service "send" ws-store)
-        (aset service "on" (fn [event callback]
-                             (aset service "callbacks"
-                                   (update-in (aget "callbacks" service) [event] #(conj % callback)))))
-        (aset service "subscribe" (fn [subscription]
-                                    (.log js/console "Subscribe !")
-                                    (.send service {:type "Subscribe" :subscription subscription})))
-        service))))
+      (fn [subscription & ignore]
+        (let [sse (js/EventSource.
+                    (str
+                      "notification?subscription=" (urlEncode subscription)
+                      (map #(str "&except=" (urlEncode %)) ignore)))]
+          (js-obj "on" (fn [event callback]
+                         (.addEventListener sse event (fn [e] (.$apply $rootScope (callback e))) false))))))))
+;
+;  (.factory "socket"
+;    (fn [$rootScope]
+;      (let [ws (js/WebSocket. "ws://localhost:8888/websocket")
+;            service (js-obj "callbacks" nil
+;                            "stash" nil
+;                            "ws" ws)
+;            ws-store (fn [message]
+;                       (aset service "stash" (conj (aget service "stash") message)))
+;            ws-send (fn [message]
+;                      (let [msg (.stringify js/JSON (clj->js message))
+;                            ws (aget service "ws")]
+;                        (.log js/console (str "sending message : " msg))
+;                        (.send ws msg)))]
+;        (.log js/console "new websocket connection")
+;        (aset ws "onopen" (fn []
+;                            (aset service "send" ws-send)
+;                            (.log js/console "websocket is connected")
+;                            (doseq [m (aget service "stash")] (ws-send m))
+;                            (aset service "stash" nil)))
+;        (aset ws "onmessage" (fn [event]
+;                               (when-let [messagestr (.-data event)]
+;                                 (when-let [message (.parse js/JSON messagestr)]
+;                                   (when-let [path (.-path message)]
+;                                     (.log js/console (str "Receive message : " messagestr))
+;                                     (doseq [x ((aget service "callbacks") path)] (.$apply $rootScope (x message))))))))
+;        (aset ws "onerror" (fn [] (.log js/console "WS ERROR !!")))
+;        (aset service "send" ws-store)
+;        (aset service "on" (fn [event callback]
+;                             (aset service "callbacks"
+;                                   (update-in (aget "callbacks" service) [event] #(conj % callback)))))
+;        (aset service "subscribe" (fn [subscription]
+;                                    (.log js/console "Subscribe !")
+;                                    (.send service {:type "Subscribe" :subscription subscription})))
+;        service)))
+;      
+;      
+;  (.factory "socket2"
+;    (fn [$rootScope]
+;      (let [service (clj->js {:callbacks {}
+;                              :stash nil
+;                              :ws nil}) ; (js/WebSocket. "ws://127.0.0.1:8888/websocket")})
+;            ws-store (fn [message]
+;                       (aset service "stash" (conj (aget service "stash") message)))
+;            ws-send (fn [message]
+;                      (let [msg (.stringify js/JSON (clj->js message))
+;                            ws (aget service "ws")]
+;                        (.log js/console (str "sending message : " msg ", state = " (.-readyState ws)))
+;                        (.send ws msg)))
+;            ws (aget service "ws")]
+;        (.log js/console "new websocket connection")
+;        (aset ws "onopen" (fn []
+;                            (aset service "send" ws-send)
+;                            (.log js/console (str "websocket is connected, state = " (.-readyState ws)))
+;                            (doseq [m (aget service "stash")] (.send service m))
+;                            (aset service "stash" nil)))
+;        (aset ws "onmessage" (fn [event]
+;                               (when-let [messagestr (.-data event)]
+;                                 (when-let [message (.parse js/JSON messagestr)]
+;                                   (when-let [path (.-path message)]
+;                                     (.log js/console (str "Receive message : " messagestr))
+;                                     (doseq [x ((aget service "callbacks") path)] (.$apply $rootScope (x message))))))))
+;        (aset ws "onerror" (fn [] (.log js/console "WS ERROR !!")))
+;        (aset ws "onclose" (fn [] (.log js/console "WS CLOSE !!")))
+;        (aset service "send" ws-store)
+;        (aset service "on" (fn [event callback]
+;                             (aset service "callbacks"
+;                                   (update-in (aget "callbacks" service) [event] #(conj % callback)))))
+;        (aset service "subscribe" (fn [subscription]
+;                                    (.log js/console "Subscribe !")
+;                                    (.send service {:type "Subscribe" :subscription subscription})))
+;        service))))

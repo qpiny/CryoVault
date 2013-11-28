@@ -5,7 +5,7 @@
   (doseq [[k v] (partition 2 kvs)]
     (aset obj (name k) v)))
 
-(defn ^:export exitCtrl [$scope socket]
+(defn ^:export exitCtrl [$scope Notification]
   (oset! $scope
          :status "Started"
          :stop #(.send socket {:type "Exit"}))
@@ -20,7 +20,7 @@
     (if (= (first s) value) true (recur (rest s) value))
     false))
 
-(defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv socket]
+(defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv Notification]
   (oset! $scope
          :params $routeParams
          :snapshots (.query SnapshotSrv)
@@ -44,7 +44,7 @@
          :exit #(.open $modal
                   (clj->js {:templateUrl "partials/exit.html"
                             :controller exitCtrl})))
-  (.subscribe socket "/cryo/inventory")
+  (.subscribe Notification "/cryo/inventory")
   (.on socket "/cryo/inventory#snapshots"
     (fn [m]
       (let [added (set (.-addedValues m))
