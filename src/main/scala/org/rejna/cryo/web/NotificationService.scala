@@ -41,8 +41,8 @@ trait NotificationService
       Props {
         new CryoActor(cryoctx) {
           ctx.responder ! ChunkedResponseStart(HttpResponse(headers = `Content-Type`(`text/event-stream`) :: Nil))
-          CryoEventBus.subscribe(self, '/' + subscription)
-          log.info(s"Subscribe to /${subscription}")
+          CryoEventBus.subscribe(self, subscription)
+          log.info(s"Subscribe to ${subscription}")
 
           def receive = cryoReceive {
             case evt: Event =>

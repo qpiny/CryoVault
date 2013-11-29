@@ -3,44 +3,54 @@
 
 (doto (angular/module "cryoService" (array "ngResource"))
   (.factory "SnapshotSrv"
-    (fn [$resource]
-      ($resource
-        "api/snapshots/:snapshotId"
-        (clj->js {})
-        (clj->js {:query {:method "GET" :params {:snapshotId "list"} :isArray true}
-                  :create {:method "POST" :params {:snapshotId ""}}
-                  :remove {:method "DELETE" :params {:snapshotId ""}}}))))
+    (array
+      "$resource"
+      (fn [$resource]
+        ($resource
+          "api/snapshots/:snapshotId"
+          (clj->js {})
+          (clj->js {:query {:method "GET" :params {:snapshotId "list"} :isArray true}
+                    :create {:method "POST" :params {:snapshotId ""}}
+                    :remove {:method "DELETE" :params {:snapshotId ""}}})))))
   
   (.factory "SnapshotFileSrv"
-    (fn [$resource]
-      ($resource
+    (array
+      "$resource"
+      (fn [$resource]
         "api/snapshots/:snapshotId/files/:path"
         (clj->js {})
         (clj->js {:get {:method "GET" :isArray true}}))))
   
   (.factory "ArchiveSrv"
-    (fn [$resource]
-      ($resource
-        "api/archives/:archiveId"
-        (clj->js {})
-        (clj->js {:query {:method "GET" :params {:archiveId "list"} :isArray true}}))))
+    (array
+      "$resource"
+      (fn [$resource]
+        ($resource
+          "api/archives/:archiveId"
+          (clj->js {})
+          (clj->js {:query {:method "GET" :params {:archiveId "list"} :isArray true}})))))
   
   (.factory "JobSrv"
-    (fn [$resource]
-      ($resource
-        "api/jobs/:jobId"
-        (clj->js {})
-        (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}}))))
+    (array
+      "$resource"
+      (fn [$resource]
+        ($resource
+          "api/jobs/:jobId"
+          (clj->js {})
+          (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}})))))
   
-  (.factory "NotificationFactory"
-    (fn [$rootScope]
-      (fn [subscription & ignore]
-        (let [sse (js/EventSource.
-                    (str
-                      "notification?subscription=" (urlEncode subscription)
-                      (map #(str "&except=" (urlEncode %)) ignore)))]
-          (js-obj "on" (fn [event callback]
-                         (.addEventListener sse event (fn [e] (.$apply $rootScope (callback e))) false))))))))
+  (.factory "Notification",
+    (array
+      "$rootScope"
+      (fn [$rootScope]
+        (fn [subscription & ignore]
+          (let [sse (js/EventSource.
+                      (str
+                        "notification?subscription=" (urlEncode subscription)
+                        (apply str (map #(str "&except=" (urlEncode %)) ignore))))]
+            (js-obj "on" (fn [event callback]
+                           (.addEventListener sse event (fn [e] (.$apply $rootScope (callback (.-data e)))) false))
+                    "close" #(.close sse))))))))
 ;
 ;  (.factory "socket"
 ;    (fn [$rootScope]

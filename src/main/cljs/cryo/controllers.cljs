@@ -5,15 +5,17 @@
   (doseq [[k v] (partition 2 kvs)]
     (aset obj (name k) v)))
 
-(defn ^:export exitCtrl [$scope Notification]
+(defn ^:export exitCtrl [$scope $http Notification]
   (oset! $scope
          :status "Started"
-         :stop #(.send socket {:type "Exit"}))
+         :stop #($http
+                  (js-obj "method" "GET"
+                          "url" "/exit")))
   
-  (.subscribe socket "/cryo#status")
-  (.on socket "/cryo#status" (fn [e] (aset $scope "status" (.-now e)))))
+  (let [notif (Notification "/cryo#status")]
+    (.on "/cryo#status" (fn [e] (aset $scope "status" (.-now e))))))
 
-(aset exitCtrl "$inject" (array "$scope" "socket"))
+(aset exitCtrl "$inject" (array "$scope" "$http" "Notification"))
 
 (defn list-contains? [coll value]
   (if-let [s (seq coll)]
@@ -44,19 +46,22 @@
          :exit #(.open $modal
                   (clj->js {:templateUrl "partials/exit.html"
                             :controller exitCtrl})))
-  (.subscribe Notification "/cryo/inventory")
-  (.on socket "/cryo/inventory#snapshots"
-    (fn [m]
-      (let [added (set (.-addedValues m))
-            removed (set (.-removedValues m))
-            previous-snapshots (set (aget $scope "snapshots"))
-            not-removed-snapshots (filter #(not (contains? removed (.-id %))) previous-snapshots)
-            new-snapshots (concat
-                            added
-                            not-removed-snapshots)]
-        (aset $scope "snapshots" (clj->js new-snapshots))))))
+  (let [notif (Notification "/cryo/inventory")]
+    (.on notif "/cryo/inventory#snapshots"
+      (fn [m]
+        (.log js/console "Received notification message")
+        (.log js/console (str "message=" (.stringify js/JSON m)))
+        (let [added (set (.-addedValues m))
+              removed (set (.-removedValues m))
+              previous-snapshots (set (aget $scope "snapshots"))
+              not-removed-snapshots (filter #(not (contains? removed (.-id %))) previous-snapshots)
+              new-snapshots (concat
+                              added
+                              not-removed-snapshots)]
+          (aset $scope "snapshots" (clj->js new-snapshots)))))
+    (.on notif "message" #(.log js/console (.stringify js/JSON %)))))
 
-(aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "socket"))
+(aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "Notification"))
 
 (defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv socket]
   (aset $scope "snapshot"
