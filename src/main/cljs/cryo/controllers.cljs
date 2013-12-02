@@ -71,15 +71,18 @@
         (.get SnapshotSrv
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
   
-  (aset $scope "filesystem"
-        (clj->js {:loadNode (fn [path]
-                              (aset
-                                (aget $scope "filesystem")
-                                path
-                                (.get SnapshotFileSrv
-                                  (clj->js {:snapshotId (.-snapshotId $routeParams)
-                                            :path path}))))
-                  :selectNode (fn [] (.log js/console "coucou"))})))
+  (let [filesystem #(aget $scope "filesystem")
+        loadNode (fn [node]
+                   (.log js/console (str "loadNode : " (.stringify js/JSON node)))
+                   (let [path (if (string? node) node (.-name node))
+                         files (.get SnapshotFileSrv
+                                 (js-obj "snapshotId" (.-snapshotId $routeParams)
+                                         "path" path))]
+                     (aset (filesystem) path files)))
+        selectNode (fn [n] (.log js/console (str "selectNode : " (.stringify js/JSON n))))]
+    (aset $scope "filesystem" (js-obj
+                                "loadNode" loadNode
+                                "selectNode" selectNode))))
 
 (aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv"))
 

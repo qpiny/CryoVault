@@ -114,7 +114,7 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
       } else try {
         val dirContent = Files.newDirectoryStream(absolutePath)
         val fileElements = for (f <- dirContent) yield {
-          val filePath = cryoctx.baseDirectory.relativize(f)
+          val filePath = cryoctx.baseDirectory.getRoot.resolve(cryoctx.baseDirectory.relativize(f))
           val fileSize = for (
             fs <- files;
             if fs.startsWith(filePath)

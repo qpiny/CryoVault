@@ -342,14 +342,14 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           case None =>
             val _sender = sender
             (cryoctx.datastore ? GetDataStatus(id)) onComplete {
-              case Success(DataStatus(_, _, _, Creating, _, _)) =>
+              case Success(DataStatus(_, _, _, _/* DEBUG Creating */, _, _)) =>
                 val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx, id))
                 snapshotActors += id -> aref
                 aref.tell(sr, _sender)
-              case Success(d: DataStatus) =>
-                val aref = context.actorOf(Props(classOf[RemoteSnapshot], cryoctx, id))
-                snapshotActors += id -> aref
-                aref.tell(sr, _sender)
+//              case Success(d: DataStatus) =>
+//                val aref = context.actorOf(Props(classOf[RemoteSnapshot], cryoctx, id))
+//                snapshotActors += id -> aref
+//                aref.tell(sr, _sender)
               case e: Any => 
                 _sender ! CryoError(s"Fail to process snapshot request ${sr}", e) 
             }

@@ -78,7 +78,7 @@ case object JsonPath extends CustomSerializer[Path](format => (
     case JNull => null
   },
   {
-    case p: Path => Json.write(p.toString)
+    case p: Path => p.toString.replace('/', '!')
   }))
 
 private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
