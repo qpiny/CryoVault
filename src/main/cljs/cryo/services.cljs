@@ -17,9 +17,10 @@
     (array
       "$resource"
       (fn [$resource]
-        "api/snapshots/:snapshotId/files/:path"
-        (clj->js {})
-        (clj->js {:get {:method "GET" :isArray true}}))))
+        ($resource
+          "api/snapshots/:snapshotId/files/:path"
+          (clj->js {})
+          (clj->js {:get {:method "GET" :isArray true}})))))
   
   (.factory "ArchiveSrv"
     (array
@@ -49,7 +50,7 @@
                         "notification?subscription=" (urlEncode subscription)
                         (apply str (map #(str "&except=" (urlEncode %)) ignore))))]
             (js-obj "on" (fn [event callback]
-                           (.addEventListener sse event (fn [e] (.$apply $rootScope (callback (.-data e)))) false))
+                           (.addEventListener sse event (fn [e] (.$apply $rootScope (callback (.parse js/JSON (.-data e))))) false))
                     "close" #(.close sse))))))))
 ;
 ;  (.factory "socket"

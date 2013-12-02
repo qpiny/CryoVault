@@ -23,31 +23,33 @@
     false))
 
 (defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv Notification]
-  (oset! $scope
-         :params $routeParams
-         :snapshots (.query SnapshotSrv)
-         :archives (.query ArchiveSrv)
-         :jobs (.query JobSrv)
-         :sidebarStatus "with-sidebar"
-         :toggleSidebar #(oset! $scope :sidebarStatus
-                                (if (= "with-sidebar" (.-sidebarStatus $scope))
-                                  "without-sidebar"
-                                  "with-sidebar"))
-         :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
-         :createSnapshot #(.create SnapshotSrv)
-         :snapshotIcon (fn [status]
-                         (condp = status
-                           "Creating" "icon-edit"
-                           "Uploading" "icon-upload"
-                           "Cached" "icon-star"
-                           "Remote" "icon-star-empty"
-                           "Downloading" "icon-download"
-                           "icon-warning-sign"))
-         :exit #(.open $modal
-                  (clj->js {:templateUrl "partials/exit.html"
-                            :controller exitCtrl})))
-  (let [notif (Notification "/cryo/inventory")]
-    (.on notif "/cryo/inventory#snapshots"
+  (.log js/console "Begin of controller")
+  (let [notification (Notification "/cryo/inventory")]
+    (oset! $scope
+           :params $routeParams
+           :snapshots (.query SnapshotSrv)
+           :archives (.query ArchiveSrv)
+           :jobs (.query JobSrv)
+           :sidebarStatus "with-sidebar"
+           :toggleSidebar #(oset! $scope :sidebarStatus
+                                  (if (= "with-sidebar" (.-sidebarStatus $scope))
+                                    "without-sidebar"
+                                    "with-sidebar"))
+           :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
+           :createSnapshot #(.create SnapshotSrv)
+           :snapshotIcon (fn [status] ; FIXME put in filter 
+                           (condp = status
+                             "Creating" "icon-edit"
+                             "Uploading" "icon-upload"
+                             "Cached" "icon-star"
+                             "Remote" "icon-star-empty"
+                             "Downloading" "icon-download"
+                             "icon-warning-sign"))
+           :exit #(.open $modal
+                    (clj->js {:templateUrl "partials/exit.html"
+                              :controller exitCtrl}))
+           :notification notification)
+    (.on notification "/cryo/inventory#snapshots"
       (fn [m]
         (.log js/console "Received notification message")
         (.log js/console (str "message=" (.stringify js/JSON m)))
@@ -59,11 +61,12 @@
                               added
                               not-removed-snapshots)]
           (aset $scope "snapshots" (clj->js new-snapshots)))))
-    (.on notif "message" #(.log js/console (.stringify js/JSON %)))))
+    (.on notification "message" #(.log js/console (.stringify js/JSON %)))
+    (.log js/console "End of controller")))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "Notification"))
 
-(defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv socket]
+(defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv]
   (aset $scope "snapshot"
         (.get SnapshotSrv
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
@@ -78,7 +81,7 @@
                                             :path path}))))
                   :selectNode (fn [] (.log js/console "coucou"))})))
 
-(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv" "socket"))
+(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv"))
 
 
 (defn ^:export archiveCtrl [$scope $routeParams ArchiveSrv]

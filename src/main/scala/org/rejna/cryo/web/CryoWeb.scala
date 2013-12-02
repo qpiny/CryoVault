@@ -37,6 +37,9 @@ class CryoWeb(cryoctx: CryoContext) extends CryoActor(cryoctx) {
         cryoctx.status = "Stopped"
         IO(Http)(context.system) ! Http.Unbind
       }
+    case Http.CommandFailed(cmd) =>
+      log.error(s"${cmd} failed, shutting down")
+      cryoctx.shutdown
   }
 }
 

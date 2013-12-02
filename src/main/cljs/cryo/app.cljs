@@ -8,8 +8,7 @@
             "$routeProvider" 
             (fn [$routeProvider]
               (doto $routeProvider
-                (.when "/welcome", (clj->js {:templateUrl "partials/welcome.html",
-                                             :controller mainCtrl}))
+                (.when "/welcome", (clj->js {:templateUrl "partials/welcome.html"}))
                 (.when "/snapshots/:snapshotId", (clj->js {:templateUrl "partials/snapshot-detail.html",
                                                            :controller snapshotCtrl }))
                 (.when "/archives/:archiveId", (clj->js {:templateUrl "partials/archive-detail.html",

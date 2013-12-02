@@ -3,6 +3,7 @@ package org.rejna.cryo.models
 import akka.util.ByteString
 
 import java.util.Date
+import java.nio.file.Path
 
 import org.json4s._
 import org.json4s.native.Serialization
@@ -46,7 +47,8 @@ object Json extends Formats {
   }
   override val typeHints = NoTypeHints
   override val customSerializers = new EnumNameSerializer(EntryStatus) ::
-    JsonDataEntry :: Nil
+    JsonDataEntry ::
+    JsonPath :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
@@ -69,6 +71,14 @@ case object JsonDataEntry extends CustomSerializer[DataEntry](format => (
   },
   {
     case de: DataEntry => Json.write(de.state)
+  }))
+
+case object JsonPath extends CustomSerializer[Path](format => (
+  {
+    case JNull => null
+  },
+  {
+    case p: Path => Json.write(p.toString)
   }))
 
 private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
