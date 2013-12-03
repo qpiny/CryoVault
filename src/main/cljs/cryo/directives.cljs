@@ -13,7 +13,7 @@
                               ;node-name (or (.nodeName attrs) "name")
                               ;node-filter (or (.nodeFilter attrs) "filter")
                               ;node-type (or (.nodeType attrs) "type")
-                              node-path (or (.-nodePath attrs) "'!'")
+                              node-path (or (.-nodePath attrs) "''")
                               
                               template (str "<ul>"
                                             "<li x-ng-repeat=\"node in " tree-model-name "[" node-path "]\">"
@@ -21,7 +21,7 @@
                                             "<i class=\"icon-folder-close\" x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && " tree-model-name "[node.path].length && node.collapsed\" x-ng-click=\"node.collapsed=false\"></i>"
                                             "<i class=\"icon-folder-open\"  x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && " tree-model-name "[node.path].length && !node.collapsed\" x-ng-click=\"node.collapsed=true\"></i>"
                                             "<i class=\"icon-folder-open icon-white\" x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && !" tree-model-name "[node.path].length\"></i>"
-                                            "<i class=\"icon-download\" x-ng-show=\"node.isFolder && !" tree-model-name "[node.path]\" x-ng-click=\"" tree-model-name ".loadNode(node)\"></i>"
+                                            "<i class=\"icon-download\" x-ng-show=\"node.isFolder && !" tree-model-name "[node.path]\" x-ng-click=\"" tree-model-name ".loadNode(node.path)\"></i>"
                                             "<span x-ng-class=\"{selected: node.selected}\" x-ng-click=\"" tree-model-name ".selectNode(node)\">{{node.name}}</span>"
                                             "<div x-ng-hide=\"node.collapsed\" x-dyntree=\"true\" x-tree-model=\"" tree-model-name "\" x-node-path=\"node.name\"></div>"
                                             "</li>"

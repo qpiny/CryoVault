@@ -4,10 +4,12 @@ import akka.util.ByteString
 
 import java.util.Date
 import java.nio.file.Path
+import java.io.File
 
 import org.json4s._
 import org.json4s.native.Serialization
 import org.json4s.JsonDSL._
+import org.json4s.native.JsonMethods._
 import org.json4s.ext.EnumNameSerializer
 
 import org.joda.time.DateTime
@@ -48,7 +50,7 @@ object Json extends Formats {
   override val typeHints = NoTypeHints
   override val customSerializers = new EnumNameSerializer(EntryStatus) ::
     JsonDataEntry ::
-    JsonPath :: Nil
+    JsonFileElement :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
@@ -73,12 +75,20 @@ case object JsonDataEntry extends CustomSerializer[DataEntry](format => (
     case de: DataEntry => Json.write(de.state)
   }))
 
-case object JsonPath extends CustomSerializer[Path](format => (
+case object JsonFileElement extends CustomSerializer[FileElement](format => (
   {
     case JNull => null
   },
   {
-    case p: Path => p.toString.replace('/', '!')
+    case fe: FileElement =>
+      //compact(render(
+        ("name" -> fe.path.getFileName.toString) ~
+          ("path" -> fe.path.toString.replace(File.separatorChar, '!')) ~
+          ("isFolder" -> fe.isFolder) ~
+          ("filter" -> fe.filter.toString) ~
+          ("count" -> fe.count) ~
+          ("size" -> fe.size)
+          //))
   }))
 
 private object JsonDataStatus extends CustomSerializer[DataStatus](format => (

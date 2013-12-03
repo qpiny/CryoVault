@@ -72,10 +72,9 @@
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
   
   (let [filesystem #(aget $scope "filesystem")
-        loadNode (fn [node]
-                   (.log js/console (str "loadNode : " (.stringify js/JSON node)))
-                   (let [path (if (string? node) node (.-name node))
-                         files (.get SnapshotFileSrv
+        loadNode (fn [path]
+                   (.log js/console (str "loadNode : " path))
+                   (let [files (.get SnapshotFileSrv
                                  (js-obj "snapshotId" (.-snapshotId $routeParams)
                                          "path" path))]
                      (aset (filesystem) path files)))

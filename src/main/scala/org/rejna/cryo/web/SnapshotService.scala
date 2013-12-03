@@ -44,11 +44,15 @@ trait SnapshotService
             }
         } ~
         pathPrefix(Segment) { snapshotId =>
-          path("files" / FilePath) { filepath =>
-            get { implicit ctx =>
-              (cryoctx.inventory ? SnapshotGetFiles(snapshotId, filepath)) expect {
-                case SnapshotFiles(_, _, fe) => fe
-              }
+          pathPrefix("files") {
+            //path(Rest) { filepath =>
+              //path("files" / FilePath) { filepath =>
+              get { implicit ctx =>
+                val path = ctx.unmatchedPath.toString.dropWhile(_ == '/').replace("!", "/")
+                (cryoctx.inventory ? SnapshotGetFiles(snapshotId, path /*filepath*/)) expect {
+                  case SnapshotFiles(_, _, fe) => fe
+                }
+              //}
             }
           } ~
             path("filter" / FilePath) { filepath =>
