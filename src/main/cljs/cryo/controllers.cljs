@@ -17,6 +17,14 @@
 
 (aset exitCtrl "$inject" (array "$scope" "$http" "Notification"))
 
+(defn ^:export filterCtrl [$scope $modalInstance filter]
+  (oset! $scope
+         :filter filter
+         :ok #(.close $modalInstance (aget $scope "filter"))
+         :cancel #(.dismiss $modalInstance "cancel")))
+
+(aset filterCtrl "$inject" (array "$scope" "$modalInstance"))
+
 (defn list-contains? [coll value]
   (if-let [s (seq coll)]
     (if (= (first s) value) true (recur (rest s) value))
@@ -46,8 +54,8 @@
                              "Downloading" "icon-download"
                              "icon-warning-sign"))
            :exit #(.open $modal
-                    (clj->js {:templateUrl "partials/exit.html"
-                              :controller exitCtrl}))
+                    (js-obj "templateUrl" "partials/exit.html"
+                            "controller" exitCtrl))
            :notification notification)
     (.on notification "/cryo/inventory#snapshots"
       (fn [m]
@@ -66,7 +74,7 @@
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "Notification"))
 
-(defn ^:export snapshotCtrl [$scope $routeParams SnapshotSrv SnapshotFileSrv]
+(defn ^:export snapshotCtrl [$scope $routeParams $modal SnapshotSrv SnapshotFileSrv]
   (aset $scope "snapshot"
         (.get SnapshotSrv
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
@@ -78,12 +86,17 @@
                                  (js-obj "snapshotId" (.-snapshotId $routeParams)
                                          "path" path))]
                      (aset (filesystem) path files)))
-        selectNode (fn [n] (.log js/console (str "selectNode : " (.stringify js/JSON n))))]
+        selectNode (fn [n]
+                     (.log js/console (str "selectNode : " (.stringify js/JSON n)))
+                     (.open $modal
+                       (js-obj "templateUrl" "partials/file-filter.html"
+                               "controller" filterCtrl
+                               "resolve" (fn [] "ext(NONE)"))))]
     (aset $scope "filesystem" (js-obj
                                 "loadNode" loadNode
                                 "selectNode" selectNode))))
 
-(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "SnapshotSrv" "SnapshotFileSrv"))
+(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "SnapshotFileSrv"))
 
 
 (defn ^:export archiveCtrl [$scope $routeParams ArchiveSrv]
