@@ -22,6 +22,22 @@
           (clj->js {})
           (clj->js {:get {:method "GET" :isArray true}})))))
   
+  (.factory "SnapshotFilterSrv"
+    (array
+      "$resource" "$http"
+      (fn [$resource $http]
+        (let [r ($resource
+                  "api/snapshots/:snapshotId/filter/:path"
+                  (clj->js {})
+                  (clj->js {:get {:method "GET"}
+                            :remove {:method "DELETE"}
+                            :update2 {:method "POST"}}))]
+          (aset r "update" (fn [snapshotId path filter]
+                             ($http (js-obj "method" "POST"
+                                            "url" (str "api/snapshots/" snapshotId "/filter/" path)
+                                            "data" filter))))
+          r))))
+  
   (.factory "ArchiveSrv"
     (array
       "$resource"

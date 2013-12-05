@@ -1,42 +1,44 @@
-<div class="modal-body row">
-	<div class="span3">
-		<h2>Filters</h2>
-		<dl>
-			<dt><dfn>ext</dfn>(<span class="label label-info">extension</span>)</dfn></dt><dd>Select files which ends with <span class="label label-info">extension</span> text</dd>
-			<dt><dfn>older(<span class="label label-info">duration</span>)</dfn></dt><dd>Select files not modified during last <span class="label label-info">duration</span></dd>
-			<dt><dfn>newer(<span class="label label-info">duration</span>)</dfn></dt><dd>Select files modified during last <span class="label label-info">duration</span></dd>
-			<dt><dfn>all</dfn></dt><dd>Select all files</dd>
-			<dt><dfn>none</dfn></dt><dd>Select no file</dd>
-		</dl>
-	</div>
-	<div class="span3">
-		<h2 class="span3">Composition</h2>
-		<dl>
-			<dt><dfn>and(<span class="label label-info">filter1</span>,<span class="label label-info">filter2</span>)</dfn></dt><dd>Select files which satisfy <span class="label label-info">filter1</span> and <span class="label label-info">filter2</span></dd>
-			<dt><dfn>or(<span class="label label-info">filter1</span>,<span class="label label-info">filter2</span>)</dfn></dt><dd>Select files which satisfy <span class="label label-info">filter1</span> or <span class="label label-info">filter2</span></dd>
-			<dt><dfn>not(<span class="label label-info">filter</span>)</dfn></dt><dd>Select files which don't satisfy <span class="label label-info">filter</span></dd>
-		</dl>
-	</div>
+<div class="modal-body">
+	<tabset>
+		<tab heading="Filters">
+			<h2>Filters</h2>
+			<dl>
+				<dt><dfn>ext</dfn>(<span class="label label-info">extension</span>)</dfn></dt><dd>Select files which ends with <span class="label label-info">extension</span> text</dd>
+				<dt><dfn>older(<span class="label label-info">duration</span>)</dfn></dt><dd>Select files not modified during last <span class="label label-info">duration</span></dd>
+				<dt><dfn>newer(<span class="label label-info">duration</span>)</dfn></dt><dd>Select files modified during last <span class="label label-info">duration</span></dd>
+				<dt><dfn>all</dfn></dt><dd>Select all files</dd>
+				<dt><dfn>none</dfn></dt><dd>Select no file</dd>
+			</dl>
+		</tab>
+		<tab heading="Composition">
+			<h2>Composition</h2>
+			<dl>
+				<dt><dfn>and(<span class="label label-info">filter1</span>,<span class="label label-info">filter2</span>)</dfn></dt><dd>Select files which satisfy <span class="label label-info">filter1</span> and <span class="label label-info">filter2</span></dd>
+				<dt><dfn>or(<span class="label label-info">filter1</span>,<span class="label label-info">filter2</span>)</dfn></dt><dd>Select files which satisfy <span class="label label-info">filter1</span> or <span class="label label-info">filter2</span></dd>
+				<dt><dfn>not(<span class="label label-info">filter</span>)</dfn></dt><dd>Select files which don't satisfy <span class="label label-info">filter</span></dd>
+			</dl>
+		</tab>
+		<tab heading="Duration units">
+			<h2>Duration units</h2>
+			<dl>
+				<dt><dfn>d</dfn></dt><dt><dfn>day</dfn></dt><dd>Day</dd>
+				<dt><dfn>h</dfn></dt><dt><dfn>hour</dfn></dt><dd>Hours</dd>
+				<dt><dfn>m</dfn></dt><dt><dfn>minute</dfn></dt><dd>Minutes</dd>
+				<dt><dfn>s</dfn></dt><dt><dfn>sec</dfn></dt><dt><dfn>second</dfn></dt><dd>Seconds</dd>
+				<dt><dfn>ms</dfn></dt><dt><dfn>milli</dfn></dt><dt><dfn>millisecond</dfn></dt><dd>Milliseconds</dd>
+				<dt><dfn>µs</dfn></dt><dt><dfn>micro</dfn></dt><dt><dfn>microsecond</dfn></dt><dd>Microseconds</dd>
+				<dt><dfn>ns</dfn></dt><dt><dfn>nano</dfn></dt><dt><dfn>nanosecond</dfn></dt><dd>Nanoseconds</dd>
+			</dl>
+		</tab>
+		<tab heading="Examples">
+			<h2>Examples</h2>
+			and(ext(txt),newer(5 days))
+		</tab>
+	</tabset>
 </div>
 <div class="modal-footer">
+	filter = {{filter}}
 	<input type="text" class="span2" x-ng-model="filter">
 	<button class="btn btn-primary" x-ng-click="ok()">OK</button>
 	<button class="btn btn-warning" x-ng-click="cancel()">Cancel</button>
 </div>
-	<!-- 
-	<div class="span3">
-		<h2 class="span3">Format</h2>
-		Duration units :
-		<dl>
-			<dt><dfn>d</dfn></dt><dt><dfn>day</dfn></dt><dd>Day</dd>
-			<dt><dfn>h</dfn></dt><dt><dfn>hour</dfn></dt><dd>Hours</dd>
-			<dt><dfn>m</dfn></dt><dt><dfn>minute</dfn></dt><dd>Minutes</dd>
-			<dt><dfn>s</dfn></dt><dt><dfn>sec</dfn></dt><dt><dfn>second</dfn></dt><dd>Seconds</dd>
-			<dt><dfn>ms</dfn></dt><dt><dfn>milli</dfn></dt><dt><dfn>millisecond</dfn></dt><dd>Milliseconds</dd>
-			<dt><dfn>µs</dfn></dt><dt><dfn>micro</dfn></dt><dt><dfn>microsecond</dfn></dt><dd>Microseconds</dd>
-			<dt><dfn>ns</dfn></dt><dt><dfn>nano</dfn></dt><dt><dfn>nanosecond</dfn></dt><dd>Nanoseconds</dd>
-		</dl>
-	</div>
-	<h2>Example</h2>
-		and(ext(txt),newer(5 days))
-		 -->

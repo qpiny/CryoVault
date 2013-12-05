@@ -23,7 +23,7 @@
          :ok #(.close $modalInstance (aget $scope "filter"))
          :cancel #(.dismiss $modalInstance "cancel")))
 
-(aset filterCtrl "$inject" (array "$scope" "$modalInstance"))
+(aset filterCtrl "$inject" (array "$scope" "$modalInstance" "filter"))
 
 (defn list-contains? [coll value]
   (if-let [s (seq coll)]
@@ -74,7 +74,7 @@
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "Notification"))
 
-(defn ^:export snapshotCtrl [$scope $routeParams $modal SnapshotSrv SnapshotFileSrv]
+(defn ^:export snapshotCtrl [$scope $routeParams $modal SnapshotSrv SnapshotFileSrv SnapshotFilterSrv]
   (aset $scope "snapshot"
         (.get SnapshotSrv
           (clj->js {:snapshotId (.-snapshotId $routeParams)})))
@@ -88,15 +88,23 @@
                      (aset (filesystem) path files)))
         selectNode (fn [n]
                      (.log js/console (str "selectNode : " (.stringify js/JSON n)))
-                     (.open $modal
-                       (js-obj "templateUrl" "partials/file-filter.html"
-                               "controller" filterCtrl
-                               "resolve" (fn [] "ext(NONE)"))))]
+                     (let [modal-instance (.open $modal
+                                            (js-obj "templateUrl" "partials/file-filter.html"
+                                                    "controller" filterCtrl
+                                                    "resolve" (js-obj "filter" (fn [] "ext(NONE)"))))
+                           result (.-result modal-instance)]
+                       (.then result
+                         #(.update
+                            SnapshotFilterSrv
+                            (.-snapshotId $routeParams)
+                            (.-path n)
+                            %)
+                         (fn []))))]
     (aset $scope "filesystem" (js-obj
                                 "loadNode" loadNode
                                 "selectNode" selectNode))))
 
-(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "SnapshotFileSrv"))
+(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "SnapshotFileSrv" "SnapshotFilterSrv"))
 
 
 (defn ^:export archiveCtrl [$scope $routeParams ArchiveSrv]
