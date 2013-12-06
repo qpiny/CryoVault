@@ -9,7 +9,7 @@ import java.util.Date
 
 case class ParseError(message: String) extends Exception(message)
 object FileFilterParser extends JavaTokenParsers {
-  def param = "[^)]".r
+  def param = "[^)]*".r
   def duration = wholeNumber ~ ident ^^ { case length ~ unit => Duration(length.toLong, unit) }
   def extension = "ext(" ~> param <~ ")" ^^ ExtensionFilter
   def older = "older(" ~> duration <~ ")" ^^ OlderFilter
@@ -34,6 +34,11 @@ object FileFilterParser extends JavaTokenParsers {
     case Success(result, input) => Right(result)
     case NoSuccess(message, input) => Left(message)
   }
+}
+
+object FileFilter {
+  def unapply(s: String): Option[FileFilter] = FileFilterParser.parse(s).right.toOption
+  def apply(s: String): FileFilter = FileFilterParser.parse(s).right.get
 }
 
 sealed abstract class FileFilter {

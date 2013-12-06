@@ -35,7 +35,7 @@
           (aset r "update" (fn [snapshotId path filter]
                              ($http (js-obj "method" "POST"
                                             "url" (str "api/snapshots/" snapshotId "/filter/" path)
-                                            "data" filter))))
+                                            "data" (.stringify js/JSON (js-obj "filter" filter))))))
           r))))
   
   (.factory "ArchiveSrv"

@@ -13,7 +13,7 @@ import org.json4s.native.JsonMethods._
 import org.json4s.ext.EnumNameSerializer
 
 import org.joda.time.DateTime
-import org.joda.time.format.DateTimeFormatterBuilder
+import org.joda.time.format.{ DateTimeFormatter, DateTimeFormatterBuilder }
 
 import EntryStatus._
 
@@ -23,7 +23,7 @@ object Json extends Formats {
     .appendLiteral('.')
     .appendFractionOfSecond(2, 9)
     .toParser()
-  val jodaDateFormat = new DateTimeFormatterBuilder()
+  def jodaDateBaseFormat = new DateTimeFormatterBuilder()
     .appendYear(4, 9)
     .appendLiteral('-')
     .appendMonthOfYear(2)
@@ -35,9 +35,14 @@ object Json extends Formats {
     .appendMinuteOfHour(2)
     .appendLiteral(':')
     .appendSecondOfMinute(2)
-    .appendOptional(fractionOfSecondFormat)
-    .appendTimeZoneOffset("Z", true, 2, 4)
-    .toFormatter()
+  val jodaDateFormat = new DateTimeFormatter(
+    jodaDateBaseFormat
+      .appendTimeZoneOffset("Z", true, 2, 4)
+      .toPrinter(),
+    jodaDateBaseFormat
+      .appendOptional(fractionOfSecondFormat)
+      .appendTimeZoneOffset("Z", true, 2, 4)
+      .toParser())
 
   val dateFormat = new DateFormat {
     def parse(s: String) = try {
@@ -50,7 +55,8 @@ object Json extends Formats {
   override val typeHints = NoTypeHints
   override val customSerializers = new EnumNameSerializer(EntryStatus) ::
     JsonDataEntry ::
-    JsonFileElement :: Nil
+    JsonFileElement ::
+    JsonFilefilter :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
@@ -82,13 +88,13 @@ case object JsonFileElement extends CustomSerializer[FileElement](format => (
   {
     case fe: FileElement =>
       //compact(render(
-        ("name" -> fe.path.getFileName.toString) ~
-          ("path" -> fe.path.toString.replace(File.separatorChar, '!')) ~
-          ("isFolder" -> fe.isFolder) ~
-          ("filter" -> fe.filter.toString) ~
-          ("count" -> fe.count) ~
-          ("size" -> fe.size)
-          //))
+      ("name" -> fe.path.getFileName.toString) ~
+        ("path" -> fe.path.toString.replace(File.separatorChar, '!')) ~
+        ("isFolder" -> fe.isFolder) ~
+        ("filter" -> fe.filter.map(_.toString)) ~
+        ("count" -> fe.count) ~
+        ("size" -> fe.size)
+    //))
   }))
 
 private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
@@ -115,6 +121,14 @@ private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
         ("status" -> ds.status.toString) ~
         ("size" -> ds.size) ~
         ("checksum" -> ds.checksum)
+  }))
+
+private object JsonFilefilter extends CustomSerializer[FileFilter](format => (
+  {
+    case JObject(JField("filter", JString(ff)) :: Nil) => FileFilter(ff)
+  },
+  {
+    case ff: FileFilter => JObject(JField("filter", JString(ff.toString)))
   }))
 //
 //  def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {

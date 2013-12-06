@@ -3,6 +3,9 @@ package org.rejna.cryo.web
 import scala.concurrent.ExecutionContext
 
 import spray.httpx.Json4sSupport
+import spray.routing.Directive1
+
+import org.json4s.JString
 
 import org.rejna.cryo.models._
 
@@ -15,7 +18,12 @@ trait SnapshotService
   implicit val cryoctx: CryoContext
   implicit val executionContext: ExecutionContext
 
-  val FilePath = Segment.map(_.replace('!', '/'))
+  val filePath = Segment.map(_.replace('!', '/'))
+//  val requestBody = extract(_.request.entity.asString)
+//  val fileFilter = requestBody.flatMap(ff => FileFilterParser.parse(ff).fold[Directive1[FileFilter]](x => {
+//    println(s"DEBUG>>>> Parse error |${ff}|=>|${x}|")
+//    reject
+//  }, x => provide(x)))
 
   addRoute {
     pathPrefix("api" / "snapshots") {
@@ -45,17 +53,14 @@ trait SnapshotService
         } ~
         pathPrefix(Segment) { snapshotId =>
           pathPrefix("files") {
-            //path(Rest) { filepath =>
-              //path("files" / FilePath) { filepath =>
-              get { implicit ctx =>
-                val path = ctx.unmatchedPath.toString.dropWhile(_ == '/').replace("!", "/")
-                (cryoctx.inventory ? SnapshotGetFiles(snapshotId, path /*filepath*/)) expect {
-                  case SnapshotFiles(_, _, fe) => fe
-                }
-              //}
+            get { implicit ctx =>
+              val path = ctx.unmatchedPath.toString.dropWhile(_ == '/').replace("!", "/")
+              (cryoctx.inventory ? SnapshotGetFiles(snapshotId, path)) expect {
+                case SnapshotFiles(_, _, fe) => fe
+              }
             }
           } ~
-            path("filter" / FilePath) { filepath =>
+            path("filter" / filePath) { filepath =>
               get { implicit ctx =>
                 (cryoctx.inventory ? SnapshotGetFilter(snapshotId, filepath)) expect {
                   case SnapshotFilter(_, _, filter) => filter

@@ -18,9 +18,12 @@
 (aset exitCtrl "$inject" (array "$scope" "$http" "Notification"))
 
 (defn ^:export filterCtrl [$scope $modalInstance filter]
+  (.log js/console (str "filter=" filter))
   (oset! $scope
-         :filter filter
-         :ok #(.close $modalInstance (aget $scope "filter"))
+         :filter (js-obj "value" filter)
+         :ok #(let [ff (aget (aget $scope "filter") "value")]
+                (.log js/console ff)
+                (.close $modalInstance ff))
          :cancel #(.dismiss $modalInstance "cancel")))
 
 (aset filterCtrl "$inject" (array "$scope" "$modalInstance" "filter"))
@@ -91,7 +94,8 @@
                      (let [modal-instance (.open $modal
                                             (js-obj "templateUrl" "partials/file-filter.html"
                                                     "controller" filterCtrl
-                                                    "resolve" (js-obj "filter" (fn [] "ext(NONE)"))))
+                                                    "resolve" (js-obj "filter" (fn [] (.-filter n)))
+                                                    ))
                            result (.-result modal-instance)]
                        (.then result
                          #(.update
