@@ -60,14 +60,29 @@
     (array
       "$rootScope"
       (fn [$rootScope]
-        (fn [subscription & ignore]
-          (let [sse (js/EventSource.
-                      (str
-                        "notification?subscription=" (urlEncode subscription)
-                        (apply str (map #(str "&except=" (urlEncode %)) ignore))))]
-            (js-obj "on" (fn [event callback]
-                           (.addEventListener sse event (fn [e] (.$apply $rootScope (callback (.parse js/JSON (.-data e))))) false))
-                    "close" #(.close sse))))))))
+        (fn [scope subscription ignores callbacks]
+          (let [service (js-obj)
+                newsse (fn []
+                         (let [sse (js/EventSource.
+                                     (str
+                                       "notification?subscription=" (urlEncode subscription)
+                                       (apply str (map #(str "&except=" (urlEncode %)) ignores))))]
+                           (.addEventListener sse "error"
+                             (fn [e]
+                               (.log js/console (str "EventSource error (" (.stringify js/JSON e) "), restarting it"))
+                               (.close (aget service "sse"))
+                               (aset service "sse" ((aget service "newsse")))
+                               (doseq [[e c] (partition 2 callbacks)]
+                                 (.addEventListener sse (name e) #(.$apply $rootScope c)))))
+                           sse))]
+            (aset service "close" #(.close (aget service "sse")))
+            (aset service "newsse" newsse)
+            (aset service "sse" (newsse))
+            (.$on scope "$destroy" (.close (aget service "sse")))))))))
+                                             
+;            (js-obj "on" (fn [event callback]
+;                           (.addEventListener sse event (fn [e] (.$apply $rootScope (callback (.parse js/JSON (.-data e))))) false))
+;                    "close" #(.close sse))))))))
 ;
 ;  (.factory "socket"
 ;    (fn [$rootScope]

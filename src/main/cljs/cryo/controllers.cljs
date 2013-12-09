@@ -11,9 +11,9 @@
          :stop #($http
                   (js-obj "method" "GET"
                           "url" "/exit")))
-  
-  (let [notif (Notification "/cryo#status")]
-    (.on "/cryo#status" (fn [e] (aset $scope "status" (.-now e))))))
+  (Notification
+    $scope "/cryo#status" nil
+    "/cryo#status" #(aset $scope "status" (.-now %))))
 
 (aset exitCtrl "$inject" (array "$scope" "$http" "Notification"))
 
@@ -34,46 +34,41 @@
     false))
 
 (defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv Notification]
-  (.log js/console "Begin of controller")
-  (let [notification (Notification "/cryo/inventory")]
-    (oset! $scope
-           :params $routeParams
-           :snapshots (.query SnapshotSrv)
-           :archives (.query ArchiveSrv)
-           :jobs (.query JobSrv)
-           :sidebarStatus "with-sidebar"
-           :toggleSidebar #(oset! $scope :sidebarStatus
-                                  (if (= "with-sidebar" (.-sidebarStatus $scope))
-                                    "without-sidebar"
-                                    "with-sidebar"))
-           :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
-           :createSnapshot #(.create SnapshotSrv)
-           :snapshotIcon (fn [status] ; FIXME put in filter 
-                           (condp = status
-                             "Creating" "icon-edit"
-                             "Uploading" "icon-upload"
-                             "Cached" "icon-star"
-                             "Remote" "icon-star-empty"
-                             "Downloading" "icon-download"
-                             "icon-warning-sign"))
-           :exit #(.open $modal
-                    (js-obj "templateUrl" "partials/exit.html"
-                            "controller" exitCtrl))
-           :notification notification)
-    (.on notification "/cryo/inventory#snapshots"
-      (fn [m]
-        (.log js/console "Received notification message")
-        (.log js/console (str "message=" (.stringify js/JSON m)))
-        (let [added (set (.-addedValues m))
-              removed (set (.-removedValues m))
-              previous-snapshots (set (aget $scope "snapshots"))
-              not-removed-snapshots (filter #(not (contains? removed (.-id %))) previous-snapshots)
-              new-snapshots (concat
-                              added
-                              not-removed-snapshots)]
-          (aset $scope "snapshots" (clj->js new-snapshots)))))
-    (.on notification "message" #(.log js/console (.stringify js/JSON %)))
-    (.log js/console "End of controller")))
+  (oset! $scope
+         :params $routeParams
+         :snapshots (.query SnapshotSrv)
+         :archives (.query ArchiveSrv)
+         :jobs (.query JobSrv)
+         :sidebarStatus "with-sidebar"
+         :toggleSidebar #(oset! $scope :sidebarStatus
+                                (if (= "with-sidebar" (.-sidebarStatus $scope))
+                                  "without-sidebar"
+                                  "with-sidebar"))
+         :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
+         :createSnapshot #(.create SnapshotSrv)
+         :snapshotIcon (fn [status] ; FIXME put in filter 
+                         (condp = status
+                           "Creating" "icon-edit"
+                           "Uploading" "icon-upload"
+                           "Cached" "icon-star"
+                           "Remote" "icon-star-empty"
+                           "Downloading" "icon-download"
+                           "icon-warning-sign"))
+         :exit #(.open $modal
+                  (js-obj "templateUrl" "partials/exit.html"
+                          "controller" exitCtrl)))
+  (Notification
+    $scope "/cryo/inventory" nil
+    "/cryo/inventory#snapshots" (fn [m]
+                                  (.log js/console (str "message=" (.stringify js/JSON m)))
+                                  (let [added (set (.-addedValues m))
+                                        removed (set (.-removedValues m))
+                                        previous-snapshots (set (aget $scope "snapshots"))
+                                        not-removed-snapshots (filter #(not (contains? removed (.-id %))) previous-snapshots)
+                                        new-snapshots (concat
+                                                        added
+                                                        not-removed-snapshots)]
+                                    (aset $scope "snapshots" (clj->js new-snapshots))))))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "Notification"))
 
