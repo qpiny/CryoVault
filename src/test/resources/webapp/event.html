@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="ISO-8859-1">
+<title>event test</title>
+<script src="jquery-1.10.1.min.js"></script>
+<script src="jquery-migrate-1.2.1.min.js"></script>
+<script type="text/javascript">
+	$(function() {
+		router = $("#router");
+		function eventOk(e) {
+			router.append("Event " + e.name + " => OK")
+		}
+		
+		router.addEventListener('build', eventOk, false);
+		router.dispatch(new CustomEvent('build', { 'name': 'build' }));
+	});
+</script>
+</head>
+<body>
+	<div id="router"></div>
+</body>
+</html>

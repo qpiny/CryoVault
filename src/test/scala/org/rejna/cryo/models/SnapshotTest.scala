@@ -29,7 +29,7 @@ class SnapshotTest extends TestKit(ActorSystem())
 
   before {
     snapshotBuilder.fileFilters.clear
-    snapshotBuilder.size = 0
+    //snapshotBuilder.size = 0
   }
 
   "Snapshot actor" must "return its ID" in {

@@ -63,22 +63,26 @@
         (fn [scope subscription ignores callbacks]
           (let [service (js-obj)
                 newsse (fn []
-                         (let [sse (js/EventSource.
-                                     (str
-                                       "notification?subscription=" (urlEncode subscription)
-                                       (apply str (map #(str "&except=" (urlEncode %)) ignores))))]
-                           (.addEventListener sse "error"
-                             (fn [e]
-                               (.log js/console (str "EventSource error (" (.stringify js/JSON e) "), restarting it"))
-                               (.close (aget service "sse"))
-                               (aset service "sse" ((aget service "newsse")))
-                               (doseq [[e c] (partition 2 callbacks)]
-                                 (.addEventListener sse (name e) #(.$apply $rootScope c)))))
+                         (let [url (str
+                                     "/notification?subscription=" (urlEncode subscription)
+                                     (apply str (map #(str "&except=" (urlEncode %)) ignores)))
+                               sse (js/EventSource. url)]
+                           (doseq [[e c] (partition 2 callbacks)]
+                             (.addEventListener sse (name e)
+                               (fn [event]
+                                 (.log js/console (str "Received SSE message : " (.-data event)))
+                                 (.$apply $rootScope #(c (.parse js/JSON (.-data event)))) false)))
+                           (aset sse "onerror" ;.addEventListener sse "error"
+                                 (fn [e]
+                                   (.log js/console (str "EventSource error (" (.stringify js/JSON e) "), restarting it"))
+                                   (.close (aget service "sse"))
+                                   (aset service "sse" ((aget service "newsse")))))
                            sse))]
             (aset service "close" #(.close (aget service "sse")))
             (aset service "newsse" newsse)
             (aset service "sse" (newsse))
-            (.$on scope "$destroy" (.close (aget service "sse")))))))))
+            (.$on scope "$destroy" #(.close (aget service "sse")))
+            service))))))
                                              
 ;            (js-obj "on" (fn [event callback]
 ;                           (.addEventListener sse event (fn [e] (.$apply $rootScope (callback (.parse js/JSON (.-data e))))) false))

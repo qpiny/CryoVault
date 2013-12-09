@@ -63,25 +63,25 @@ case class DirectoryTraversalError(directory: String, cause: Throwable = Error.N
 class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
 
-  val sizeAttribute = attributeBuilder("size", 0L)
-  def size = sizeAttribute()
-  def size_= = sizeAttribute() = _
+  //  val fileSizeAttribute = attributeBuilder("size", 0L)
+  //  def fileSize = fileSizeAttribute()
+  //  def fileSize_= = fileSizeAttribute() = _
   // all files are relative to config.baseDirectory
   val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
   val files = attributeBuilder.list("files", List.empty[Path])
 
   fileFilters <+> new AttributeListCallback {
     override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
-      var newSize = size
+      //var newSize = fileSize
       if (removedValues.isEmpty) {
         val addedFileFilters = addedValues.asInstanceOf[List[(Path, FileFilter)]]
         val (addedFiles, addedSize) = walkFileSystem(addedFileFilters)
         files ++= addedFiles
-        size_=(size + addedSize)
+        //fileSize_=(fileSize + addedSize)
       } else {
         val (newFiles, newSize) = walkFileSystem(fileFilters)
         files() = newFiles.toList
-        size_=(newSize) // TODO why "size = newSize" doesn't work ?!
+        //fileSize_=(newSize) // TODO why "size = newSize" doesn't work ?!
       }
     }
   }

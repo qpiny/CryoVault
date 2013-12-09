@@ -13,7 +13,7 @@
                           "url" "/exit")))
   (Notification
     $scope "/cryo#status" nil
-    "/cryo#status" #(aset $scope "status" (.-now %))))
+    ["/cryo#status" #(aset $scope "status" (.-now %))]))
 
 (aset exitCtrl "$inject" (array "$scope" "$http" "Notification"))
 
@@ -54,34 +54,30 @@
                            "Remote" "icon-star-empty"
                            "Downloading" "icon-download"
                            "icon-warning-sign"))
-         :exit #(.open $modal
+         :exit #(aset $scope "readyState" (.-readyState (.-sse (.-notification $scope))))
+         :exit2 #(.open $modal
                   (js-obj "templateUrl" "partials/exit.html"
                           "controller" exitCtrl)))
   (Notification
     $scope "/cryo/inventory" nil
-    "/cryo/inventory#snapshots" (fn [m]
-                                  (.log js/console (str "message=" (.stringify js/JSON m)))
-                                  (let [added (set (.-addedValues m))
-                                        removed (set (.-removedValues m))
-                                        previous-snapshots (set (aget $scope "snapshots"))
-                                        not-removed-snapshots (filter #(not (contains? removed (.-id %))) previous-snapshots)
-                                        new-snapshots (concat
-                                                        added
-                                                        not-removed-snapshots)]
-                                    (aset $scope "snapshots" (clj->js new-snapshots))))))
+    ["/cryo/inventory#snapshots" (fn [m]
+                                   (let [added (set (.-addedValues m))
+                                         removed (set (.-removedValues m))
+                                         previous-snapshots (set (aget $scope "snapshots"))
+                                         not-removed-snapshots (filter #(not (contains? removed (.-id %))) previous-snapshots)
+                                         new-snapshots (concat
+                                                         added
+                                                         not-removed-snapshots)]
+                                     (aset $scope "snapshots" (clj->js new-snapshots))))]))
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "Notification"))
 
-(defn ^:export snapshotCtrl [$scope $routeParams $modal SnapshotSrv SnapshotFileSrv SnapshotFilterSrv]
-  (aset $scope "snapshot"
-        (.get SnapshotSrv
-          (clj->js {:snapshotId (.-snapshotId $routeParams)})))
-  
-  (let [filesystem #(aget $scope "filesystem")
+(defn ^:export snapshotCtrl [$scope $routeParams $modal SnapshotSrv SnapshotFileSrv SnapshotFilterSrv Notification]
+  (let [snapshotId (.-snapshotId $routeParams)
+        filesystem #(aget $scope "filesystem")
         loadNode (fn [path]
-                   (.log js/console (str "loadNode : " path))
                    (let [files (.get SnapshotFileSrv
-                                 (js-obj "snapshotId" (.-snapshotId $routeParams)
+                                 (js-obj "snapshotId" snapshotId
                                          "path" path))]
                      (aset (filesystem) path files)))
         selectNode (fn [n]
@@ -95,15 +91,24 @@
                        (.then result
                          #(.update
                             SnapshotFilterSrv
-                            (.-snapshotId $routeParams)
+                            snapshotId
                             (.-path n)
                             %)
-                         (fn []))))]
+                         (fn []))))
+        subscriptionPath (str "/cryo/snapshot/" snapshotId)]
+    (aset $scope "snapshot"
+        (.get SnapshotSrv
+          (clj->js {:snapshotId snapshotId})))
     (aset $scope "filesystem" (js-obj
                                 "loadNode" loadNode
-                                "selectNode" selectNode))))
+                                "selectNode" selectNode))
+    (Notification
+      $scope subscriptionPath ["#files$"]
+      [(str subscriptionPath "#size") (fn [e] (aset (aget $scope "snapshot") "size" (.-current e)))
+       (str subscriptionPath "#fileFilters") (fn [e] (.log js/console "Filters have been updated : "))])
+  ))
 
-(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "SnapshotFileSrv" "SnapshotFilterSrv"))
+(aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "SnapshotFileSrv" "SnapshotFilterSrv", "Notification"))
 
 
 (defn ^:export archiveCtrl [$scope $routeParams ArchiveSrv]

@@ -2,6 +2,7 @@ package org.rejna.cryo.web
 
 import scala.collection.mutable.HashMap
 import scala.util.{ Try, Success, Failure }
+import scala.util.matching.Regex
 
 import akka.actor.{ Props, ActorRef }
 
@@ -29,14 +30,14 @@ trait NotificationService
       path("notification") {
         parameter("subscription") { subscription =>
           parameterMultiMap { params =>
-            subscribe(subscription, params.getOrElse("except", Nil))
+            subscribe(subscription, params.getOrElse("except", Nil).map(_.r))
           }
         }
       }
     }
   }
 
-  def subscribe(subscription: String, exception: List[String])(ctx: RequestContext): Unit = {
+  def subscribe(subscription: String, exceptions: List[Regex])(ctx: RequestContext): Unit = {
     actorRefFactory.actorOf {
       Props {
         new CryoActor(cryoctx) {
@@ -46,9 +47,13 @@ trait NotificationService
 
           def receive = cryoReceive {
             case evt: Event =>
-              val message = s"event: ${evt.path}\ndata: " + JsonWithTypeHints.write(evt) + "\n\n"
-              log.info(s"Sending message : ${message}")
-              ctx.responder ! MessageChunk(message)
+              if (exceptions.exists(_.findFirstIn(evt.path).isDefined)) {
+                log.info(s"Ignoring message path ${evt.path}")
+              } else {
+                val message = s"event: ${evt.path}\ndata: " + JsonWithTypeHints.write(evt) + "\n\n"
+                log.info(s"Sending message : ${message}")
+                ctx.responder ! MessageChunk(message)
+              }
             case msg: CryoMessage =>
               val message = "data: " + JsonWithTypeHints.write(msg) + "\n\n"
               log.info(s"Sending message : ${message}")

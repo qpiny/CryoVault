@@ -56,7 +56,8 @@ object Json extends Formats {
   override val customSerializers = new EnumNameSerializer(EntryStatus) ::
     JsonDataEntry ::
     JsonFileElement ::
-    JsonFilefilter :: Nil
+    JsonFilefilter ::
+    JsonPathFileFilter :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
@@ -123,12 +124,21 @@ private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
         ("checksum" -> ds.checksum)
   }))
 
+private object JsonPathFileFilter extends CustomSerializer[(Path, FileFilter)](format => (
+  {
+    case JNull => null
+  },
+  {
+    case (path, fileFilter) =>
+      (path.toString.replace(File.separatorChar, '!') -> fileFilter.toString)
+  }))
+  
 private object JsonFilefilter extends CustomSerializer[FileFilter](format => (
   {
     case JObject(JField("filter", JString(ff)) :: Nil) => FileFilter(ff)
   },
   {
-    case ff: FileFilter => JObject(JField("filter", JString(ff.toString)))
+    case ff: FileFilter => JObject(JField("filter", ff.toString))
   }))
 //
 //  def serialize(implicit format: Formats): PartialFunction[Any, JValue] = {
