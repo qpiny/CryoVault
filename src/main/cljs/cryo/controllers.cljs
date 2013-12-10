@@ -95,18 +95,27 @@
                             (.-path n)
                             %)
                          (fn []))))
+        filesystem (js-obj)
         subscriptionPath (str "/cryo/snapshot/" snapshotId)]
-    (aset $scope "snapshot"
-        (.get SnapshotSrv
-          (clj->js {:snapshotId snapshotId})))
-    (aset $scope "filesystem" (js-obj
-                                "loadNode" loadNode
-                                "selectNode" selectNode))
+    (oset! $scope
+           :snapshot (.get SnapshotSrv (clj->js {:snapshotId snapshotId}))
+           :loadNode loadNode
+           :selectNode selectNode
+           :filesystem filesystem)
+    
     (Notification
       $scope subscriptionPath ["#files$"]
       [(str subscriptionPath "#size") (fn [e] (aset (aget $scope "snapshot") "size" (.-current e)))
-       (str subscriptionPath "#fileFilters") (fn [e] (.log js/console "Filters have been updated : "))])
-  ))
+       (str subscriptionPath "#fileFilters") (fn [e]
+                                               (let [get-keys (fn [l]
+                                                                (set
+                                                                  (apply concat
+                                                                         (map #(keys (js->clj %)) l))))
+                                                     updated (get-keys (concat (.-addedValues e) (.-removedValues e)))
+                                                     loaded (get-keys (list filesystem))]
+                                                 (doseq [path loaded :when (some #(.startsWith % %) updated)]
+                                                   (.log js/console (str "update :" path)))
+                                                 (.log js/console "Filters have been updated : ")))])))
 
 (aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "SnapshotFileSrv" "SnapshotFilterSrv", "Notification"))
 

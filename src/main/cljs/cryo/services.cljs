@@ -68,6 +68,7 @@
                                      (apply str (map #(str "&except=" (urlEncode %)) ignores)))
                                sse (js/EventSource. url)]
                            (doseq [[e c] (partition 2 callbacks)]
+                             (.log js/console (str "Installing " (name e) " callback"))
                              (.addEventListener sse (name e)
                                (fn [event]
                                  (.log js/console (str "Received SSE message : " (.-data event)))
@@ -77,6 +78,9 @@
                                    (.log js/console (str "EventSource error (" (.stringify js/JSON e) "), restarting it"))
                                    (.close (aget service "sse"))
                                    (aset service "sse" ((aget service "newsse")))))
+                           (aset sse "onmessage"
+                                 (fn [e]
+                                   (.log js/console (str "Received SSE message >> " (.-data e)))))
                            sse))]
             (aset service "close" #(.close (aget service "sse")))
             (aset service "newsse" newsse)

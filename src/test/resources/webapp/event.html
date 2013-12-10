@@ -9,11 +9,12 @@
 	$(function() {
 		router = $("#router");
 		function eventOk(e) {
-			router.append("Event " + e.name + " => OK")
+			router.append("Event " + e.type + " => OK")
 		}
 		
-		router.addEventListener('build', eventOk, false);
-		router.dispatch(new CustomEvent('build', { 'name': 'build' }));
+		var eventType = '/apl/qsd/qsd/qsD/qsfsdflkjsdlfsslkdfjlskdjflskjflksjdflsjdlfkj#lskdjflkjsdfljk"lkdsdflk';
+		router[0].addEventListener(eventType, eventOk, false);
+		router[0].dispatchEvent(new CustomEvent(eventType, { 'name': 'build' }));
 	});
 </script>
 </head>

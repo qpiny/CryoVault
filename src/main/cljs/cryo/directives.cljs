@@ -21,8 +21,8 @@
                                             "<i class=\"icon-folder-close\" x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && " tree-model-name "[node.path].length && node.collapsed\" x-ng-click=\"node.collapsed=false\"></i>"
                                             "<i class=\"icon-folder-open\"  x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && " tree-model-name "[node.path].length && !node.collapsed\" x-ng-click=\"node.collapsed=true\"></i>"
                                             "<i class=\"icon-folder-open icon-white\" x-ng-show=\"node.isFolder && "  tree-model-name "[node.path] && !" tree-model-name "[node.path].length\"></i>"
-                                            "<i class=\"icon-download\" x-ng-show=\"node.isFolder && !" tree-model-name "[node.path]\" x-ng-click=\"" tree-model-name ".loadNode(node.path)\"></i>"
-                                            "<span x-ng-class=\"{selected: node.selected}\" x-ng-click=\"" tree-model-name ".selectNode(node)\">{{node.name}}</span>"
+                                            "<i class=\"icon-download\" x-ng-show=\"node.isFolder && !" tree-model-name "[node.path]\" x-ng-click=\"loadNode(node.path)\"></i>"
+                                            "<span x-ng-class=\"{selected: node.selected}\" x-ng-click=\"selectNode(node)\">{{node.name}}</span>"
                                             "<div x-ng-hide=\"node.collapsed\" x-dyntree=\"true\" x-tree-model=\"" tree-model-name "\" x-node-path=\"node.path\"></div>"
                                             "</li>"
                                             "</ul>")]
@@ -35,6 +35,6 @@
                                     (aset tree-model "selectedNode" node)
                                     (aset node "selected" true))))
                           (if (and load-node (not (aget tree-model node-path)))
-                            (.loadNode tree-model (($parse node-path))))
+                            (.loadNode scope (($parse node-path))))
                           (.append (.html elem "")
                             (($compile template) scope))))})))))
