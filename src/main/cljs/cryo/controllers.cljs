@@ -112,8 +112,12 @@
                                                                   (apply concat
                                                                          (map #(keys (js->clj %)) l))))
                                                      updated (get-keys (concat (.-addedValues e) (.-removedValues e)))
-                                                     loaded (get-keys (list filesystem))]
-                                                 (doseq [path loaded :when (some #(.startsWith % %) updated)]
+                                                     is-updated (fn [p] (let [ ok (some #(.startWith % p) updated)]
+                                                                          (.log js/console ("check " p " => " ok))
+                                                                          ok))
+                                                     loaded (filter is-updated (get-keys (list filesystem)))]
+                                                 (.log js/console (str "updated=" updated " // loaded=" loaded))
+                                                 (doseq [path loaded]
                                                    (.log js/console (str "update :" path)))
                                                  (.log js/console "Filters have been updated : ")))])))
 

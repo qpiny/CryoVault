@@ -1,4 +1,6 @@
 (ns cryo.services
+  (:require [goog.date.DateTime]
+            [goog.date.Interval])
   (:use [goog.string :only [urlEncode]]))
 
 (doto (angular/module "cryoService" (array "ngResource"))
@@ -56,12 +58,33 @@
           (clj->js {})
           (clj->js {:query {:method "GET" :params {:jobId "list"} :isArray true}})))))
   
+  (.factory "Threshold",
+    (array
+      (fn []
+        (fn [max-tries delay]
+          (let [service (js-obj
+                          "tries" nil)
+                limit-time (.add (goog.date.DateTime.) (.getInverse (goog.date.Interval. goog.date.Interval/SECONDS delay)))
+                clean-up (fn []
+                           (set!
+                             (.-tries service)
+                             (conj
+                               (filter #(> (goog.date.Date/compare limit-time %) 0)
+                                       (.-tries service))
+                               (goog.date.DateTime.))))
+                check (fn []
+                        (clean-up)
+                        (< (count (.-tries service)) max-tries))]
+            (aset service "check" check)
+            service)))))
+  
   (.factory "Notification",
     (array
-      "$rootScope"
-      (fn [$rootScope]
+      "$rootScope" "Threshold"
+      (fn [$rootScope Threshold]
         (fn [scope subscription ignores callbacks]
-          (let [service (js-obj)
+          (let [service (js-obj
+                          "threshold" (Threshold 10 60))
                 newsse (fn []
                          (let [url (str
                                      "/notification?subscription=" (urlEncode subscription)
@@ -77,7 +100,9 @@
                                  (fn [e]
                                    (.log js/console (str "EventSource error (" (.stringify js/JSON e) "), restarting it"))
                                    (.close (aget service "sse"))
-                                   (aset service "sse" ((aget service "newsse")))))
+                                   (if (.check (aget service "threshold"))
+                                     (aset service "sse" ((aget service "newsse")))
+                                     (.log js/console "Too many SSE fails, aborting"))))
                            (aset sse "onmessage"
                                  (fn [e]
                                    (.log js/console (str "Received SSE message >> " (.-data e)))))
@@ -85,6 +110,7 @@
             (aset service "close" #(.close (aget service "sse")))
             (aset service "newsse" newsse)
             (aset service "sse" (newsse))
+            (aset service "time" (goog.date.Date.))
             (.$on scope "$destroy" #(.close (aget service "sse")))
             service))))))
                                              
