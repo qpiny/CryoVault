@@ -9,11 +9,12 @@
       "$resource"
       (fn [$resource]
         ($resource
-          "api/snapshots/:snapshotId"
-          (clj->js {})
+          "api/snapshots/:snapshotId/:action"
+          (clj->js {:action ""})
           (clj->js {:query {:method "GET" :params {:snapshotId "list"} :isArray true}
                     :create {:method "POST" :params {:snapshotId ""}}
-                    :remove {:method "DELETE" :params {:snapshotId ""}}})))))
+                    :remove {:method "DELETE"}
+                    :upload {:method "POST" :params {:action "upload"}}})))))
   
   (.factory "SnapshotFileSrv"
     (array
@@ -32,8 +33,7 @@
                   "api/snapshots/:snapshotId/filter/:path"
                   (clj->js {})
                   (clj->js {:get {:method "GET"}
-                            :remove {:method "DELETE"}
-                            :update2 {:method "POST"}}))]
+                            :remove {:method "DELETE"}}))]
           (aset r "update" (fn [snapshotId path filter]
                              ($http (js-obj "method" "POST"
                                             "url" (str "api/snapshots/" snapshotId "/filter/" path)
@@ -64,12 +64,14 @@
         (fn [max-tries delay]
           (let [service (js-obj
                           "tries" nil)
-                limit-time (.add (goog.date.DateTime.) (.getInverse (goog.date.Interval. goog.date.Interval/SECONDS delay)))
+                limit-time (let [lt (goog.date.DateTime.)]
+                             (.add lt (.getInverse (goog.date.Interval. goog.date.Interval/SECONDS delay)))
+                             lt)
                 clean-up (fn []
                            (set!
                              (.-tries service)
                              (conj
-                               (filter #(> (goog.date.Date/compare limit-time %) 0)
+                               (filter #(< (goog.date.Date/compare limit-time %) 0)
                                        (.-tries service))
                                (goog.date.DateTime.))))
                 check (fn []
@@ -84,28 +86,24 @@
       (fn [$rootScope Threshold]
         (fn [scope subscription ignores callbacks]
           (let [service (js-obj
-                          "threshold" (Threshold 10 60))
+                          "threshold" (Threshold 3 60))
                 newsse (fn []
                          (let [url (str
                                      "/notification?subscription=" (urlEncode subscription)
                                      (apply str (map #(str "&except=" (urlEncode %)) ignores)))
                                sse (js/EventSource. url)]
                            (doseq [[e c] (partition 2 callbacks)]
-                             (.log js/console (str "Installing " (name e) " callback"))
                              (.addEventListener sse (name e)
                                (fn [event]
                                  (.log js/console (str "Received SSE message : " (.-data event)))
                                  (.$apply $rootScope #(c (.parse js/JSON (.-data event)))) false)))
                            (aset sse "onerror" ;.addEventListener sse "error"
                                  (fn [e]
-                                   (.log js/console (str "EventSource error (" (.stringify js/JSON e) "), restarting it"))
+                                   (.log js/console (str "EventSource error, restarting it"))
                                    (.close (aget service "sse"))
                                    (if (.check (aget service "threshold"))
                                      (aset service "sse" ((aget service "newsse")))
                                      (.log js/console "Too many SSE fails, aborting"))))
-                           (aset sse "onmessage"
-                                 (fn [e]
-                                   (.log js/console (str "Received SSE message >> " (.-data e)))))
                            sse))]
             (aset service "close" #(.close (aget service "sse")))
             (aset service "newsse" newsse)

@@ -87,6 +87,14 @@ trait SnapshotService
                       }
                   }
                 }
+            } ~
+            path("upload") {
+              post {
+                implicit ctx =>
+                  (cryoctx.inventory ? SnapshotUpload(snapshotId)) expect {
+                    case SnapshotUploaded(id) => s"OK snapshot ${id} uploaded"
+                  }
+              }
             }
         }
     }

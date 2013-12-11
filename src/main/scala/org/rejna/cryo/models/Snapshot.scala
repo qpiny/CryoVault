@@ -206,23 +206,23 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
   case class UploaderState(out: ByteStringBuilder, aid: String, len: Int)
   class ArchiveUploader {
     import ByteStringSerializer._
-    var state: Future[UploaderState] = (cryoctx.datastore ? CreateArchive) map {
+    var state: Future[UploaderState] = (cryoctx.inventory ? CreateArchive()) map {
       case ArchiveCreated(aid) => UploaderState(new ByteStringBuilder, aid, 0)
       case o: Any => throw CryoError("Fail to create data", o)
     }
 
     def addFile(filename: Path, blocks: TraversableOnce[Block]) = {
       state = state.map {
-        case UploaderState(out, aid, len) =>
+        case us @ UploaderState(out, aid, len) =>
           out.putString(filename.toString)
-          UploaderState(out, aid, len)
+          us
       }
       for (b <- blocks)
         writeBlock(b)
       state = state.map {
-        case UploaderState(out, aid, len) =>
+        case us @ UploaderState(out, aid, len) =>
           out.putBoolean(false)
-          UploaderState(out, aid, len)
+          us
       }
     }
 

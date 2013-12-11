@@ -20,7 +20,9 @@
 		<td>{{snapshot.checksum}}</td>
 	</tr>
 </table>
-<div>Node={{filesystem.selectedNode.name}}</div>
+<button class="btn btn-primary" x-ng-click="upload()">Upload</button>
 <div x-dyntree="true"
      x-tree-model="filesystem"
-     x-load-node="true"></div>
+     x-load-node="true"
+     x-load-node-func="loadNode"
+     x-select-node-func="selectNode"></div>

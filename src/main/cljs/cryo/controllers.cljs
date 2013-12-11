@@ -5,6 +5,8 @@
   (doseq [[k v] (partition 2 kvs)]
     (aset obj (name k) v)))
 
+;;;;;;;;;;;;;;;;;;;;;;;
+;;; Exit controller ;;;
 (defn ^:export exitCtrl [$scope $http Notification]
   (oset! $scope
          :status "Started"
@@ -17,22 +19,18 @@
 
 (aset exitCtrl "$inject" (array "$scope" "$http" "Notification"))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Filter controller ;;;
 (defn ^:export filterCtrl [$scope $modalInstance filter]
-  (.log js/console (str "filter=" filter))
-  (oset! $scope
+    (oset! $scope
          :filter (js-obj "value" filter)
-         :ok #(let [ff (aget (aget $scope "filter") "value")]
-                (.log js/console ff)
-                (.close $modalInstance ff))
+         :ok #(.close $modalInstance (aget (aget $scope "filter") "value"))
          :cancel #(.dismiss $modalInstance "cancel")))
 
 (aset filterCtrl "$inject" (array "$scope" "$modalInstance" "filter"))
 
-(defn list-contains? [coll value]
-  (if-let [s (seq coll)]
-    (if (= (first s) value) true (recur (rest s) value))
-    false))
-
+;;;;;;;;;;;;;;;;;;;;;;;
+;;; Main controller ;;;
 (defn ^:export mainCtrl [$scope $routeParams $modal SnapshotSrv ArchiveSrv JobSrv Notification]
   (oset! $scope
          :params $routeParams
@@ -40,11 +38,11 @@
          :archives (.query ArchiveSrv)
          :jobs (.query JobSrv)
          :sidebarStatus "with-sidebar"
-         :toggleSidebar #(oset! $scope :sidebarStatus
-                                (if (= "with-sidebar" (.-sidebarStatus $scope))
-                                  "without-sidebar"
-                                  "with-sidebar"))
-         :deleteSnapshot #(.remove SnapshotSrv (clj->js {:snapshotId %}))
+         :toggleSidebar #(aset $scope :sidebarStatus
+                               (if (= "with-sidebar" (.-sidebarStatus $scope))
+                                 "without-sidebar"
+                                 "with-sidebar"))
+         :deleteSnapshot #(.remove SnapshotSrv (js-obj "snapshotId" %))
          :createSnapshot #(.create SnapshotSrv)
          :snapshotIcon (fn [status] ; FIXME put in filter 
                          (condp = status
@@ -54,8 +52,7 @@
                            "Remote" "icon-star-empty"
                            "Downloading" "icon-download"
                            "icon-warning-sign"))
-         :exit #(aset $scope "readyState" (.-readyState (.-sse (.-notification $scope))))
-         :exit2 #(.open $modal
+         :exit #(.open $modal
                   (js-obj "templateUrl" "partials/exit.html"
                           "controller" exitCtrl)))
   (Notification
@@ -72,58 +69,51 @@
 
 (aset mainCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "ArchiveSrv" "JobSrv" "Notification"))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Snapshot controller ;;;
 (defn ^:export snapshotCtrl [$scope $routeParams $modal SnapshotSrv SnapshotFileSrv SnapshotFilterSrv Notification]
   (let [snapshotId (.-snapshotId $routeParams)
-        filesystem #(aget $scope "filesystem")
+        subscriptionPath (str "/cryo/snapshot/" snapshotId)
+        filesystem (js-obj)
         loadNode (fn [path]
                    (let [files (.get SnapshotFileSrv
                                  (js-obj "snapshotId" snapshotId
                                          "path" path))]
-                     (aset (filesystem) path files)))
-        selectNode (fn [n]
-                     (.log js/console (str "selectNode : " (.stringify js/JSON n)))
-                     (let [modal-instance (.open $modal
-                                            (js-obj "templateUrl" "partials/file-filter.html"
-                                                    "controller" filterCtrl
-                                                    "resolve" (js-obj "filter" (fn [] (.-filter n)))
-                                                    ))
-                           result (.-result modal-instance)]
-                       (.then result
-                         #(.update
-                            SnapshotFilterSrv
-                            snapshotId
-                            (.-path n)
-                            %)
-                         (fn []))))
-        filesystem (js-obj)
-        subscriptionPath (str "/cryo/snapshot/" snapshotId)]
+                     (aset filesystem path files)))]
     (oset! $scope
-           :snapshot (.get SnapshotSrv (clj->js {:snapshotId snapshotId}))
+           :snapshot (.get SnapshotSrv (js-obj "snapshotId" snapshotId))
            :loadNode loadNode
-           :selectNode selectNode
-           :filesystem filesystem)
+           :selectNode (fn [n]
+                         (let [modal-instance (.open $modal
+                                                (js-obj "templateUrl" "partials/file-filter.html"
+                                                        "controller" filterCtrl
+                                                        "resolve" (js-obj "filter" (fn [] (.-filter n)))))
+                               result (.-result modal-instance)]
+                           (.then result
+                             #(.update SnapshotFilterSrv
+                                snapshotId (.-path n) %)
+                             (fn []))))
+           :filesystem filesystem
+           :upload #(.upload SnapshotSrv (js-obj "snapshotId" snapshotId) ""))
     
     (Notification
       $scope subscriptionPath ["#files$"]
-      [(str subscriptionPath "#size") (fn [e] (aset (aget $scope "snapshot") "size" (.-current e)))
+      [(str subscriptionPath "#size") (fn [e]
+                                        (aset (aget $scope "snapshot") "size" (.-current e)))
        (str subscriptionPath "#fileFilters") (fn [e]
                                                (let [get-keys (fn [l]
-                                                                (set
-                                                                  (apply concat
-                                                                         (map #(keys (js->clj %)) l))))
+                                                                (set (apply concat (map #(keys (js->clj %)) l))))
                                                      updated (get-keys (concat (.-addedValues e) (.-removedValues e)))
-                                                     is-updated (fn [p] (let [ ok (some #(.startWith % p) updated)]
-                                                                          (.log js/console ("check " p " => " ok))
-                                                                          ok))
-                                                     loaded (filter is-updated (get-keys (list filesystem)))]
-                                                 (.log js/console (str "updated=" updated " // loaded=" loaded))
-                                                 (doseq [path loaded]
-                                                   (.log js/console (str "update :" path)))
-                                                 (.log js/console "Filters have been updated : ")))])))
+                                                     is-updated (fn [p] (or (some #(.startsWith % p) updated)
+                                                                            (some #(.startsWith p %) updated)))
+                                                     need-update (filter is-updated (get-keys (list filesystem)))]
+                                                 (doseq [path need-update]
+                                                   (loadNode path))))])))
 
 (aset snapshotCtrl "$inject" (array "$scope" "$routeParams" "$modal" "SnapshotSrv" "SnapshotFileSrv" "SnapshotFilterSrv", "Notification"))
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Archive controller ;;;
 (defn ^:export archiveCtrl [$scope $routeParams ArchiveSrv]
   (aset $scope "archive"
         (.get ArchiveSrv
@@ -131,7 +121,8 @@
 
 (aset archiveCtrl "$inject" (array "$scope" "$routeParams" "ArchiveSrv"))
 
-
+;;;;;;;;;;;;;;;;;;;;;;
+;;; Job controller ;;;
 (defn ^:export jobCtrl [$scope $routeParams JobSrv]
   (aset $scope "job"
         (.get JobSrv
