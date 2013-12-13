@@ -56,32 +56,20 @@ case class GetID() extends Request
 case class ID(id: String) extends SnapshotResponse
 case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause) extends SnapshotError(s"Directory traversal attempt : ${directory}", cause)
 
-//case class ArchiveCreated(id: String) extends SnapshotResponse
-//case object CreateSnapshot extends SnapshotRequest
-//case class SnapshotCreated(aref: ActorRef) extends SnapshotResponse
-
 class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
-
-  //  val fileSizeAttribute = attributeBuilder("size", 0L)
-  //  def fileSize = fileSizeAttribute()
-  //  def fileSize_= = fileSizeAttribute() = _
-  // all files are relative to config.baseDirectory
   val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
   val files = attributeBuilder.list("files", List.empty[Path])
 
   fileFilters <+> new AttributeListCallback {
     override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
-      //var newSize = fileSize
       if (removedValues.isEmpty) {
         val addedFileFilters = addedValues.asInstanceOf[List[(Path, FileFilter)]]
         val (addedFiles, addedSize) = walkFileSystem(addedFileFilters)
         files ++= addedFiles
-        //fileSize_=(fileSize + addedSize)
       } else {
         val (newFiles, newSize) = walkFileSystem(fileFilters)
         files() = newFiles.toList
-        //fileSize_=(newSize) // TODO why "size = newSize" doesn't work ?!
       }
     }
   }
@@ -91,7 +79,6 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
       sender ! ReadyToDie()
 
     case GetID() =>
-      log.debug(s"From: ${sender} Message: GetID")
       sender ! ID(id)
 
     case SnapshotUpdateFilter(id, file, filter) =>
@@ -114,7 +101,6 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
       } else try {
         val dirContent = Files.newDirectoryStream(absolutePath)
         val fileElements = for (f <- dirContent) yield {
-          //val filePath = cryoctx.baseDirectory.getRoot.resolve(cryoctx.baseDirectory.relativize(f))
           val filePath = cryoctx.baseDirectory.relativize(f)
           val fileSize = for (
             fs <- files;
@@ -196,7 +182,10 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
         Iterator.continually { buffer.clear; input.read(buffer) }
           .takeWhile(_ != -1)
           .filter(_ > 0)
-          .foreach(size => { buffer.flip; func(Block(buffer)(cryoctx)) })
+          .foreach(size => {
+            buffer.flip
+            func(Block(buffer)(cryoctx))
+          })
       } finally {
         input.close
       }
