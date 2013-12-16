@@ -144,15 +144,15 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
         archiveUploader.addFile(f, splitFile(f))
       }
 
-      archiveUploader.flatMap {
-        case UploaderState(out, aid, len) =>
-          (cryoctx.hashcatalog ? GetCatalogContent()) map {
-            case CatalogContent(catalog) =>
-              //out.putCatalog(catalog)
-              UploaderState(out, aid, len)
-            case e: Any => throw CryoError("Fail to get block location", e)
-          }
-      }
+      //      archiveUploader.flatMap {
+      //        case UploaderState(out, aid, len) =>
+      //          (cryoctx.hashcatalog ? GetCatalogContent()) map {
+      //            case CatalogContent(catalog) =>
+      //              //out.putCatalog(catalog)
+      //              UploaderState(out, aid, len)
+      //            case e: Any => throw CryoError("Fail to get block location", e)
+      //          }
+      //      }
       // TODO format[Map[Hash, BlockLocation]].writes(output, Cryo.catalog)
       //      format[Map[String, FileFilter]].writes(output, fileFilters.toMap)
       archiveUploader.upload.map {
