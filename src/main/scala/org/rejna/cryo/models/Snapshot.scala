@@ -56,6 +56,15 @@ case class GetID() extends Request
 case class ID(id: String) extends SnapshotResponse
 case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause) extends SnapshotError(s"Directory traversal attempt : ${directory}", cause)
 
+/*
+ * Snapshot type:
+ * Creating 
+ * Uploading
+ * Cached
+ * Remote
+ * Downloading
+ */
+
 class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
   val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
@@ -117,12 +126,24 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
           sender ! CryoError("Error while getting snapshot files", t)
       }
 
+    case SnapshotGetFilter(id, path) =>
+      sender ! SnapshotFilter(id, path, fileFilters.get(cryoctx.filesystem.getPath(path)))
+
+    /*
+ * Snapshot = Map[Path, FileFilter] + List[File] + Catalog (+ ToC ?)
+ * File = MetaData + List[BlockId]
+ * Catalog = Map[BlockId, (Hash, BlockLocation)]
+ * MetaData = { filename: String; attributes: ?; size: Long }
+ * ToC = { fileListOffset: Long; catalogOffset: Long }
+ */
+
     case SnapshotUpload(id) =>
       val _sender = sender
-      var archiveUploader = new ArchiveUploader
+      val archiveUploader = new ArchiveUploader
       for (f <- files()) {
         archiveUploader.addFile(f, splitFile(f))
       }
+
       archiveUploader.flatMap {
         case UploaderState(out, aid, len) =>
           (cryoctx.hashcatalog ? GetCatalogContent()) map {
@@ -147,9 +168,6 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
         case e: CryoError => _sender ! e
         case o: Any => _sender ! CryoError("Unexpected message", o)
       }
-
-    case SnapshotGetFilter(id, path) =>
-      sender ! SnapshotFilter(id, path, fileFilters.get(cryoctx.filesystem.getPath(path)))
 
     case a: Any => log.error(s"unknown message : ${a}")
   }
@@ -192,9 +210,14 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
     }
   }
 
-  case class UploaderState(out: ByteStringBuilder, aid: String, len: Int)
   class ArchiveUploader {
     import ByteStringSerializer._
+
+    // out: snapshot index
+    // aid: current archive id
+    // len: current archive size
+    case class UploaderState(out: ByteStringBuilder, aid: String, len: Int)
+
     var state: Future[UploaderState] = (cryoctx.inventory ? CreateArchive()) map {
       case ArchiveCreated(aid) => UploaderState(new ByteStringBuilder, aid, 0)
       case o: Any => throw CryoError("Fail to create data", o)
