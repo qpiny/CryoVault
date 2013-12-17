@@ -5,9 +5,10 @@ import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.Future
 
 import akka.actor.{ Actor, ActorContext }
-import akka.util.ByteStringBuilder
+import akka.util.{ ByteString, ByteStringBuilder }
 
 import java.nio.file.{ Path, Files, AccessDeniedException }
+import java.nio.ByteOrder
 
 trait BaseSnapshot {
   def receive: Actor.Receive
@@ -90,10 +91,10 @@ class SnapshotCreating(actor: CryoActor, _id: String)
 
     case SnapshotUpload(id) =>
       val _sender = sender
-      val archiveUploader = new IndexBuilder
-//      for (f <- files()) {
-//        archiveUploader.addFile(f, splitFile(f))
-//      }
+    //val archiveUploader = new IndexBuilder
+    //      for (f <- files()) {
+    //        archiveUploader.addFile(f, splitFile(f))
+    //      }
 
   }
 
@@ -130,113 +131,164 @@ class SnapshotCreating(actor: CryoActor, _id: String)
     (files, size)
   }
 
+  class BuilderState private (indexData: ByteString, aid: String, len: Int) {
+    implicit val byteOrder = ByteOrder.BIG_ENDIAN
+    def putString(s: String) = {
+      val bs = ByteString(s, "UTF-8")
+      val bsb = new ByteStringBuilder
+      bsb.putInt(bs.length)
+      bsb ++= bs
+      new BuilderState(indexData ++ bsb.result, aid, len)
+    }
+    def putPath(p: Path) = putString(p.toString)
+    def putInt(i: Int) = {
+      val bsb = new ByteStringBuilder
+      bsb.putInt(i)
+      new BuilderState(indexData ++ bsb.result, aid, len)
+    }
 
-class IndexBuilder {
-  import ByteStringSerializer._
-    // aid: current archive id
-    // len: current archive size
-    case class UploaderState(aid: String, len: Int)
+    def flush = this // TODOsend indexData to datastore
 
-    var state: Future[UploaderState] = (cryoctx.inventory ? CreateArchive()) map {
-      case ArchiveCreated(aid) => UploaderState(aid, 0)
+    def writeBlock(block: Block) = {
+      val data = ByteString(block.data)
+      (cryoctx.datastore ? WriteData(aid, data)) map {
+        case DataWritten(_, _, _) => new BuilderState(indexData, aid, len + data.length)
+        case x => throw CryoError("", x)
+      }
+    }
+    
+    def addFile()
+  }
+
+  object BuilderState {
+    def apply = (cryoctx.inventory ? CreateArchive()) map {
+      case ArchiveCreated(aid) => new BuilderState(ByteString.empty, aid, 0)
       case o: Any => throw CryoError("Fail to create data", o)
     }
+    
+  }
+  class IndexBuilder(val state: Future[BuilderState]) {
+    import ByteStringSerializer._
 
     def addFile(filename: Path, blocks: TraversableOnce[Block]) = {
-      val bb = new ByteStringBuilder
-      bb.putString(filename.toString)
-      blocks.map {
-        case block => 
+      (state.map(_.putPath(filename)) /: blocks) {
+        case (st, block) =>
           (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
-            case BlockLocationNotFound(_) =>
-              writeInArchive(block)
-            case bl: BlockLocation =>
-              bb.putBoolean(true)
-              bb.putHash(bl.hashVersion)
-            case e: Any => throw CryoError("Fail to get block location", e)
+            case BlockLocationNotFound(_) => st.flatMap(_.writeBlock(block))
+            case bl: BlockLocation => st.map(_.putInt(bl.size)) // FIXME will be replace by block ID
+            case x => throw CryoError("", x)
           }
-      }
-      }
+      } map (_.flush)
+    }
     
-    def writeInArchive(block: Block): Future[]
-      state = state.flatMap {
-        case us @ UploaderState(aid, len) =>
-          cryoctx.datastore ? WriteData(id, )
-          out.putString(filename.toString)
-          us
-      }
-      for (b <- blocks)
-        writeBlock(b)
-      state = state.map {
-        case us @ UploaderState(out, aid, len) =>
-          out.putBoolean(false)
-          us
-      }
-    }
-
-    private def nextArchiveIfNeeded: Future[UploaderState] = {
-      state.flatMap {
-        case us @ UploaderState(out, aid, len) =>
-          if (len > cryoctx.archiveSize) {
-            (cryoctx.cryo ? UploadData(aid)) flatMap {
-              case DataUploaded(_) => (cryoctx.datastore ? CreateArchive) map {
-                case ArchiveCreated(newId) => UploaderState(out, newId, 0)
-                case e: CryoError => throw e
-                case o: Any => throw CryoError(s"Unexpected message: ${o}")
-              }
-              case e: CryoError => throw e
-              case o: Any => throw CryoError(s"Unexpected message: ${o}")
-            }
-          } else
-            Future(us)
-      }
-    }
-
-    private def writeInArchive(block: Block): Future[UploaderState] = {
-      nextArchiveIfNeeded flatMap {
-        case UploaderState(out, aid, len) =>
-          (cryoctx.datastore ? WriteData(aid, ByteString(block.data))).map {
-            case DataWritten(_, position, length) =>
-              out.putBoolean(true)
-              out.putHash(block.hash)
-              UploaderState(out, aid, len + length.toInt)
-            case e: Any => throw CryoError("Fail to write data", e)
-          }
-      }
-    }
-
-    private def writeBlock(block: Block) = {
-      state = state flatMap {
-        case UploaderState(out, aid, len) =>
-          (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
-            case BlockLocationNotFound(_) =>
-              writeInArchive(block)
-            case bl: BlockLocation =>
-              out.putBoolean(true)
-              out.putHash(bl.hashVersion)
-              Future(UploaderState(out, aid, len + block.size))
-            case e: Any => throw CryoError("Fail to get block location", e)
-          }
-      }
-    }
-
-    def upload: Future[ByteString] = {
-      state flatMap {
-        case UploaderState(out, aid, len) =>
-          (cryoctx.cryo ? UploadData(aid)) map {
-            case DataUploaded(_) => out.result
-            case e: Any => throw CryoError("Fail to upload data", e)
-          }
-      }
-    }
-
-    def flatMap(f: UploaderState => Future[UploaderState]): Unit = {
-      state = state.flatMap(f)
-    }
   }
 }
+//    blocks.map {
+//      case block =>
+//        (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
+//          case BlockLocationNotFound(_) =>
+//              writeInArchive(block)
+//            case bl: BlockLocation =>
+//              bb.putBoolean(true)
+//              bb.putHash(bl.hashVersion)
+//            case e: Any => throw CryoError("Fail to get block location", e)
+//        }
+//    }
+//    }
+//      case BuilderState(bsb, aid, len) =>
+//        blocks.
+//    }
+//      val bsb = new ByteStringBuilder
+//      bsb.putString(filename.toString)
+//      blocks.map {
+//        case block => 
+//          (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
+//            case BlockLocationNotFound(_) =>
+//              writeInArchive(block)
+//            case bl: BlockLocation =>
+//              bb.putBoolean(true)
+//              bb.putHash(bl.hashVersion)
+//            case e: Any => throw CryoError("Fail to get block location", e)
+//          }
+//      }
+//      }
+//    
+//    def writeInArchive(block: Block): Future[]
+//      state = state.flatMap {
+//        case us @ UploaderState(aid, len) =>
+//          cryoctx.datastore ? WriteData(id, )
+//          out.putString(filename.toString)
+//          us
+//      }
+//      for (b <- blocks)
+//        writeBlock(b)
+//      state = state.map {
+//        case us @ UploaderState(out, aid, len) =>
+//          out.putBoolean(false)
+//          us
+//      }
+//    }
+//
+//    private def nextArchiveIfNeeded: Future[UploaderState] = {
+//      state.flatMap {
+//        case us @ UploaderState(out, aid, len) =>
+//          if (len > cryoctx.archiveSize) {
+//            (cryoctx.cryo ? UploadData(aid)) flatMap {
+//              case DataUploaded(_) => (cryoctx.datastore ? CreateArchive) map {
+//                case ArchiveCreated(newId) => UploaderState(out, newId, 0)
+//                case e: CryoError => throw e
+//                case o: Any => throw CryoError(s"Unexpected message: ${o}")
+//              }
+//              case e: CryoError => throw e
+//              case o: Any => throw CryoError(s"Unexpected message: ${o}")
+//            }
+//          } else
+//            Future(us)
+//      }
+//    }
+//
+//    private def writeInArchive(block: Block): Future[UploaderState] = {
+//      nextArchiveIfNeeded flatMap {
+//        case UploaderState(out, aid, len) =>
+//          (cryoctx.datastore ? WriteData(aid, ByteString(block.data))).map {
+//            case DataWritten(_, position, length) =>
+//              out.putBoolean(true)
+//              out.putHash(block.hash)
+//              UploaderState(out, aid, len + length.toInt)
+//            case e: Any => throw CryoError("Fail to write data", e)
+//          }
+//      }
+//    }
+//
+//    private def writeBlock(block: Block) = {
+//      state = state flatMap {
+//        case UploaderState(out, aid, len) =>
+//          (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
+//            case BlockLocationNotFound(_) =>
+//              writeInArchive(block)
+//            case bl: BlockLocation =>
+//              out.putBoolean(true)
+//              out.putHash(bl.hashVersion)
+//              Future(UploaderState(out, aid, len + block.size))
+//            case e: Any => throw CryoError("Fail to get block location", e)
+//          }
+//      }
+//    }
+//
+//    def upload: Future[ByteString] = {
+//      state flatMap {
+//        case UploaderState(out, aid, len) =>
+//          (cryoctx.cryo ? UploadData(aid)) map {
+//            case DataUploaded(_) => out.result
+//            case e: Any => throw CryoError("Fail to upload data", e)
+//          }
+//      }
+//    }
+//
+//    def flatMap(f: UploaderState => Future[UploaderState]): Unit = {
+//      state = state.flatMap(f)
+//    }
 
-}
 
 /******************************************************************************************************************************
 class RemoteSnapshot(date: DateTime, id: String, size: Long, hash: Hash) extends RemoteArchive(Index, date, id, size, hash) with Snapshot {
