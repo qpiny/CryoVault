@@ -91,6 +91,8 @@ class SnapshotCreating(actor: CryoActor, _id: String)
 
     case SnapshotUpload(id) =>
       val _sender = sender
+      val builder = IndexBuilder
+      for (f <- files())
     //val archiveUploader = new IndexBuilder
     //      for (f <- files()) {
     //        archiveUploader.addFile(f, splitFile(f))
@@ -131,20 +133,20 @@ class SnapshotCreating(actor: CryoActor, _id: String)
     (files, size)
   }
 
-  class BuilderState private (indexData: ByteString, aid: String, len: Int) {
+  class IndexBuilderState(indexData: ByteString, aid: String, len: Int) {
     implicit val byteOrder = ByteOrder.BIG_ENDIAN
     def putString(s: String) = {
       val bs = ByteString(s, "UTF-8")
       val bsb = new ByteStringBuilder
       bsb.putInt(bs.length)
       bsb ++= bs
-      new BuilderState(indexData ++ bsb.result, aid, len)
+      new IndexBuilderState(indexData ++ bsb.result, aid, len)
     }
     def putPath(p: Path) = putString(p.toString)
     def putInt(i: Int) = {
       val bsb = new ByteStringBuilder
       bsb.putInt(i)
-      new BuilderState(indexData ++ bsb.result, aid, len)
+      new IndexBuilderState(indexData ++ bsb.result, aid, len)
     }
 
     def flush = this // TODOsend indexData to datastore
@@ -152,35 +154,64 @@ class SnapshotCreating(actor: CryoActor, _id: String)
     def writeBlock(block: Block) = {
       val data = ByteString(block.data)
       (cryoctx.datastore ? WriteData(aid, data)) map {
-        case DataWritten(_, _, _) => new BuilderState(indexData, aid, len + data.length)
+        case DataWritten(_, _, _) => new IndexBuilderState(indexData, aid, len + data.length)
         case x => throw CryoError("", x)
       }
     }
-    
-    def addFile()
+
   }
 
-  object BuilderState {
-    def apply = (cryoctx.inventory ? CreateArchive()) map {
-      case ArchiveCreated(aid) => new BuilderState(ByteString.empty, aid, 0)
-      case o: Any => throw CryoError("Fail to create data", o)
-    }
-    
-  }
-  class IndexBuilder(val state: Future[BuilderState]) {
+  class IndexBuilder {
     import ByteStringSerializer._
+    
+    case class State(aid: String, size: Int)
+    implicit class IndexOps(current: Future[State]) {
+      def writeBlock(block: Block) = {
+      val data = ByteString(block.data)
+      current flatMap {
+        case State(aid, len) =>
+          (cryoctx.datastore ? WriteData(aid, data)) flatMap {
+            case DataWritten(i, p, l) =>
+              cryoctx.hashcatalog ? State(aid, len + data.length)
+            case x => throw CryoError("", x)
+          }
+      }
+    }
+    }
 
+    val data = new ByteStringBuilder // must not be used outside state future
+    var state = (cryoctx.inventory ? CreateArchive()) map {
+        case ArchiveCreated(aid) => State(aid, 0)
+        case o: Any => throw CryoError("Fail to create data", o)
+      }
+    
+    def updateData(body: (ByteStringBuilder) => Unit) = {
+      state = state.map {
+        case x =>
+          body(data)
+          x
+      }
+    }
     def addFile(filename: Path, blocks: TraversableOnce[Block]) = {
-      (state.map(_.putPath(filename)) /: blocks) {
-        case (st, block) =>
+      updateData(_.putPath(filename))
+      (state /: blocks) {
+        case (s, block) =>
           (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
-            case BlockLocationNotFound(_) => st.flatMap(_.writeBlock(block))
-            case bl: BlockLocation => st.map(_.putInt(bl.size)) // FIXME will be replace by block ID
+            case BlockLocationNotFound(_) => s.writeBlock(block)
+            case bl: BlockLocation => s.map(_.putInt(bl.size)) // FIXME will be replace by block ID
             case x => throw CryoError("", x)
           }
       } map (_.flush)
     }
-    
+  }
+  object IndexBuilder {
+    def apply() = {
+      val state = (cryoctx.inventory ? CreateArchive()) map {
+        case ArchiveCreated(aid) => new IndexBuilderState(ByteString.empty, aid, 0)
+        case o: Any => throw CryoError("Fail to create data", o)
+      }
+      new IndexBuilder(state)
+    }
   }
 }
 //    blocks.map {

@@ -277,7 +277,7 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
               writeInArchive(block)
             case bl: BlockLocation =>
               out.putBoolean(true)
-              out.putHash(bl.hashVersion)
+              out.putHash(bl.hash)
               Future(UploaderState(out, aid, len + block.size))
             case e: Any => throw CryoError("Fail to get block location", e)
           }

@@ -1,7 +1,7 @@
 package org.rejna.cryo.models
 
 import scala.language.postfixOps
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{ HashMap, ArrayBuffer }
 import scala.concurrent.Future
 import scala.util.{ Success, Failure }
 
@@ -18,84 +18,69 @@ sealed abstract class HashCatalogError(val message: String, val cause: Throwable
   val marker = Markers.errMsgMarker
 }
 
-case class GetHashBlockLocation(hashVersion: HashVersion) extends HashCatalogRequest
+case class GetHashBlockLocation2(hash: Hash) extends HashCatalogRequest
 case class GetBlockLocation(block: Block) extends HashCatalogRequest
-case class BlockLocation(hashVersion: HashVersion, archiveId: String, offset: Long, size: Int) extends HashCatalogResponse
+case class BlockLocation(id: Int, hash: Hash, archiveId: String, offset: Long, size: Int) extends HashCatalogResponse
 
-case class AddBlockLocation(blockLocations: BlockLocation*) extends HashCatalogRequest
+case class UpdateArchiveId(oldArchiveId: String, newArchiveId: String)
+case class ArchiveIdUpdated(oldArchiveId: String, newArchiveId: String)
+
+case class AddBlockLocation(blockLocation: BlockLocation) extends HashCatalogRequest
 case class BlockLocationAdded(added: List[BlockLocation], failed: List[BlockLocation])
 
-case class BlockLocationNotFound(hashVersion: HashVersion) extends HashCatalogError("Blocklocation was not found")
-case class HashCollision(_message: String) extends HashCatalogError(_message)
+case class BlockLocationNotFound(hash: Hash) extends HashCatalogError("Blocklocation was not found")
+//case class HashCollision(_message: String) extends HashCatalogError(_message)
 
 case class GetCatalogContent() extends HashCatalogRequest
-case class CatalogContent(catalog: Map[HashVersion, BlockLocation]) extends HashCatalogResponse
+case class CatalogContent(catalog: List[BlockLocation]) extends HashCatalogResponse
 
 class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
-  private val content = HashMap.empty[HashVersion, BlockLocation]
-  private val hashVersions = HashMap.empty[Hash, List[HashVersion]]
+  private val content = ArrayBuffer.empty[BlockLocation]
+  private val hashIndex = HashMap.empty[Hash, BlockLocation]
 
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
-    case m: GetCatalogContent => sender ! CatalogContent(content.toMap)
-    case GetHashBlockLocation(hash) =>
-      content.get(hash) match {
-        case None => sender ! BlockLocationNotFound(hash)
-        case Some(bl) => sender ! bl
-      }
+    case m: GetCatalogContent => sender ! CatalogContent(content.toList)
+//    case GetHashBlockLocation(hash) =>
+//      content.get(hash) match {
+//        case None => sender ! BlockLocationNotFound(hash)
+//        case Some(bl) => sender ! bl
+//      }
 
     case GetBlockLocation(block) =>
       val _sender = sender
-      hashVersions.get(block.hash) match {
-        case None => sender ! BlockLocationNotFound(HashVersion(block.hash.value, 1))
-        case Some(hvs) =>
-          hvs.foldLeft(Future(Right(List[BlockLocation]())): Future[Either[BlockLocation, List[BlockLocation]]]) {
-            case (f, hv) => f flatMap {
-              case Left(bl) => Future(Left(bl))
-              case Right(lbs) =>
-                content.get(hv) match {
-                  case Some(bl) =>
-                    sameContent(block, bl) map {
-                      case None => Right(bl :: lbs)
-                      case Some(true) => Left(bl)
-                      case Some(false) => Right(lbs)
-                    }
-                  case None => Future(Right(lbs))
-                }
-            }
-          } onComplete {
-            case Success(Left(bl)) => _sender ! bl
-            case Success(Right(bls)) =>
-              if (bls.size == 1) _sender ! bls.head // we are optimistic
-              else {
-                val maxVersion = hashVersions(block.hash).map(_.version).max
-                _sender ! BlockLocationNotFound(HashVersion(block.hash.value, maxVersion + 1))
-              }
-            case Failure(e: CryoError) => _sender ! e
-            case Failure(e) => _sender ! CryoError("", e)
-          }
+      hashIndex.get(block.hash) match {
+        case None => sender ! BlockLocationNotFound(block.hash)
+        case Some(bl) => sender ! bl
       }
-    case AddBlockLocation(blockLocations @ _*) =>
-      var added = List[BlockLocation]()
-      var failed = List[BlockLocation]()
-
-      blockLocations foreach { blocation =>
-        hashVersions += blocation.hashVersion.hash ->
-          (blocation.hashVersion :: hashVersions.getOrElse(blocation.hashVersion.hash, List[HashVersion]()))
-        content.get(blocation.hashVersion) match {
-          case None =>
-            content += blocation.hashVersion -> blocation
-            added = blocation :: added
-
-          case Some(bl) =>
-            if (blocation == bl)
-              added = blocation :: added
-            else {
-              failed = blocation :: failed // TODO addLogs
-            }
-        }
-      }
-      sender ! BlockLocationAdded(added, failed)
+      
+    case UpdateArchiveId(oldArchiveId, newArchiveId) =>
+      content.transform(_ match {
+        case bl if bl.archiveId == oldArchiveId => bl.copy(archiveId = newArchiveId)
+        case bl => bl
+      })
+      
+//    case AddBlockLocation(blockLocations @ _*) =>
+//      var added = List[BlockLocation]()
+//      var failed = List[BlockLocation]()
+//
+//      blockLocations foreach { blocation =>
+//        hashVersions += blocation.hashVersion.hash ->
+//          (blocation.hashVersion :: hashVersions.getOrElse(blocation.hashVersion.hash, List[HashVersion]()))
+//        content.get(blocation.hashVersion) match {
+//          case None =>
+//            content += blocation.hashVersion -> blocation
+//            added = blocation :: added
+//
+//          case Some(bl) =>
+//            if (blocation == bl)
+//              added = blocation :: added
+//            else {
+//              failed = blocation :: failed // TODO addLogs
+//            }
+//        }
+//      }
+//      sender ! BlockLocationAdded(added, failed)
   }
 
   private def sameContent(block: Block, bl: BlockLocation): Future[Option[Boolean]] = {
