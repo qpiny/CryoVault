@@ -5,6 +5,7 @@ import scala.language.implicitConversions
 import akka.util.{ ByteString, ByteStringBuilder }
 
 import java.nio.{ ByteBuffer, BufferOverflowException, ByteOrder }
+import java.nio.file.Path
 import java.nio.channels.FileChannel
 import java.util.Date
 
@@ -20,8 +21,9 @@ object ByteStringSerializer {
       bsBuilder.putInt(bs.length)
       bsBuilder ++= bs
     }
+    def putPath(p: Path) = putString(p.toString)
     def putBlockLocation(bl: BlockLocation): ByteStringBuilder = {
-      putHashVersion(bl.hashVersion)
+      putHash(bl.hash)
       putString(bl.archiveId)
       bsBuilder.putLong(bl.offset)
       bsBuilder.putInt(bl.size)
