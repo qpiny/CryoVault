@@ -16,7 +16,8 @@ import akka.event.Logging.Error
 
 import com.amazonaws.services.glacier.model.GlacierJobDescription
 
-import EntryStatus._
+import ObjectStatus._
+
 
 object JobStatus {
   def apply(name: String, message: String) = name match {

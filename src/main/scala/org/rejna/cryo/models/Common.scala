@@ -8,6 +8,25 @@ import java.nio.channels.FileChannel
 
 import com.amazonaws.services.s3.internal.InputSubstream
 
+object DataType extends Enumeration {
+  type DataType = Value
+  val Data, Index, Inventory = Value
+  
+  def unapply(dt: String) = DataType.withName(dt)
+}
+
+sealed class ObjectStatus {
+  def getGlacierId: Option[String] = None
+}
+object ObjectStatus {
+  case class Creating() extends ObjectStatus
+  case class Uploading() extends ObjectStatus
+  case class Cached(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
+  case class Remote(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
+  case class Downloading(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
+  case class Unknown() extends ObjectStatus
+}
+
 case object InvalidStateException extends Exception
 
 //case class BlockLocation(val hash: Hash, val archiveId: String, val offset: Long, val size: Int) {

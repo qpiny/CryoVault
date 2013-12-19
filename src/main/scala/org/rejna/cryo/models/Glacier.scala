@@ -9,7 +9,7 @@ import scala.util.{ Failure, Success }
 
 import java.nio.channels.Channels
 import java.nio.ByteBuffer
-import java.util.Date
+import java.util.{ Date, UUID }
 
 import akka.actor.{ Actor, Props }
 import akka.util.ByteString
@@ -19,7 +19,18 @@ import com.amazonaws.services.glacier.model._
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sns.AmazonSNSClient
 
-import EntryStatus._
+import DataType._
+
+case class ArchiveDescription(dataType: DataType, dataId: String) {
+  override def toString = s"${dataType}#${dataId}"
+}
+object ArchiveDescription {
+  val regex = "([^#]*)#(.*)".r
+  def apply(desc: String) = {
+    val regex(dataType, dataId) = desc
+    new ArchiveDescription(DataType.withName(dataType), dataId)
+  }
+}
 
 class CryoRequest extends Request
 class CryoResponse extends Response
@@ -30,8 +41,8 @@ case class RefreshInventory() extends CryoRequest
 case class RefreshInventoryRequested(job: Job) extends CryoResponse
 case class DownloadArchive(archiveId: String) extends CryoRequest
 case class DownloadArchiveRequested(job: Job) extends CryoResponse
-case class UploadData(id: String) extends CryoRequest
-case class DataUploaded(id: String) extends CryoResponse
+case class UploadData(id: UUID, dataType: DataType) extends CryoRequest
+case class DataUploaded(id: UUID) extends CryoResponse
 
 class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
@@ -53,21 +64,20 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case AttributeListChange("/cryo/manager#jobs", addedJobs, removedJobs) =>
       val succeededJobs = addedJobs
         .asInstanceOf[List[(String, Job)]]
-        .filter { case (_, j) => j.status.isSucceeded }
-        .toMap
+        .collect { case (_, j) if j.status.isSucceeded => j }
 
       succeededJobs.map {
-        case (dataId, job) =>
-          log.info(s"Job ${job.id} is completed, downloading data ${dataId}")
-          var transfer = (cryoctx.datastore ? GetDataStatus(dataId)) map {
-            case DataStatus(_, _, _, status, _, _) if status != Creating => // TODO will be Loading when implemented
+        case job =>
+          log.info(s"Job ${job.id} is completed, downloading data ${job.objectId}")
+          var transfer = (cryoctx.datastore ? GetDataStatus(job.objectId)) map {
+            case DataStatus(_, _, _, ObjectStatus.Creating(), _, _) => // TODO will be Loading when implemented
             case DataNotFoundError(_, _, _) =>
             case o: Any => throw CryoError(s"Invalid data status ${o}")
           } flatMap {
-            Unit => (cryoctx.datastore ? CreateData(Some(dataId), job.description))
+            Unit => (cryoctx.datastore ? CreateData(Some(job.objectId), job.description))
           } map {
             case DataCreated(dataId) => log.debug(s"Data ${dataId} created, starting download")
-            case o: Any => throw CryoError(s"Fail to create data ${dataId}", o)
+            case o: Any => throw CryoError(s"Fail to create data ${job.objectId}", o)
           }
           try {
             val input = glacier.getJobOutput(new GetJobOutputRequest()
@@ -79,9 +89,9 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
                 .takeWhile(_ != -1)
                 .foreach { nRead =>
                   transfer = transfer.flatMap { Unit =>
-                    (cryoctx.datastore ? WriteData(dataId, -1, ByteString.fromArray(buffer, 0, nRead))) map {
-                      case DataWritten(_, _, s) => log.debug(s"${s} bytes written in ${dataId}")
-                      case o: Any => throw CryoError(s"Fail to write data ${dataId}", o)
+                    (cryoctx.datastore ? WriteData(job.objectId, -1, ByteString.fromArray(buffer, 0, nRead))) map {
+                      case DataWritten(_, _, s) => log.debug(s"${s} bytes written in ${job.objectId}")
+                      case o: Any => throw CryoError(s"Fail to write data ${job.objectId}", o)
                     }
                   }
                 }
@@ -90,14 +100,14 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             }
 
             transfer flatMap {
-              Unit => (cryoctx.datastore ? CloseData(dataId))
+              Unit => (cryoctx.datastore ? CloseData(job.objectId))
             } map {
               case DataClosed(id) =>
-              case o => throw CryoError(s"Fail to close data ${dataId}", o)
+              case o => throw CryoError(s"Fail to close data ${job.objectId}", o)
             } onComplete { t =>
               t match {
                 case Failure(e) => log.error(s"Download job ${job.id} data has failed", e)
-                case Success(_) => log.info(s"Data ${dataId} downloaded")
+                case Success(_) => log.info(s"Data ${job.objectId} downloaded")
               }
             }
           } catch {
@@ -105,8 +115,8 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             case t: Throwable => log.error(s"Fail to download job ${job.id}", t)
           }
           (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
-            case Success(j: Job) => log.info(s"Data ${dataId} download job finalized")
-            case o: Any => log(CryoError(s"Fail to finalize data ${dataId}", o))
+            case Success(j: Job) => log.info(s"Data ${job.objectId} download job finalized")
+            case o: Any => log(CryoError(s"Fail to finalize data ${job.objectId}", o))
           }
       }
 
@@ -163,20 +173,20 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case o: Any => _sender ! CryoError("Fail to add download archive job", o)
       }
 
-    case UploadData(id) =>
+    case UploadData(id, dataType) =>
       val _sender = sender
       (cryoctx.datastore ? GetDataStatus(id)) onComplete {
         case Success(DataStatus(_, _, _, status, size, checksum)) if status == Cached =>
           if (size < cryoctx.multipartThreshold) {
             glacier.uploadArchive(new UploadArchiveRequest()
-              //.withArchiveDescription(description)
+              .withArchiveDescription(ArchiveDescription(dataType, id).toString)
               .withVaultName(cryoctx.vaultName)
               .withChecksum(checksum)
               .withBody(new DatastoreInputStream(cryoctx, id, size, 0))
               .withContentLength(size)).getArchiveId
           } else {
             val uploadId = glacier.initiateMultipartUpload(new InitiateMultipartUploadRequest()
-              //.withArchiveDescription(description)
+              .withArchiveDescription(ArchiveDescription(dataType, id).toString)
               .withVaultName(cryoctx.vaultName)
               .withPartSize(cryoctx.partSize.toString)).getUploadId
             for (partStart <- (0L to size by cryoctx.partSize)) {

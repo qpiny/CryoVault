@@ -92,7 +92,7 @@ class SnapshotCreating(actor: CryoActor, _id: String)
     case SnapshotUpload(id) =>
       val _sender = sender
       val builder = IndexBuilder
-      for (f <- files())
+      //for (f <- files())
     //val archiveUploader = new IndexBuilder
     //      for (f <- files()) {
     //        archiveUploader.addFile(f, splitFile(f))

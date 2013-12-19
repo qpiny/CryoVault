@@ -36,24 +36,24 @@ class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] 
   }
 }
 
-sealed abstract class SnapshotRequest extends Request { val id: String }
+sealed abstract class SnapshotRequest extends Request { val id: UUID }
 sealed abstract class SnapshotResponse extends Response
 sealed abstract class SnapshotError(val message: String, cause: Throwable) extends GenericError {
   val source = classOf[SnapshotBuilder].getName
   val marker = Markers.errMsgMarker
 }
 
-case class SnapshotUpdateFilter(id: String, file: String, filter: FileFilter) extends SnapshotRequest
-case class SnapshotGetFiles(id: String, path: String) extends SnapshotRequest
-case class SnapshotFiles(id: String, path: String, files: List[FileElement])
+case class SnapshotUpdateFilter(id: UUID, file: String, filter: FileFilter) extends SnapshotRequest
+case class SnapshotGetFiles(id: UUID, path: String) extends SnapshotRequest
+case class SnapshotFiles(id: UUID, path: String, files: List[FileElement])
 case class FileElement(path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
-case class SnapshotGetFilter(id: String, path: String)
-case class SnapshotFilter(id: String, path: String, filter: Option[FileFilter])
+case class SnapshotGetFilter(id: UUID, path: String)
+case class SnapshotFilter(id: UUID, path: String, filter: Option[FileFilter])
 case class FilterUpdated() extends SnapshotResponse
-case class SnapshotUpload(id: String) extends SnapshotRequest
-case class SnapshotUploaded(id: String) extends SnapshotResponse
+case class SnapshotUpload(id: UUID) extends SnapshotRequest
+case class SnapshotUploaded(id: UUID) extends SnapshotResponse
 case class GetID() extends Request
-case class ID(id: String) extends SnapshotResponse
+case class ID(id: UUID) extends SnapshotResponse
 case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause) extends SnapshotError(s"Directory traversal attempt : ${directory}", cause)
 
 /*
@@ -65,7 +65,7 @@ case class DirectoryTraversalError(directory: String, cause: Throwable = Error.N
  * Downloading
  */
 
-class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryoctx) {
+class SnapshotBuilder(_cryoctx: CryoContext, id: UUID) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
   val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
   val files = attributeBuilder.list("files", List.empty[Path])
@@ -158,7 +158,7 @@ class SnapshotBuilder(_cryoctx: CryoContext, id: String) extends CryoActor(_cryo
       archiveUploader.upload.map {
         case bs: ByteString =>
           cryoctx.datastore ? WriteData(id, bs) map {
-            case DataWritten => (cryoctx.cryo ? UploadData(id)) map {
+            case DataWritten => (cryoctx.cryo ? UploadData(id, DataType.Index)) map {
               case DataUploaded(sid) => _sender ! SnapshotUploaded(sid)
               case e: Any => throw CryoError("Fail to upload data", e)
             }

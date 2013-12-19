@@ -81,7 +81,7 @@ class CryoAttributeBuilder(path: List[String])(implicit val cryoctx: CryoContext
   def futureMap[A, B](name: String, body: () => Future[Map[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration) =
     Attribute.futureMap(name, body) <+> listCallback
 
-  def /(subpath: String) = CryoAttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
+  def /(subpath: Any) = CryoAttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
 
   //def withAlias(alias: String) = CryoAttributeBuilder(alias :: path: _*)
 }
