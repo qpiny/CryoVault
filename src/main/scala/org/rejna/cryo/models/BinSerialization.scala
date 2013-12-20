@@ -24,7 +24,7 @@ object ByteStringSerializer {
     def putPath(p: Path) = putString(p.toString)
     def putBlockLocation(bl: BlockLocation): ByteStringBuilder = {
       putHash(bl.hash)
-      putString(bl.archiveId)
+      putString(bl.archiveId.toString)
       bsBuilder.putLong(bl.offset)
       bsBuilder.putInt(bl.size)
       bsBuilder

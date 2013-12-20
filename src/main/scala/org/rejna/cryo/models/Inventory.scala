@@ -13,7 +13,6 @@ import akka.util.ByteString
 import akka.event.Logging.Error
 
 import java.io.FileOutputStream
-import java.nio.file.{ Files, Path }
 import java.nio.file.StandardOpenOption._
 import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
@@ -140,7 +139,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   }
 
   private def save() = {
-    cryoctx.datastore ? CreateData(Some(inventoryId), DataType.Inventory) flatMap {
+    cryoctx.datastore ? CreateData(Some(inventoryId), DataType.Internal) flatMap {
       case DataCreated(id) =>
         val fArchList = getDataStatusList(archiveIds ++ snapshotIds)
 

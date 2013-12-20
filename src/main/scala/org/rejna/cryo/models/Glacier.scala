@@ -21,14 +21,14 @@ import com.amazonaws.services.sns.AmazonSNSClient
 
 import DataType._
 
-case class ArchiveDescription(dataType: DataType, dataId: String) {
+case class ArchiveDescription(dataType: DataType, dataId: UUID) {
   override def toString = s"${dataType}#${dataId}"
 }
 object ArchiveDescription {
   val regex = "([^#]*)#(.*)".r
   def apply(desc: String) = {
     val regex(dataType, dataId) = desc
-    new ArchiveDescription(DataType.withName(dataType), dataId)
+    new ArchiveDescription(DataType.withName(dataType), UUID.fromString(dataId))
   }
 }
 
@@ -69,14 +69,14 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       succeededJobs.map {
         case job =>
           log.info(s"Job ${job.id} is completed, downloading data ${job.objectId}")
-          var transfer = (cryoctx.datastore ? GetDataStatus(job.objectId)) map {
-            case DataStatus(_, _, _, ObjectStatus.Creating(), _, _) => // TODO will be Loading when implemented
-            case DataNotFoundError(_, _, _) =>
+          var transfer = (cryoctx.datastore ? GetDataStatus(job.objectId)) flatMap {
+            case DataStatus(id, dataType, _, ObjectStatus.Creating(), _, _) => // TODO will be Loading when implemented
+              (cryoctx.datastore ? CreateData(Some(id), dataType))
             case o: Any => throw CryoError(s"Invalid data status ${o}")
-          } flatMap {
-            Unit => (cryoctx.datastore ? CreateData(Some(job.objectId), job.description))
           } map {
-            case DataCreated(dataId) => log.debug(s"Data ${dataId} created, starting download")
+            case DataCreated(dataId) =>
+              log.debug(s"Data ${dataId} created, starting download")
+              dataId
             case o: Any => throw CryoError(s"Fail to create data ${job.objectId}", o)
           }
           try {
@@ -88,9 +88,11 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
               Iterator.continually(input.read(buffer))
                 .takeWhile(_ != -1)
                 .foreach { nRead =>
-                  transfer = transfer.flatMap { Unit =>
-                    (cryoctx.datastore ? WriteData(job.objectId, -1, ByteString.fromArray(buffer, 0, nRead))) map {
-                      case DataWritten(_, _, s) => log.debug(s"${s} bytes written in ${job.objectId}")
+                  transfer = transfer.flatMap { dataId =>
+                    (cryoctx.datastore ? WriteData(dataId, -1, ByteString.fromArray(buffer, 0, nRead))) map {
+                      case DataWritten(_, _, s) =>
+                        log.debug(s"${s} bytes written in ${job.objectId}")
+                        dataId
                       case o: Any => throw CryoError(s"Fail to write data ${job.objectId}", o)
                     }
                   }
@@ -100,7 +102,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             }
 
             transfer flatMap {
-              Unit => (cryoctx.datastore ? CloseData(job.objectId))
+              dataId => (cryoctx.datastore ? CloseData(dataId))
             } map {
               case DataClosed(id) =>
               case o => throw CryoError(s"Fail to close data ${job.objectId}", o)
@@ -176,7 +178,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case UploadData(id, dataType) =>
       val _sender = sender
       (cryoctx.datastore ? GetDataStatus(id)) onComplete {
-        case Success(DataStatus(_, _, _, status, size, checksum)) if status == Cached =>
+        case Success(DataStatus(_, _, _, ObjectStatus.Cached(_), size, checksum)) =>
           if (size < cryoctx.multipartThreshold) {
             glacier.uploadArchive(new UploadArchiveRequest()
               .withArchiveDescription(ArchiveDescription(dataType, id).toString)

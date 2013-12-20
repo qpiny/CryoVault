@@ -76,11 +76,17 @@ object CryoError {
   private def apply(message: String, marker: Marker, a: Any): CryoError = a match {
     case Failure(e) => CryoError(s"${message}: failure", marker, e)
     case Success(e) => CryoError(s"${message}: success", marker, e)
+    case e: CryoError => e
     case e: Throwable => new CryoError("", message, marker, e)
     case e: Any => new CryoError("", s"${message}: unexpected message: ${e}", marker)
   }
   //def apply(source: String, message: String, marker: Marker, cause: Throwable) = new CryoError(source, message, marker, cause)
-  def apply(message: String, a: Any): CryoError = CryoError(message, Markers.errMsgMarker, a)
+  def apply(message: String, a: Any): CryoError = {
+    a match {
+      case e: CryoError => e
+      case e: Any => CryoError(message, Markers.errMsgMarker, e)
+    }
+  }
   def apply(message: String): CryoError = new CryoError(org.slf4j.Logger.ROOT_LOGGER_NAME, message)
 }
 

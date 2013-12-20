@@ -198,59 +198,59 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   }
 }
 
-//@Deprecated
-//class DatastoreInputStream(cryoctx: CryoContext, id: String, val size: Long = 0, var position: Long = 0) extends InputStream {
-//  implicit val contextExecutor = cryoctx.system.dispatcher
-//  implicit val timeout = Timeout(10 seconds)
-//  import akka.pattern.ask
-//
-//  private var buffer: ByteIterator = ByteIterator.ByteArrayIterator.empty
-//  private var limit = position
-//  val lastPosition = position + size
-//
-//  private def requestMoreData(): Int = {
-//    if (limit < lastPosition) {
-//      val n = Math.min(1024, (lastPosition - limit))
-//      Await.result((cryoctx.datastore ? ReadData(id, position, n.toInt))
-//        .map {
-//          case DataRead(_, _, data) =>
-//            buffer ++= data
-//            val dataSize = data.length
-//            limit += dataSize
-//            dataSize
-//          case e: DatastoreError =>
-//            throw e
-//        }, timeout.duration)
-//    } else
-//      -1
-//  }
-//
-//  override def available = buffer.size
-//
-//  override def read: Int = {
-//    if (buffer.hasNext) {
-//      position += 1
-//      buffer.next().toInt & 0xff
-//    } else {
-//      if (requestMoreData() >= 0)
-//        read
-//      else
-//        -1
-//    }
-//  }
-//
-//  override def read(b: Array[Byte], off: Int, len: Int): Int = {
-//    val n = math.min(lastPosition - position, len).toInt
-//    if (limit - position < n && requestMoreData >= 0)
-//      read(b, off, n)
-//    else {
-//      buffer.copyToArray(b, off, n)
-//      n
-//    }
-//  }
-//
-//  //override def skip(n: Long): Long = {
-//}
+@Deprecated
+class DatastoreInputStream(cryoctx: CryoContext, id: UUID, val size: Long = 0, var position: Long = 0) extends InputStream {
+  implicit val contextExecutor = cryoctx.system.dispatcher
+  implicit val timeout = Timeout(10 seconds)
+  import akka.pattern.ask
+
+  private var buffer: ByteIterator = ByteIterator.ByteArrayIterator.empty
+  private var limit = position
+  val lastPosition = position + size
+
+  private def requestMoreData(): Int = {
+    if (limit < lastPosition) {
+      val n = Math.min(1024, (lastPosition - limit))
+      Await.result((cryoctx.datastore ? ReadData(id, position, n.toInt))
+        .map {
+          case DataRead(_, _, data) =>
+            buffer ++= data
+            val dataSize = data.length
+            limit += dataSize
+            dataSize
+          case e: DatastoreError =>
+            throw e
+        }, timeout.duration)
+    } else
+      -1
+  }
+
+  override def available = buffer.size
+
+  override def read: Int = {
+    if (buffer.hasNext) {
+      position += 1
+      buffer.next().toInt & 0xff
+    } else {
+      if (requestMoreData() >= 0)
+        read
+      else
+        -1
+    }
+  }
+
+  override def read(b: Array[Byte], off: Int, len: Int): Int = {
+    val n = math.min(lastPosition - position, len).toInt
+    if (limit - position < n && requestMoreData >= 0)
+      read(b, off, n)
+    else {
+      buffer.copyToArray(b, off, n)
+      n
+    }
+  }
+
+  //override def skip(n: Long): Long = {
+}
 //
 //@Deprecated
 //class DatastoreOutputStream(cryoctx: CryoContext, id: String) extends OutputStream {

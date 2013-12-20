@@ -9,10 +9,11 @@ import akka.util.{ ByteString, ByteStringBuilder }
 
 import java.nio.file.{ Path, Files, AccessDeniedException }
 import java.nio.ByteOrder
+import java.util.UUID
 
 trait BaseSnapshot {
   def receive: Actor.Receive
-  def id: String
+  def id: UUID
 }
 
 class Snapshot(_cryoctx: CryoContext, snapshot: BaseSnapshot) extends CryoActor(_cryoctx) {
@@ -24,7 +25,7 @@ class Snapshot(_cryoctx: CryoContext, snapshot: BaseSnapshot) extends CryoActor(
   }
 }
 
-class SnapshotCreating(actor: CryoActor, _id: String)
+class SnapshotCreating(actor: CryoActor, _id: UUID)
   extends BaseSnapshot
   with LoggingClass
   with CryoAskSupport {
@@ -92,6 +93,7 @@ class SnapshotCreating(actor: CryoActor, _id: String)
     case SnapshotUpload(id) =>
       val _sender = sender
       val builder = IndexBuilder
+      
       //for (f <- files())
     //val archiveUploader = new IndexBuilder
     //      for (f <- files()) {
@@ -133,7 +135,7 @@ class SnapshotCreating(actor: CryoActor, _id: String)
     (files, size)
   }
 
-  class IndexBuilderState(indexData: ByteString, aid: String, len: Int) {
+  class IndexBuilderState(indexData: ByteString, aid: UUID, len: Int) {
     implicit val byteOrder = ByteOrder.BIG_ENDIAN
     def putString(s: String) = {
       val bs = ByteString(s, "UTF-8")
@@ -164,7 +166,7 @@ class SnapshotCreating(actor: CryoActor, _id: String)
   class IndexBuilder {
     import ByteStringSerializer._
     
-    case class State(aid: String, size: Int)
+    case class State(aid: UUID, size: Int)
     implicit class IndexOps(current: Future[State]) {
       def writeBlock(block: Block) = {
       val data = ByteString(block.data)
@@ -196,7 +198,7 @@ class SnapshotCreating(actor: CryoActor, _id: String)
       updateData(_.putPath(filename))
       (state /: blocks) {
         case (s, block) =>
-          (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {
+          (cryoctx.hashcatalog ? GetBlockLocation(block, true)) flatMap {
             case BlockLocationNotFound(_) => s.writeBlock(block)
             case bl: BlockLocation => s.map(_.putInt(bl.size)) // FIXME will be replace by block ID
             case x => throw CryoError("", x)

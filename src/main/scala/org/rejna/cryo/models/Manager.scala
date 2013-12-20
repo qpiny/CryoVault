@@ -9,7 +9,7 @@ import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption._
 import java.nio.ByteBuffer
-import java.util.Date
+import java.util.{ Date, UUID }
 
 import akka.util.ByteString
 import akka.event.Logging.Error
@@ -17,7 +17,6 @@ import akka.event.Logging.Error
 import com.amazonaws.services.glacier.model.GlacierJobDescription
 
 import ObjectStatus._
-
 
 object JobStatus {
   def apply(name: String, message: String) = name match {
@@ -105,6 +104,9 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   var jobUpdated = Promise[Unit]() /* var instead of val for test */
   var isDying = false
 
+  val finalizedJobsId = new UUID(0x0000000000001000L, 0xC47000000002L)
+  val finalizedJobsGlacierId = "finalizedJobs"
+    
   override def preStart = {
     log.info("Starting manager ...")
     log.info("Refreshing job list")
@@ -137,7 +139,7 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       isDying = true
 
       val _sender = sender
-      cryoctx.datastore ? CreateData(Some("finalizedJobs"), "Finalized jobs") flatMap {
+      (cryoctx.datastore ? CreateData(Some(finalizedJobsId), DataType.Internal)) eflatMap("") {
         case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Json.write(finalizedJobs.values))))
         case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
       } flatMap {

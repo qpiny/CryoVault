@@ -10,7 +10,7 @@ import com.amazonaws.services.s3.internal.InputSubstream
 
 object DataType extends Enumeration {
   type DataType = Value
-  val Data, Index, Inventory = Value
+  val Data, Index, Internal = Value
   
   def unapply(dt: String) = DataType.withName(dt)
 }
