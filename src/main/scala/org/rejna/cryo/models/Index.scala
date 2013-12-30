@@ -6,17 +6,51 @@ import scala.concurrent.Future
 
 import akka.actor.{ Actor, ActorContext }
 import akka.util.{ ByteString, ByteStringBuilder }
+import akka.event.Logging.Error
 
-import java.nio.file.{ Path, Files, AccessDeniedException }
-import java.nio.ByteOrder
+import java.io.IOException
+import java.nio.file._
+import java.nio.file.StandardOpenOption._
+import java.nio.file.attribute._
+import java.nio.channels.FileChannel
+import java.nio.{ ByteOrder, ByteBuffer }
 import java.util.UUID
+
+sealed abstract class SnapshotRequest extends Request { val id: UUID }
+sealed abstract class SnapshotResponse extends Response
+sealed abstract class SnapshotError(val message: String, cause: Throwable) extends GenericError {
+  val source = classOf[SnapshotCreating].getName
+  val marker = Markers.errMsgMarker
+}
+
+case class SnapshotUpdateFilter(id: UUID, file: String, filter: FileFilter) extends SnapshotRequest
+case class SnapshotGetFiles(id: UUID, path: String) extends SnapshotRequest
+case class SnapshotFiles(id: UUID, path: String, files: List[FileElement])
+case class FileElement(path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
+case class SnapshotGetFilter(id: UUID, path: String)
+case class SnapshotFilter(id: UUID, path: String, filter: Option[FileFilter])
+case class FilterUpdated() extends SnapshotResponse
+case class SnapshotUpload(id: UUID) extends SnapshotRequest
+case class SnapshotUploaded(id: UUID) extends SnapshotResponse
+case class GetID() extends Request
+case class ID(id: UUID) extends SnapshotResponse
+case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause) extends SnapshotError(s"Directory traversal attempt : ${directory}", cause)
+
+/*
+ * Snapshot type:
+ * Creating 
+ * Uploading
+ * Cached
+ * Remote
+ * Downloading
+ */
 
 trait BaseSnapshot {
   def receive: Actor.Receive
   def id: UUID
 }
 
-class Snapshot(_cryoctx: CryoContext, snapshot: BaseSnapshot) extends CryoActor(_cryoctx) {
+class Snapshot(_cryoctx: CryoContext, var snapshot: BaseSnapshot) extends CryoActor(_cryoctx) {
 
   def receive = snapshot.receive orElse {
     case GetID() =>
@@ -91,15 +125,16 @@ class SnapshotCreating(actor: CryoActor, _id: UUID)
  */
 
     case SnapshotUpload(id) =>
-      val _sender = sender
-      val builder = IndexBuilder
-      
-      //for (f <- files())
-    //val archiveUploader = new IndexBuilder
-    //      for (f <- files()) {
-    //        archiveUploader.addFile(f, splitFile(f))
-    //      }
+      //val _sender = sender
+      val builder = new IndexBuilder
 
+      builder.addFilters(fileFilters())
+      builder.addFiles(files())
+      (cryoctx.hashcatalog ? GetCatalogContent())
+        .emap("", {
+          case CatalogContent(catalog) =>
+            builder.addCatalog(catalog)
+        })
   }
 
   private object updateFiles extends AttributeListCallback {
@@ -135,87 +170,153 @@ class SnapshotCreating(actor: CryoActor, _id: UUID)
     (files, size)
   }
 
-  class IndexBuilderState(indexData: ByteString, aid: UUID, len: Int) {
-    implicit val byteOrder = ByteOrder.BIG_ENDIAN
-    def putString(s: String) = {
-      val bs = ByteString(s, "UTF-8")
-      val bsb = new ByteStringBuilder
-      bsb.putInt(bs.length)
-      bsb ++= bs
-      new IndexBuilderState(indexData ++ bsb.result, aid, len)
-    }
-    def putPath(p: Path) = putString(p.toString)
-    def putInt(i: Int) = {
-      val bsb = new ByteStringBuilder
-      bsb.putInt(i)
-      new IndexBuilderState(indexData ++ bsb.result, aid, len)
-    }
-
-    def flush = this // TODOsend indexData to datastore
-
-    def writeBlock(block: Block) = {
-      val data = ByteString(block.data)
-      (cryoctx.datastore ? WriteData(aid, data)) map {
-        case DataWritten(_, _, _) => new IndexBuilderState(indexData, aid, len + data.length)
-        case x => throw CryoError("", x)
-      }
-    }
-
-  }
-
   class IndexBuilder {
     import ByteStringSerializer._
-    
-    case class State(aid: UUID, size: Int)
+
+    case class State(index: ByteStringBuilder, aid: UUID, size: Int) // WARNING data is mutable
+
     implicit class IndexOps(current: Future[State]) {
-      def writeBlock(block: Block) = {
-      val data = ByteString(block.data)
-      current flatMap {
-        case State(aid, len) =>
-          (cryoctx.datastore ? WriteData(aid, data)) flatMap {
-            case DataWritten(i, p, l) =>
-              cryoctx.hashcatalog ? State(aid, len + data.length)
-            case x => throw CryoError("", x)
-          }
+
+      def writeBlock(block: Block): Future[State] = {
+        current.flatMap {
+          case State(index, aid, len) =>
+            val data = ByteString(block.data)
+            (cryoctx.datastore ? WriteData(aid, data))
+              .eflatMap("Fail to write block data", {
+                case DataWritten(_, pos, _) =>
+                  cryoctx.hashcatalog ? AddBlock(block, aid, pos)
+              }).emap("Fail to update hash catalog", {
+                case BlockAdded(bid) =>
+                  index.putInt(bid)
+                  State(index, aid, len + data.length)
+              })
+        }
       }
-    }
+
+      def putPath(path: Path): Future[State] = {
+        current.map {
+          case s @ State(index, aid, len) =>
+            index.putPath(path)
+            s
+        }
+      }
+
+      def putInt(i: Int): Future[State] = {
+        current.map {
+          case s @ State(index, aid, len) =>
+            index.putInt(i)
+            s
+        }
+      }
+
+      def putString(string: String): Future[State] = {
+        current.map {
+          case s @ State(index, aid, len) =>
+            index.putString(string)
+            s
+        }
+      }
+
+      def putBlockLocation(bl: BlockLocation): Future[State] = {
+        current.map {
+          case s @ State(index, aid, len) =>
+            //id: Int, hash: Hash, archiveId: UUID, offset: Long, size: Int
+            index.putInt(bl.id)
+            val hash = bl.hash.value
+            index.putByte(hash.length.asInstanceOf[Byte])
+            index.putBytes(hash)
+            index.putLong(bl.archiveId.getLeastSignificantBits)
+            index.putLong(bl.archiveId.getMostSignificantBits)
+            index.putLong(bl.offset)
+            index.putInt(bl.size)
+            s
+        }
+      }
     }
 
-    val data = new ByteStringBuilder // must not be used outside state future
-    var state = (cryoctx.inventory ? CreateArchive()) map {
-        case ArchiveCreated(aid) => State(aid, 0)
-        case o: Any => throw CryoError("Fail to create data", o)
+    var state = (cryoctx.inventory ? CreateArchive())
+      .emap("Fail to create data", {
+        case ArchiveCreated(aid) => State(new ByteStringBuilder, aid, 0)
+      })
+
+    def addFiles(files: List[Path]) = {
+      state = state.putInt(files.length)
+      for (f <- files)
+        addFile(f, splitFile(f))
+    }
+
+    private def addFile(filename: Path, blocks: TraversableOnce[Block]) = {
+      state = state.putPath(filename)
+      state = (state /: blocks) {
+        case (st, block) =>
+          (cryoctx.hashcatalog ? GetBlockLocation(block, true))
+            .eflatMap("", {
+              case BlockLocationNotFound(_) => st.writeBlock(block)
+              case bl: BlockLocation => st.putInt(bl.id) // FIXME will be replace by block ID
+            })
       }
-    
-    def updateData(body: (ByteStringBuilder) => Unit) = {
-      state = state.map {
-        case x =>
-          body(data)
-          x
+      state = state.putInt(-1) // end of block list
+    }
+
+    def addFilters(filters: List[(Path, FileFilter)]) = {
+      state = state.putInt(filters.length)
+      for ((path, filter) <- filters) {
+        state = state.putPath(path)
+        state = state.putString(filter.toString)
       }
     }
-    def addFile(filename: Path, blocks: TraversableOnce[Block]) = {
-      updateData(_.putPath(filename))
-      (state /: blocks) {
-        case (s, block) =>
-          (cryoctx.hashcatalog ? GetBlockLocation(block, true)) flatMap {
-            case BlockLocationNotFound(_) => s.writeBlock(block)
-            case bl: BlockLocation => s.map(_.putInt(bl.size)) // FIXME will be replace by block ID
-            case x => throw CryoError("", x)
-          }
-      } map (_.flush)
+
+    def addCatalog(catalog: List[BlockLocation]) = {
+      state = state.putInt(catalog.length)
+      for (bl <- catalog)
+        state = state.putBlockLocation(bl)
     }
   }
-  object IndexBuilder {
-    def apply() = {
-      val state = (cryoctx.inventory ? CreateArchive()) map {
-        case ArchiveCreated(aid) => new IndexBuilderState(ByteString.empty, aid, 0)
-        case o: Any => throw CryoError("Fail to create data", o)
+  //  object IndexBuilder {
+  //    def apply() = {
+  //      val state = (cryoctx.inventory ? CreateArchive())
+  //        .emap("Fail to create data", {
+  //          case ArchiveCreated(aid) => new IndexBuilderState(ByteString.empty, aid, 0)
+  //        })
+  //      new IndexBuilder(state)
+  //    }
+  //  }
+  private def splitFile(f: Path) = new Traversable[Block] {
+    def foreach[U](func: Block => U) = {
+      val input = FileChannel.open(cryoctx.baseDirectory.resolve(f), READ)
+      try {
+        val buffer = ByteBuffer.allocate(1024) //FIXME blockSizeFor(Files.size(file)))
+        Iterator.continually { buffer.clear; input.read(buffer) }
+          .takeWhile(_ != -1)
+          .filter(_ > 0)
+          .foreach(size => {
+            buffer.flip
+            func(Block(buffer)(cryoctx))
+          })
+      } finally {
+        input.close
       }
-      new IndexBuilder(state)
     }
   }
 }
+
+class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
+  //def this(path: String) = this(FileSystems.getDefault.getPath(path))
+
+  def foreach[U](f: ((Path, BasicFileAttributes)) => U) {
+    class Visitor extends SimpleFileVisitor[Path] {
+      override def visitFileFailed(file: Path, exc: IOException) = FileVisitResult.CONTINUE
+      override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = try {
+        f(file -> attrs)
+        FileVisitResult.CONTINUE
+      } catch {
+        case _: Throwable => FileVisitResult.TERMINATE
+      }
+    }
+    Files.walkFileTree(path, new Visitor)
+  }
+}
+
 //    blocks.map {
 //      case block =>
 //        (cryoctx.hashcatalog ? GetBlockLocation(block)) flatMap {

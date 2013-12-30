@@ -2,7 +2,7 @@ package org.rejna.cryo.models
 
 import akka.util.ByteString
 
-import java.util.Date
+import java.util.{ Date, UUID }
 import java.nio.file.Path
 import java.io.File
 
@@ -14,8 +14,6 @@ import org.json4s.ext.EnumNameSerializer
 
 import org.joda.time.DateTime
 import org.joda.time.format.{ DateTimeFormatter, DateTimeFormatterBuilder }
-
-import EntryStatus._
 
 object Json extends Formats {
   implicit val format = this
@@ -53,7 +51,7 @@ object Json extends Formats {
     def format(d: Date): String = jodaDateFormat.print(new DateTime(d))
   }
   override val typeHints = NoTypeHints
-  override val customSerializers = new EnumNameSerializer(EntryStatus) ::
+  override val customSerializers =
     JsonDataEntry ::
     JsonFileElement ::
     JsonFilefilter ::
@@ -88,36 +86,38 @@ case object JsonFileElement extends CustomSerializer[FileElement](format => (
   },
   {
     case fe: FileElement =>
-      //compact(render(
       ("name" -> fe.path.getFileName.toString) ~
         ("path" -> fe.path.toString.replace(File.separatorChar, '!')) ~
         ("isFolder" -> fe.isFolder) ~
         ("filter" -> fe.filter.map(_.toString)) ~
         ("count" -> fe.count) ~
         ("size" -> fe.size)
-    //))
   }))
 
 private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
   {
     case o @ JObject(
       JField("id", JString(id)) ::
-        JField("description", JString(description)) ::
+        JField("dataType", JString(dataType)) ::
         JField("creationDate", JString(creationDate)) ::
         JField("size", JInt(size)) ::
         JField("checksum", JString(checksum)) ::
         Nil) =>
       val status = (o \ "status") match {
         case JString(s) =>
-          EntryStatus.values.find(_.toString == s).getOrElse(Unknown)
-        case _: Any => Unknown
+          ObjectStatus(s)
+        case _ =>
+          ObjectStatus.Unknown()
       }
-      DataStatus(id, description, Json.readDate(creationDate).getOrElse(new Date), status, size.toLong, checksum)
+      DataStatus(UUID.fromString(id),
+          DataType.withName(dataType),
+          Json.readDate(creationDate).getOrElse(new Date),
+          status, size.toLong, checksum)
   },
   {
     case ds: DataStatus =>
-      ("id" -> JString(ds.id)) ~
-        ("description" -> JString(ds.description)) ~
+      ("id" -> JString(ds.id.toString)) ~
+        ("dataType" -> JString(ds.dataType.toString)) ~
         ("creationDate" -> Json.writeDate(ds.creationDate)) ~
         ("status" -> ds.status.toString) ~
         ("size" -> ds.size) ~

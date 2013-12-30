@@ -25,6 +25,19 @@ object ObjectStatus {
   case class Remote(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
   case class Downloading(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
   case class Unknown() extends ObjectStatus
+  
+  def apply(name: String) = {
+    val regex = """(\w+)(?:\((\w+)\))?""".r
+    val regex(clazz, id) = name
+    clazz match {
+      case "Creating" => Creating()
+      case "Uploading" => Uploading()
+      case "Cached" if id != null => Cached(id)
+      case "Remote" if id != null => Remote(id)
+      case "Downloading" if id != null => Downloading(id)
+      case "Unknown" => Unknown()
+    }
+  }
 }
 
 case object InvalidStateException extends Exception

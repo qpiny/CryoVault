@@ -18,7 +18,7 @@ import java.util.{ Date, UUID }
 import DataType._
 
 sealed abstract class DatastoreRequest extends Request
-sealed abstract class DatastoreResponse extends Response { val id: String }
+sealed abstract class DatastoreResponse extends Response { val id: UUID }
 sealed abstract class DatastoreError(message: String, cause: Throwable) extends GenericError {
   val source = classOf[Datastore].getName
   val marker = Markers.errMsgMarker
@@ -122,13 +122,14 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         }
         i
       }
+      val entryAttributeBuilder = attributeBuilder / id
       repository.get(id) match {
-        case Some(d: DataEntryCreated) =>
+        case Some(d: DataEntryCreated) if d.state.dataType == Internal =>
           d.close
-          repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, attributeBuilder / id)
+          repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, entryAttributeBuilder("size", size))
           sender ! DataCreated(id)
         case None =>
-          repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, attributeBuilder / id)
+          repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, entryAttributeBuilder("size", size))
           sender ! DataCreated(id)
         case Some(d) =>
           sender ! OpenError(s"Data ${id} can't be created (${d.status})")
@@ -138,7 +139,8 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       repository.get(id) match {
         case Some(_) => // data already defined, ignore it
         case None =>
-          repository += id -> new DataEntryRemote(cryoctx, id, glacierId, dataType, creationDate, size, checksum, attributeBuilder / id)
+          val entryAttributeBuilder = attributeBuilder / id
+          repository += id -> new DataEntryRemote(cryoctx, id, glacierId, dataType, creationDate, size, checksum, entryAttributeBuilder("size", size))
       }
       sender ! DataDefined(id)
 

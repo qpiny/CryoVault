@@ -34,20 +34,24 @@ trait CryoAskSupport extends LoggingClass {
   implicit def ask(actorRef: ActorRef)(implicit executionContext: ExecutionContext, cryoctx : CryoContext) = new CryoAskableActorRef(getClass.getName, cryoctx, actorRef)
   
   implicit class FutureMap[A](future: Future[A]) {
-    def emap[B](message: String)(f: PartialFunction[A, B])(implicit executionContext: ExecutionContext) = {
+    def emap[B](message: String, f: PartialFunction[A, B])(implicit executionContext: ExecutionContext) = {
       future.map(f.orElse {
         case unexpected => throw CryoError(message, unexpected)
       })
     }
     
-    def eflatMap[B](message: String)(f: PartialFunction[A, Future[B]])(implicit executionContext: ExecutionContext) = {
+    def eflatMap[B](message: String, f: PartialFunction[A, Future[B]])(implicit executionContext: ExecutionContext) = {
       future.flatMap(f.orElse {
         case unexpected => throw CryoError(message, unexpected)
       })
     }
     
-    def reply(message: String, sender: ActorRef)(implicit executionContext: ExecutionContext) = {
+    def reply(message: String, sender: ActorRef)(implicit executionContext: ExecutionContext, cryoctx : CryoContext) = {
       future.onComplete {
+        case Success(m) if (sender == cryoctx.system.deadLetters) =>
+          log.info(s"Ignoring reply message: ${m}")
+        case Failure(t) if (sender == cryoctx.system.deadLetters) =>
+          log.info(s"Ignoring reply error", t)
         case Success(m) =>
           sender ! m
         case Failure(ce: CryoError) =>

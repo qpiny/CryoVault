@@ -29,10 +29,10 @@ object ByteStringSerializer {
       bsBuilder.putInt(bl.size)
       bsBuilder
     }
-    def putHashVersion(hash: HashVersion): ByteStringBuilder = {
-      bsBuilder.putBytes(hash.value)
-      bsBuilder.putInt(hash.version)
-    }
+//    def putHashVersion(hash: HashVersion): ByteStringBuilder = {
+//      bsBuilder.putBytes(hash.value)
+//      bsBuilder.putInt(hash.version)
+//    }
     def putHash(hash: Hash): ByteStringBuilder = {
       bsBuilder.putBytes(hash.value)
     }

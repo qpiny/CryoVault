@@ -51,11 +51,11 @@ object DataEntry {
     val entryAttributeBuilder = attributeBuilder / state.id
     state.status match {
       case Creating() | Uploading() =>
-        new DataEntryCreating(cryoctx, state.id, state.dataType, state.size, entryAttributeBuilder)
+        new DataEntryCreating(cryoctx, state.id, state.dataType, state.size, entryAttributeBuilder("size", state.size))
       case Cached(glacierId) =>
         new DataEntryCreated(cryoctx, state.id, glacierId, state.dataType, state.creationDate, entryAttributeBuilder("size", state.size), state.checksum)
       case Remote(_) | Downloading(_) =>
-        new DataEntryRemote(cryoctx, state.id, state.status.getGlacierId.get, state.dataType, state.creationDate, state.size, state.checksum, entryAttributeBuilder)
+        new DataEntryRemote(cryoctx, state.id, state.status.getGlacierId.get, state.dataType, state.creationDate, state.size, state.checksum, entryAttributeBuilder("size", state.size))
       case e =>
         throw CryoError(s"Unsupported data entry status ${e}")
     }
@@ -70,14 +70,21 @@ class DataEntryRemote(
   creationDate: Date,
   initSize: Long,
   checksum: String,
-  entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, dataType, creationDate, checksum) {
+  val sizeAttribute: SimpleAttribute[Long]) extends DataEntry(cryoctx, id, dataType, creationDate, checksum) {
 
   def status = Remote(glacierId)
-  val sizeAttribute = entryAttributeBuilder("size", initSize)
 
-  def prepareForDownload = new DataEntryDownloading(cryoctx, id, glacierId, dataType, creationDate, size, checksum, entryAttributeBuilder)
+  def prepareForDownload = new DataEntryDownloading(cryoctx, id, glacierId, dataType, creationDate, size, checksum, sizeAttribute)
 
   def read(position: Long, length: Int) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for read")
+  
+  def clearLocalCache = this
+  
+  def close = Unit
+  
+  def pack(gid: String) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for pack")
+  
+  def write(position: Long, buffer: ByteString) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for write")
 }
 
 class DataEntryCreating(
@@ -85,11 +92,10 @@ class DataEntryCreating(
   id: UUID,
   dataType: DataType,
   initSize: Long,
-  entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, dataType, new Date, "") with LoggingClass {
+  val sizeAttribute: SimpleAttribute[Long]) extends DataEntry(cryoctx, id, dataType, new Date, "") with LoggingClass {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".creating")
   def status = Creating()
-  val sizeAttribute = entryAttributeBuilder("size", initSize)
 
   val digest = MessageDigest.getInstance("SHA-256")
   val MB = 1024 * 1024
@@ -105,7 +111,9 @@ class DataEntryCreating(
     try Files.size(file)
     catch { case e: IOException => 0 }
 
-  def write(buffer: ByteString): Int = {
+  def write(position: Long, buffer: ByteString): Int = {
+    if (position != -1)
+      throw WriteError("Only append is permitted with creating data entry")
     if (!channel.isOpen)
       throw WriteError(s"Channel of data ${id}(Creating) is closed")
     val array = buffer.toArray
@@ -130,13 +138,21 @@ class DataEntryCreating(
     n
   }
 
-  def close(glacierId: String): DataEntryCreated = {
+  def pack(glacierId: String): DataEntryCreated = {
     channel.close
     log.debug(s"Closing ${id} size = ${Files.size(file)}")
     if (blockSize > 0)
       checksums += digest.digest
     new DataEntryCreated(cryoctx, id, glacierId, dataType, creationDate, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
   }
+  
+  def clearLocalCache = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for clearLocalCache")
+  
+  def close = if (channel.isOpen) channel.close
+  
+  def prepareForDownload = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for prepareForDownload")
+  
+  def read(position: Long, length: Int) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for read")
 }
 
 class DataEntryCreated(
@@ -166,9 +182,16 @@ class DataEntryCreated(
     c
   }
 
-  def write(buffer: ByteString): Int = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for write")
+  def write(position: Long, buffer: ByteString): Int = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for write")
 
   def close = channel.close
+  
+  def prepareForDownload = new DataEntryDownloading(cryoctx, id, glacierId, dataType, creationDate, size, checksum, sizeAttribute)
+  
+  def clearLocalCache = new DataEntryRemote(cryoctx, id, glacierId, dataType, creationDate, size, checksum, sizeAttribute)
+  
+  def pack(gid: String) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for pack")
+  
 }
 
 class DataEntryDownloading(
@@ -179,11 +202,10 @@ class DataEntryDownloading(
   creationDate: Date,
   val expectedSize: Long,
   checksum: String,
-  entryAttributeBuilder: CryoAttributeBuilder) extends DataEntry(cryoctx, id, dataType, creationDate, checksum) {
+  val sizeAttribute: SimpleAttribute[Long]) extends DataEntry(cryoctx, id, dataType, creationDate, checksum) {
 
   override val file = cryoctx.workingDirectory.resolve(id + ".loading")
   def status = Downloading(glacierId)
-  val sizeAttribute = entryAttributeBuilder("size", 0L)
   val channel = FileChannel.open(file, WRITE, CREATE)
   var range = MultiRange.empty[Long] // TODO Resume
 
@@ -197,18 +219,18 @@ class DataEntryDownloading(
     n
   }
 
-  def close: DataEntryCreated = {
+  def close = {
+    channel.close
+  }
+
+  def prepareForDownload = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for prepareForDownload")
+  
+  def clearLocalCache = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for clearLocalCache")
+  
+  def read(position: Long, length: Int) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for read")
+  
+  def pack(glacierId: String): DataEntryCreated = {
     channel.close
     new DataEntryCreated(cryoctx, id, glacierId, dataType, creationDate, sizeAttribute, checksum)
   }
-
-  //override def state = EntryState(status, id, description, creationDate, expectedSize, checksum, Some(range))
 }
-//case class EntryState(
-//  status: EntryStatus,
-//  id: String,
-//  description: String,
-//  creationDate: Date,
-//  size: Long,
-//  checksum: String)//,
-  //range: Option[MultiRange[Long]] = None)

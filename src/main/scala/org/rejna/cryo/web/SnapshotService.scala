@@ -2,6 +2,8 @@ package org.rejna.cryo.web
 
 import scala.concurrent.ExecutionContext
 
+import java.util.UUID
+
 import spray.httpx.Json4sSupport
 import spray.routing.Directive1
 
@@ -19,6 +21,7 @@ trait SnapshotService
   implicit val executionContext: ExecutionContext
 
   val filePath = Segment.map(_.replace('!', '/'))
+  val uuid = Segment.map(UUID.fromString(_))
 //  val requestBody = extract(_.request.entity.asString)
 //  val fileFilter = requestBody.flatMap(ff => FileFilterParser.parse(ff).fold[Directive1[FileFilter]](x => {
 //    println(s"DEBUG>>>> Parse error |${ff}|=>|${x}|")
@@ -41,7 +44,7 @@ trait SnapshotService
             }
           }
         } ~
-        path(Segment) { snapshotId =>
+        path(uuid) { snapshotId =>
           get { implicit ctx =>
             (cryoctx.datastore ? GetDataStatus(snapshotId)).expect[DataStatus]
           } ~
@@ -51,7 +54,7 @@ trait SnapshotService
               }
             }
         } ~
-        pathPrefix(Segment) { snapshotId =>
+        pathPrefix(uuid) { snapshotId =>
           pathPrefix("files") {
             get { implicit ctx =>
               val path = ctx.unmatchedPath.toString.dropWhile(_ == '/').replace("!", "/")

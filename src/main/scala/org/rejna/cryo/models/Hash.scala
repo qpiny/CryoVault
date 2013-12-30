@@ -14,15 +14,15 @@ class Hash(val value: Array[Byte]) {
   // TODO equals HashVersion
 }
 
-class HashVersion(value: Array[Byte], val version: Int) extends Hash(value) {
-  lazy val hash = new Hash(value)
-  override def toString = s"${super.toString}-${version}"
-  // TODO equals Hash
-}
-
-object HashVersion {
-  def apply(value: Array[Byte], version: Int) = new HashVersion(value, version)
-}
+//class HashVersion(value: Array[Byte], val version: Int) extends Hash(value) {
+//  lazy val hash = new Hash(value)
+//  override def toString = s"${super.toString}-${version}"
+//  // TODO equals Hash
+//}
+//
+//object HashVersion {
+//  def apply(value: Array[Byte], version: Int) = new HashVersion(value, version)
+//}
 
 object Hash {
 //  def apply(file: Path) = {

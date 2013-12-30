@@ -83,12 +83,12 @@ sealed abstract class ManagerError(message: String, cause: Throwable) extends Ge
   val marker = Markers.errMsgMarker
 }
 
-case class AddJobs(jobs: List[Job]) extends ManagerRequest
-object AddJobs { def apply(jobs: Job*): AddJobs = AddJobs(jobs.toList) }
-case class JobsAdded(jobs: List[Job]) extends ManagerResponse
-case class RemoveJobs(jobIds: List[String]) extends ManagerRequest
-object RemoveJobs { def apply(jobIds: String*): RemoveJobs = RemoveJobs(jobIds.toList) }
-case class JobsRemoved(jobIds: List[String]) extends ManagerResponse
+case class AddJob(job: Job) extends ManagerRequest
+//object AddJob { def apply(jobs: Job*): AddJobs = AddJobs(jobs.toList) }
+case class JobAdded(job: Job) extends ManagerResponse
+case class RemoveJob(jobId: String) extends ManagerRequest
+//object RemoveJobs { def apply(jobIds: String*): RemoveJobs = RemoveJobs(jobIds.toList) }
+case class JobRemoved(jobId: String) extends ManagerResponse
 case class UpdateJobList(jobs: List[Job]) extends ManagerRequest
 case class JobListUpdated(jobs: List[Job]) extends ManagerResponse
 case class GetJobList() extends ManagerRequest
@@ -115,18 +115,14 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       case o: Any => log(CryoError("Fail to refresh job list", o))
     }
 
-    (cryoctx.datastore ? GetDataStatus("finalizedJobs")) flatMap {
+    (cryoctx.datastore ? GetDataStatus("finalizedJobs"))
+    .eflatMap("Fail to get finalizedJobs", {
       case DataStatus(id, _, _, status, size, _) if status == Cached && size > 0 =>
         (cryoctx.datastore ? ReadData(id, 0, size.toInt))
-      case dnfe: DataNotFoundError => throw dnfe
-      case o: Any =>
-        throw CryoError("Fail to get finalizedJobs", o)
-    } map {
+    }).emap("Fail to read finalizedJobs", {
       case DataRead(_, _, buffer) =>
         finalizedJobs ++= Json.read[List[Job]](buffer).map(j => j.id -> j)
-      case o: Any =>
-        throw CryoError("Fail to read finalizedJobs", o)
-    } onComplete {
+    }).onComplete {
       case Success(_) => log.info("Finalized jobs loaded")
       case Failure(DataNotFoundError(_, _, _)) => log.info("Finalized jobs not found")
       case Failure(e) => log.error("Fail to load Finalized jobs", e)
@@ -138,31 +134,33 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case PrepareToDie() if !isDying =>
       isDying = true
 
-      val _sender = sender
-      (cryoctx.datastore ? CreateData(Some(finalizedJobsId), DataType.Internal)) eflatMap("") {
+      (cryoctx.datastore ? CreateData(Some(finalizedJobsId), DataType.Internal))
+      .eflatMap("Fail to create finalizedJobs data", {
         case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Json.write(finalizedJobs.values))))
-        case o: Any => throw CryoError("Fail to create finalizedJobs data", o)
-      } flatMap {
+      }).eflatMap("Fail to write finalizedJobs data", {
         case DataWritten(id, _, _) => cryoctx.datastore ? CloseData(id)
-        case o: Any => throw CryoError("Fail to write finalizedJobs data", o)
-      } onComplete {
-        case Success(DataClosed(_)) =>
-          _sender ! ReadyToDie()
+      }).emap("Fail to save finalized jobs", {
+        case DataClosed(_) =>
           log.info("FinalizedJobs data has been stored")
-        case o: Any =>
-          _sender ! ReadyToDie()
-          log(CryoError("Fail to save finalized jobs", o))
+          ReadyToDie()
+      }).recover({
+        case t: Any =>
+          log(CryoError("Fail to save finalized jobs", t))
+          ReadyToDie()
+      }).reply("Fail to save finalized jobs", sender)
+
+    case AddJob(addedJob) =>
+      if (!finalizedJobs.contains(addedJob.id))
+        jobs += addedJob.id -> addedJob
+      sender ! JobAdded(addedJob)
+
+    case RemoveJob(jobId) =>
+      if (jobs.contains(jobId)) {
+        jobs -= jobId
+        sender ! JobRemoved(jobId)
+      } else {
+        sender ! JobNotFound(jobId, "Can't remove a non-existent job")
       }
-
-    case AddJobs(addedJobs) =>
-      val unfinalizedJobs = addedJobs.filterNot(j => finalizedJobs.contains(j.id))
-      jobs ++= unfinalizedJobs.map(j => j.id -> j)
-      sender ! JobsAdded(unfinalizedJobs)
-
-    case RemoveJobs(jobIds) =>
-      val presentJobs = jobIds.filter(jobs.contains(_))
-      jobs --= presentJobs
-      sender ! JobsRemoved(presentJobs)
 
     case UpdateJobList(jl) =>
       val unfinalizedJobs = jl.filterNot(j => finalizedJobs.contains(j.id))

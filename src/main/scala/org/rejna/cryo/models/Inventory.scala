@@ -56,7 +56,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   private var isDying = false
 
   val attributeBuilder = CryoAttributeBuilder("/cryo/inventory")
-  
+
   val inventoryId = new UUID(0x0000000000001000L, 0xC47000000001L)
   val inventoryGlacierId = "inventory"
 
@@ -130,128 +130,114 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
   CryoEventBus.subscribe(self, s"/cryo/datastore/${inventoryId}")
 
-  override def preStart = {
-    reload
-  }
+  override def preStart = reload
 
   private def getDataStatusList(ids: TraversableOnce[UUID]) = {
     Future.sequence(ids.map(id => (cryoctx.datastore ? GetDataStatus(id)).mapTo[DataStatus]).toList)
   }
 
-  private def save() = {
-    cryoctx.datastore ? CreateData(Some(inventoryId), DataType.Internal) flatMap {
-      case DataCreated(id) =>
-        val fArchList = getDataStatusList(archiveIds ++ snapshotIds)
-
-        fArchList flatMap {
-          case archiveList =>
-            val inventoryMsg = InventoryMessage(date, archiveList)
-            cryoctx.datastore ? WriteData(id, ByteString(Json.write(inventoryMsg)))
-        }
-      case e: Any => throw CryoError("Fail to create inventory", e)
-    } flatMap {
-      case DataWritten(id, _, _) =>
-        cryoctx.datastore ? CloseData(id)
-      case e: Any =>
-        throw CryoError("Fail to write inventory", e)
-    } map {
-      case DataClosed(id) =>
-        status = Cached(inventoryGlacierId)
-        log.info("Inventory saved")
-      case o: Any =>
-        throw CryoError("Fail to close inventory", o)
-    }
+  private def save(): Future[Unit] = {
+    (cryoctx.datastore ? CreateData(Some(inventoryId), DataType.Internal))
+      .eflatMap("Fail to create inventory", {
+        case DataCreated(id) =>
+          getDataStatusList(archiveIds ++ snapshotIds)
+            .flatMap {
+              case archiveList =>
+                val inventoryMsg = InventoryMessage(date, archiveList)
+                cryoctx.datastore ? WriteData(id, ByteString(Json.write(inventoryMsg)))
+            }
+      }).eflatMap("Fail to write inventory", {
+        case DataWritten(id, _, _) =>
+          cryoctx.datastore ? CloseData(id)
+      }).emap("Fail to close inventory", {
+        case Success(DataClosed(id)) =>
+          status = Cached(inventoryGlacierId)
+          log.info("Inventory saved")
+      })
   }
 
   private def loadFromDataStore(size: Long): Future[ObjectStatus] = {
     import DataType._
 
-    cryoctx.datastore ? ReadData(inventoryId, 0, size.toInt) map {
-      case DataRead(id, position, buffer) =>
-        val message = buffer.decodeString("UTF-8")
-        val inventory = Json.read[InventoryMessage](message)
-        cryoctx.inventory ! UpdateInventoryDate(inventory.date)
-
-        inventory.entries.collect {
-          case ds @ DataStatus(id, dataType, creationDate, Remote(glacierId), size, checksum) =>
-            (cryoctx.datastore ? DefineData(id, glacierId, dataType, creationDate, size, checksum)) map {
-              case DataDefined(_) =>
-                dataType match {
-                  case Data => cryoctx.inventory ! AddArchive(id)
-                  case Index => cryoctx.inventory ! AddSnapshot(id)
-                }
-              case o: Any => log(CryoError(s"Fail to define data for ${ds}", o))
-            }
-
-        }
-        Cached(inventoryGlacierId)
-      case o: Any => throw CryoError("Fail to read inventory data", o)
-    }
+    (cryoctx.datastore ? ReadData(inventoryId, 0, size.toInt))
+      .emap("Fail to read inventory data", {
+        case DataRead(id, position, buffer) =>
+          val message = buffer.decodeString("UTF-8")
+          val inventory = Json.read[InventoryMessage](message)
+          cryoctx.inventory ! UpdateInventoryDate(inventory.date)
+          inventory.entries.collect {
+            case ds @ DataStatus(id, dataType, creationDate, Remote(glacierId), size, checksum) =>
+              (cryoctx.datastore ? DefineData(id, glacierId, dataType, creationDate, size, checksum))
+                .emap("Fail to define data for ${ds}", {
+                  case DataDefined(_) =>
+                    dataType match {
+                      case Data => cryoctx.inventory ! AddArchive(id)
+                      case Index => cryoctx.inventory ! AddSnapshot(id)
+                    }
+                })
+          }
+          Cached(inventoryGlacierId)
+      })
   }
 
   private def reload() = {
-    (cryoctx.datastore ? GetDataStatus(inventoryId)) flatMap {
-      case DataStatus(_, _, _, Cached(_), size, _) =>
-        loadFromDataStore(size)
-      case _: DataStatus =>
-        log.info("Waiting for inventory download completion")
-        Future(Downloading(_))
-      case DataNotFoundError(id, _, _) =>
-        log.info("No inventory found in datastore")
-        (cryoctx.notification ? GetNotification()) map {
-          case NotificationGot() =>
-          case e: Any => log(CryoError("Fail to get notification", e))
-        } flatMap { _ =>
-          (cryoctx.manager ? GetJobList())
-        } flatMap {
-          case JobList(jl) if !jl.exists(_.objectId == "inventory") =>
-            (cryoctx.cryo ? RefreshInventory()) map {
-              case RefreshInventoryRequested(job) =>
-                log.info(s"Inventory update requested (${job.id})")
-                Downloading(inventoryGlacierId)
-              case o: Any => throw CryoError("Fail to refresh inventory", o)
-            }
-          case _: JobList =>
-            log.info("Inventory update has been already requested")
-            Future(Downloading(inventoryGlacierId))
-          case o: Any =>
-            throw CryoError("Fail to get job list", o)
-        }
-      case o: Any =>
-        throw CryoError("Fail to get inventory status", o)
-    } onComplete {
-      case Failure(t) =>
-        log(CryoError("An error has occured while updating inventory", t))
-      case Success(s) =>
-        status = s
-    }
+    (cryoctx.datastore ? GetDataStatus(inventoryId))
+      .eflatMap("Fail to get job list", {
+        case DataStatus(_, _, _, Cached(_), size, _) =>
+          loadFromDataStore(size)
+        case DataStatus(_, _, _, status, _, _) =>
+          log.info("Waiting for inventory download completion")
+          Future(status)
+        case DataNotFoundError(id, _, _) =>
+          log.info("No inventory found in datastore")
+          (cryoctx.notification ? GetNotification())
+            .emap("Fail to get notification", {
+              case NotificationGot() =>
+            }).flatMap({
+              case _ => (cryoctx.manager ? GetJobList())
+            }).eflatMap("Fail to get job list", {
+              case JobList(jl) if !jl.exists(_.objectId == "inventory") =>
+                (cryoctx.cryo ? RefreshInventory())
+                  .emap("Fail to refresh inventory", {
+                    case RefreshInventoryRequested(job) =>
+                      log.info(s"Inventory update requested (${job.id})")
+                      Downloading(inventoryGlacierId)
+                  })
+              case _: JobList =>
+                log.info("Inventory update has been already requested")
+                Future(Downloading(inventoryGlacierId))
+            })
+      }).onComplete({
+        case Failure(t) =>
+          log(CryoError("An error has occured while updating inventory", t))
+        case Success(s) =>
+          status = s
+      })
   }
 
-  private def createSnapshot = {
-    cryoctx.datastore ? CreateData(None, Index) map {
-      case DataCreated(id) =>
-        val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx, id))
-        snapshotIds += id
-        id
-      case e: Any =>
-        throw CryoError("Error while creating a new snapshot", e)
-    }
+  private def createSnapshot: Future[UUID] = {
+    (cryoctx.datastore ? CreateData(None, Index))
+      .emap("Error while creating a new snapshot", {
+        case Success(DataCreated(id)) =>
+          //val aref = context.actorOf(Props(classOf[SnapshotCreating], cryoctx, id))
+          snapshotIds += id
+          id
+      })
   }
 
   def receive = cryoReceive {
     case PrepareToDie() if !isDying =>
       isDying = true
-      val _sender = sender
-      Future.sequence(snapshotActors.values map { _ ? PrepareToDie() }) flatMap {
-        case _ => save()
-      } onComplete {
-        case Success(_) =>
-          log.debug("Inventory is ready to die")
-          _sender ! ReadyToDie()
-        case Failure(e) =>
-          log.error("Inventory shutdown has generated an error", e)
-          _sender ! ReadyToDie()
-      }
+      Future.sequence(snapshotActors.values map { _ ? PrepareToDie() })
+        .flatMap({
+          case _ => save()
+        }).map({
+          case _ => ReadyToDie()
+        }).recover({
+          case e: Any =>
+            log(CryoError("Inventory shutdown has generated an error", e))
+            ReadyToDie()
+        }).reply("", sender)
 
     ////// private messages //////////////
     case UpdateInventoryDate(d) => date = d
@@ -278,61 +264,42 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       }
 
     case CreateArchive() =>
-      val _sender = sender
-      (cryoctx.datastore ? CreateData(None, Data)).onComplete { // TODO set better description
-        case Success(DataCreated(id)) =>
-          archiveIds += id
-          _sender ! ArchiveCreated(id)
-        case e: Any =>
-          _sender ! CryoError("Error while creating a new archive", e)
-      }
+      (cryoctx.datastore ? CreateData(None, Data))
+        .emap("Fail to create data", {
+          case DataCreated(id) =>
+            archiveIds += id
+            ArchiveCreated(id)
+        }).reply("Error while creating a new archive", sender)
 
     case DeleteArchive(id) =>
-      val _sender = sender
       archiveIds -= id
-      (cryoctx.datastore ? DeleteData(id)).onComplete {
-        case Success(DataDeleted(id)) =>
-          _sender ! ArchiveDeleted(id)
-        case Success(DataNotFoundError(Left(id), str, _)) =>
-          _sender ! ArchiveNotFound(id, s"Archive ${id} was not found")
-        case e: Any =>
-          _sender ! CryoError(s"Error while deleting archive ${id}", e)
-      }
+      (cryoctx.datastore ? DeleteData(id))
+        .emap("Fail to delete data", {
+          case DataDeleted(id) => ArchiveDeleted(id)
+          case DataNotFoundError(Left(id), str, _) => ArchiveNotFound(id, s"Archive ${id} was not found")
+        }).reply(s"Error while deleting archive ${id}", sender)
 
     case DeleteSnapshot(id) =>
-      val _sender = sender
       snapshotIds -= id
-      (cryoctx.datastore ? DeleteData(id)).onComplete {
-        case Success(DataDeleted(id)) =>
-          _sender ! SnapshotDeleted(id)
-        case Success(DataNotFoundError(Left(id), str, _)) =>
-          _sender ! SnapshotNotFound(id, s"Snapshot ${id} was not found")
-        case e: Any =>
-          _sender ! CryoError(s"Error while deleting snapshot ${id}", e)
-      }
+      (cryoctx.datastore ? DeleteData(id))
+        .emap("Fail to delete data", {
+          case DataDeleted(id) => SnapshotDeleted(id)
+          case DataNotFoundError(Left(id), str, _) => SnapshotNotFound(id, s"Snapshot ${id} was not found")
+        }).reply(s"Error while deleting snapshot ${id}", sender)
 
     case CreateSnapshot() =>
-      val _sender = sender
-      createSnapshot onComplete {
-        case Success(id) =>
-          _sender ! SnapshotCreated(id)
-        case Failure(e) =>
-          _sender ! CryoError("Fail to create snapshot", e)
-      }
+      createSnapshot.map(SnapshotCreated(_))
+        .reply("Fail to create snapshot", sender)
 
     case GetArchiveList() =>
-      val _sender = sender
-      getDataStatusList(archiveIds) onComplete {
-        case Success(al) => _sender ! ArchiveList(date, status, al)
-        case e: Any => _sender ! CryoError("Can't get archive list", e)
-      }
+      getDataStatusList(archiveIds)
+        .map(ArchiveList(date, status, _))
+        .reply("Can't get archive list", sender)
 
     case GetSnapshotList() =>
-      val _sender = sender
-      getDataStatusList(snapshotIds) onComplete {
-        case Success(sl) => _sender ! SnapshotList(date, status, sl)
-        case e: Any => _sender ! CryoError("Can't get snapshot list", e)
-      }
+      getDataStatusList(snapshotIds)
+        .map(SnapshotList(date, status, _))
+        .reply("Can't get snapshot list", sender)
 
     case sr: SnapshotRequest =>
       val id = sr.id
@@ -343,7 +310,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             val _sender = sender
             (cryoctx.datastore ? GetDataStatus(id)) onComplete {
               case Success(DataStatus(_, _, _, _ /* DEBUG Creating */ , _, _)) =>
-                val aref = context.actorOf(Props(classOf[SnapshotBuilder], cryoctx, id))
+                val aref = context.actorOf(Props(classOf[SnapshotCreating], cryoctx, id))
                 snapshotActors += id -> aref
                 aref.tell(sr, _sender)
               //              case Success(d: DataStatus) =>

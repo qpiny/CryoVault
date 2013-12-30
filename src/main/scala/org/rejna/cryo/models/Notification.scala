@@ -2,6 +2,7 @@ package org.rejna.cryo.models
 
 import scala.collection.JavaConversions._ //{ asScalaBuffer, mapAsJavaMap }
 import scala.concurrent.duration._
+import scala.concurrent.Future
 import scala.language.postfixOps
 import scala.util.{ Success, Failure }
 
@@ -17,7 +18,7 @@ sealed abstract class NotificationResponse extends Response
 sealed class NotificationError(message: String, cause: Throwable) extends CryoError(classOf[Notification].getName, message, cause = cause)
 
 case class GetNotification() extends NotificationRequest
-case class NotificationGot() extends NotificationResponse 
+case class NotificationGot() extends NotificationResponse
 case class GetNotificationARN() extends NotificationRequest
 case class NotificationARN(arn: String) extends NotificationResponse
 
@@ -122,9 +123,8 @@ class QueueNotification(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with 
   }
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
-    
+
     case GetNotification() =>
-      val _sender = sender
       val messages = getMessages.distinct
       log.debug(s"${messages.size} message(s) read from SQS")
       if (!messages.isEmpty) {
@@ -136,16 +136,20 @@ class QueueNotification(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with 
             Json.read[Job](notificationMessage.message) -> message.getReceiptHandle
         } toMap
 
-        cryoctx.manager ? AddJobs(jobsReceipt.keySet.toList) map {
-          case JobsAdded(addedJobs) => removeMessage(addedJobs.map(jobsReceipt.apply(_)))
-          case o: Any => _sender ! CryoError("Fail to add job", o)
-        } onComplete {
-          case Success(_) => if (_sender != context.system.deadLetters) _sender ! NotificationGot()
-          case Failure(e) => _sender ! CryoError("Fail to remove notification message", e)
-        }
-      }
-      else
-        _sender ! NotificationGot()
+        Future.sequence(jobsReceipt.keySet.map(jobId => (cryoctx.manager ? AddJob(jobId))))
+          .emap("", {
+            case l =>
+              val (success, failure) = l.partition(_.isInstanceOf[JobAdded])
+              if (!failure.isEmpty)
+                log.error(s"Fail to add jobs from notification : ${failure}")
+              val addedJobIds = success.asInstanceOf[Set[JobAdded]].map(_.job)
+              removeMessage(addedJobIds.map(jobsReceipt.apply(_)))
+              NotificationGot()
+          }).recover({
+            case t: Any => log(CryoError("Fail to remove notification message", t))
+          }).reply("Fail to add job from notirication", sender)
+      } else
+        sender ! NotificationGot()
 
     case GetNotificationARN() =>
       sender ! NotificationARN(notificationArn)
