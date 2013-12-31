@@ -22,19 +22,20 @@ sealed abstract class HashCatalogError(val message: String, val cause: Throwable
 }
 
 case class GetBlockLocation(block: Block, reserveIfNotFound: Boolean) extends HashCatalogRequest
-case class BlockLocation(id: Int, hash: Hash, archiveId: UUID, offset: Long, size: Int) extends HashCatalogResponse
+case class BlockLocation(id: Long, hash: Hash, archiveId: UUID, offset: Long, size: Int) extends HashCatalogResponse
 
 case class AddBlock(block: Block, archiveId: UUID, offset: Long) extends HashCatalogRequest
-case class BlockAdded(blockId: Int) extends HashCatalogResponse
+case class BlockAdded(blockId: Long) extends HashCatalogResponse
 
 case class BlockLocationNotFound(hash: Hash) extends HashCatalogError("Blocklocation was not found")
 
-case class GetCatalogContent() extends HashCatalogRequest
+case class GetCatalogContent(blockIds: Option[Set[Long]]) extends HashCatalogRequest
 case class CatalogContent(catalog: List[BlockLocation]) extends HashCatalogResponse
 
 class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash {
   private val content = ArrayBuffer.empty[BlockLocation]
   private val hashIndex = HashMap.empty[Hash, BlockLocation]
+  private var lastBlockId: Long = 0
 
   val catalogId = new UUID(0x0000000000001000L, 0xC47000000003L)
   val catalogGlacierId = "catalog"
@@ -52,7 +53,11 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
   def receive = cryoReceive {
     case PrepareToDie() => sender ! ReadyToDie()
 
-    case m: GetCatalogContent => sender ! CatalogContent(content.toList)
+    case GetCatalogContent(blockIds) =>
+      blockIds match {
+        case None => sender ! CatalogContent(content.toList)
+        case Some(bids) => sender ! CatalogContent(content.filter(bl => bids.contains(bl.id)).toList)
+      }
 
     case GetBlockLocation(block, reserveIfNotFound) =>
       hashIndex.get(block.hash) match {
@@ -75,7 +80,8 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
       val previousValue = hashIndex.get(block.hash)
       if (previousValue.isDefined && previousValue.get == reservedBlockLocation)
         unstashAll
-      val blockLocation = BlockLocation( /* FIXME */ 0, block.hash, archiveId, offset, block.size)
+      lastBlockId += 1
+      val blockLocation = BlockLocation(lastBlockId, block.hash, archiveId, offset, block.size)
       content += blockLocation
       hashIndex += block.hash -> blockLocation
   }
@@ -104,6 +110,7 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
           val catalog = Json.read[Array[BlockLocation]](message)
           content ++= catalog
           hashIndex ++= catalog.map(bl => bl.hash -> bl)
+          lastBlockId = content.maxBy(_.id).id
         case o: Any =>
           log(CryoError("Fail to read catalog data", o))
       })

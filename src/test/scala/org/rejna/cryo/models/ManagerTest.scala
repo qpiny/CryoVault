@@ -50,8 +50,8 @@ class ManagerTest extends TestKit(ActorSystem())
   }
 
   "Manager actor" should "accept new jobs" in {
-    managerRef ! AddJobs(jobList)
-    expectMsg(JobsAdded(jobList))
+    managerRef ! AddJob(job1)
+    expectMsg(JobAdded(job1))
     assert(manager.jobs == jobList.map(j => j.id -> j).toMap)
     assert(manager.jobUpdated.isCompleted == false)
   }
@@ -65,24 +65,24 @@ class ManagerTest extends TestKit(ActorSystem())
       Some(new Date),
       "archiveId")
     manager.jobs ++= jobList.map(j => j.id -> j)
-    managerRef ! AddJobs(updatedJob2)
-    expectMsg(JobsAdded(updatedJob2 :: Nil))
+    managerRef ! AddJob(updatedJob2)
+    expectMsg(JobAdded(updatedJob2))
     assert(manager.jobs == (job1 :: updatedJob2 :: Nil).map(j => j.id -> j).toMap)
     assert(manager.jobUpdated.isCompleted == false)
   }
   
   it should "ignore jobs that are already finished" in {
     manager.finalizedJobs += "archiveJobId" -> Job("archiveJobId", "description of archiveJob", new Date, Finalized(), None, "ArchiveId")
-    managerRef ! AddJobs(job2)
-    expectMsg(JobsAdded(Nil))
+    managerRef ! AddJob(job2)
+    expectMsg(JobAdded(job2))
     assert(manager.jobs == Map.empty[String, Job])
     assert(manager.jobUpdated.isCompleted == false)
   }
   
   it should "remove only present jobs" in {
     manager.jobs ++= jobList.map(j => j.id -> j)
-    managerRef ! RemoveJobs("nonExistantJob", "archiveJobId", "otherJobId")
-    expectMsg(JobsRemoved("archiveJobId" :: Nil))
+    managerRef ! RemoveJob("nonExistantJob")
+    expectMsg(JobRemoved("nonExistantJob"))
     assert(manager.jobs == (job1 :: Nil).map(j => j.id -> j).toMap)
     assert(manager.jobUpdated.isCompleted == false)
   }

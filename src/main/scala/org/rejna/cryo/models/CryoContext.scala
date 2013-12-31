@@ -42,13 +42,13 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
     for (c <- children)
       c ! message
   }
-  
+
   def shutdown() = {
     /* vvv DEBUG vvv */
     //isShuttingDown = true
     //inventory ! PrepareToDie()
     /* ^^^ DEBUG ^^^ */
-    
+
     if (!isShuttingDown) {
       implicit val timeout = getTimeout(classOf[PrepareToDie])
 
@@ -136,12 +136,8 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
     System.setProperty("com.amazonaws.sdk.disableCertChecking", "true")
 
   val logger = system.actorOf(
-      Props(Class.forName(config.getString("cryo.services.logger")), this), "logger")
+    Props(Class.forName(config.getString("cryo.services.logger")), this), "logger")
   //children = logger :: children
-  
-  val hashcatalog = system.actorOf(
-    Props(Class.forName(config.getString("cryo.services.hashcatalog")), this), "catalog")
-  children = hashcatalog :: children
 
   val deadLetterMonitor = system.actorOf(
     Props(Class.forName(config.getString("cryo.services.deadLetterMonitor")), this), "deadletter")
@@ -150,6 +146,10 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   val datastore = system.actorOf(
     Props(Class.forName(config.getString("cryo.services.datastore")), this), "datastore")
   children = datastore :: children
+
+  val hashcatalog = system.actorOf(
+    Props(Class.forName(config.getString("cryo.services.hashcatalog")), this), "catalog")
+  children = hashcatalog :: children
 
   val notification = system.actorOf(
     Props(Class.forName(config.getString("cryo.services.notification")), this), "notification")

@@ -8,10 +8,10 @@ class ManagerMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   
   def receive = {
     case MakeActorReady =>
-    case AddJobs(jobs) =>
-      sender ! JobsAdded(jobs)
-    case RemoveJobs(jobIds) =>
-      sender ! JobsRemoved(jobIds)
+    case AddJob(job) =>
+      sender ! JobAdded(job)
+    case RemoveJob(jobId) =>
+      sender ! JobRemoved(jobId)
     case UpdateJobList(jobs) =>
       sender ! JobListUpdated(jobs)
     case GetJobList() =>

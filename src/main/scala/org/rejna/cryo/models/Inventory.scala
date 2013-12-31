@@ -72,10 +72,10 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
       log.info(s"MetaAttribute(${name}).updateArchiveSubscription")
       addedValues foreach {
-        case id: String => CryoEventBus.subscribe(self, s"/cryo/datastore/${id}")
+        case id: UUID => CryoEventBus.subscribe(self, s"/cryo/datastore/${id}")
       }
       removedValues foreach {
-        case id: String => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${id}")
+        case id: UUID => CryoEventBus.unsubscribe(self, s"/cryo/datastore/${id}")
       }
     }
   }
@@ -218,7 +218,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   private def createSnapshot: Future[UUID] = {
     (cryoctx.datastore ? CreateData(None, Index))
       .emap("Error while creating a new snapshot", {
-        case Success(DataCreated(id)) =>
+        case DataCreated(id) =>
           //val aref = context.actorOf(Props(classOf[SnapshotCreating], cryoctx, id))
           snapshotIds += id
           id
@@ -310,7 +310,8 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             val _sender = sender
             (cryoctx.datastore ? GetDataStatus(id)) onComplete {
               case Success(DataStatus(_, _, _, _ /* DEBUG Creating */ , _, _)) =>
-                val aref = context.actorOf(Props(classOf[SnapshotCreating], cryoctx, id))
+                val aref = context.actorOf(Props(classOf[Snapshot], cryoctx, id))
+                aref ! Creating()
                 snapshotActors += id -> aref
                 aref.tell(sr, _sender)
               //              case Success(d: DataStatus) =>

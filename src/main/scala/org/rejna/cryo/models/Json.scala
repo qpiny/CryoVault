@@ -55,7 +55,8 @@ object Json extends Formats {
     JsonDataEntry ::
     JsonFileElement ::
     JsonFilefilter ::
-    JsonPathFileFilter :: Nil
+    JsonPathFileFilter ::
+    JsonDataStatus :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)

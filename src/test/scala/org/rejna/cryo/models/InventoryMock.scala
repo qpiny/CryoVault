@@ -5,19 +5,19 @@ import scala.concurrent.Future
 
 import akka.actor.{ Actor, Stash }
 
-import java.util.Date
+import java.util.{ Date, UUID }
 
-import EntryStatus._
+import ObjectStatus._
 
 case class AddSnapshotMock(snapshot: DataEntryMock)
-case class SnapshotAddedMock(snapshotId: String)
+case class SnapshotAddedMock(snapshotId: UUID)
 case class AddArchiveMock(archive: DataEntryMock)
-case class ArchiveAddedMock(archiveId: String)
+case class ArchiveAddedMock(archiveId: UUID)
 
 class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash {
 
-  val snapshots = ListBuffer.empty[String]
-  val archives = ListBuffer.empty[String]
+  val snapshots = ListBuffer.empty[UUID]
+  val archives = ListBuffer.empty[UUID]
 
   def receive = {
     case MakeActorReady =>
@@ -57,16 +57,16 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case e: Any => _sender ! CryoError("Error while creating a new archive", e)
       }
     case CreateArchive() =>
-      sender ! ArchiveCreated("NewlyCreatedArchiveId")
+      sender ! ArchiveCreated(UUID.randomUUID())
     case CreateSnapshot() =>
-      sender ! SnapshotCreated("NewlyCreatedSnapshotId")
+      sender ! SnapshotCreated(UUID.randomUUID())
     case GetArchiveList() =>
       val _sender = sender
       Future.sequence(archives.map(cryoctx.datastore ? GetDataStatus(_))) map {
         case dsl =>
           val archiveList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
           _sender ! ArchiveList(new Date,
-            Cached,
+            Cached(UUID.randomUUID().toString()),
             archiveList)
       } onFailure {
         case e: Throwable => _sender ! CryoError("Error while retrieving archive list", e)
@@ -77,7 +77,7 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case dsl =>
           val snapshotList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
           _sender ! SnapshotList(new Date,
-            Cached,
+            Cached(UUID.randomUUID().toString),
             snapshotList)
       } onFailure {
         case e: Throwable => _sender ! CryoError("Error while retrieving snapshot list", e)

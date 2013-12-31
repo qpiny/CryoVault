@@ -20,7 +20,7 @@ class CryoAskableActorRef(actorName: String, val cryoctx: CryoContext, actorRef:
     val timeout = cryoctx.getTimeout(message.getClass)
     actorRef.ask(message)(timeout) map {
       case x =>
-        log.debug(s"${message} - ${actorRef} - ${x}", marker = Markers.replyMsgMarker)
+        log.debug(s"${message} -> ${x} (from ${actorRef})", marker = Markers.replyMsgMarker)
         x
     } recover {
       case e =>

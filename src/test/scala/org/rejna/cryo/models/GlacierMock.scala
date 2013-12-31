@@ -29,8 +29,8 @@ class GlacierMock(cryoctx: CryoContext) extends Actor {
           InProgress(),
           None,
           archiveId))
-    case UploadData(id: String) =>
-      sender ! DataUploaded(id: String)
+    case UploadData(id, dataType) =>
+      sender ! DataUploaded(id)
   }
 
 }
