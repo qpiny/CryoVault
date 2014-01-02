@@ -148,10 +148,10 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             }
       }).eflatMap("Fail to write inventory", {
         case DataWritten(id, _, _) =>
-          cryoctx.datastore ? CloseData(id)
+          cryoctx.datastore ? PackData(id, inventoryGlacierId)
       }).emap("Fail to close inventory", {
-        case Success(DataClosed(id)) =>
-          status = Cached(inventoryGlacierId)
+        case Success(DataPacked(id, glacierId)) =>
+          status = Cached(glacierId)
           log.info("Inventory saved")
       })
   }
@@ -166,15 +166,21 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           val inventory = Json.read[InventoryMessage](message)
           cryoctx.inventory ! UpdateInventoryDate(inventory.date)
           inventory.entries.collect {
-            case ds @ DataStatus(id, dataType, creationDate, Remote(glacierId), size, checksum) =>
-              (cryoctx.datastore ? DefineData(id, glacierId, dataType, creationDate, size, checksum))
-                .emap("Fail to define data for ${ds}", {
-                  case DataDefined(_) =>
-                    dataType match {
-                      case Data => cryoctx.inventory ! AddArchive(id)
-                      case Index => cryoctx.inventory ! AddSnapshot(id)
-                    }
-                })
+            case ds @ DataStatus(id, dataType, creationDate, status, size, checksum) =>
+              dataType match {
+                case Data => cryoctx.inventory ! AddArchive(id)
+                case Index => cryoctx.inventory ! AddSnapshot(id)
+                case _ =>
+              }
+              status match {
+                case Remote(glacierId) =>
+                  (cryoctx.datastore ? DefineData(id, glacierId, dataType, creationDate, size, checksum))
+                    .emap("Fail to define data for ${ds}", {
+                      case DataDefined(id) => log.info(s"Remote data ${id} defined")
+                    })
+                case _ =>
+              }
+
           }
           Cached(inventoryGlacierId)
       })

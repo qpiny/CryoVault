@@ -21,7 +21,10 @@ sealed abstract class HashCatalogError(val message: String, val cause: Throwable
   val marker = Markers.errMsgMarker
 }
 
-case class GetBlockLocation(block: Block, reserveIfNotFound: Boolean) extends HashCatalogRequest
+case class ReserveBlock(block: Block) extends HashCatalogRequest
+case class BlockReserved() extends HashCatalogResponse
+
+//case class GetBlockLocation(block: Block) extends HashCatalogRequest
 case class BlockLocation(id: Long, hash: Hash, archiveId: UUID, offset: Long, size: Int) extends HashCatalogResponse
 
 case class AddBlock(block: Block, archiveId: UUID, offset: Long) extends HashCatalogRequest
@@ -59,22 +62,26 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
         case Some(bids) => sender ! CatalogContent(content.filter(bl => bids.contains(bl.id)).toList)
       }
 
-    case GetBlockLocation(block, reserveIfNotFound) =>
+    case ReserveBlock(block) =>
       hashIndex.get(block.hash) match {
-        case None =>
-          if (reserveIfNotFound) {
-            hashIndex += block.hash -> reservedBlockLocation
-            stash()
-          } else {
-            sender ! BlockLocationNotFound(block.hash)
-          }
-        case Some(bl) =>
-          if (bl == reservedBlockLocation) {
-            stash()
-          } else {
-            sender ! bl
-          }
+        case Some(bl) if bl != reservedBlockLocation =>
+          sender ! bl
+        case _ =>
+          hashIndex += block.hash -> reservedBlockLocation
+          sender ! BlockReserved()
+        
       }
+//    case GetBlockLocation(block) =>
+//      hashIndex.get(block.hash) match {
+//        case None =>
+//          sender ! BlockLocationNotFound(block.hash)
+//        case Some(bl) =>
+//          if (bl == reservedBlockLocation) {
+//            stash()
+//          } else {
+//            sender ! bl
+//          }
+//      }
 
     case AddBlock(block, archiveId, offset) =>
       val previousValue = hashIndex.get(block.hash)
@@ -84,6 +91,7 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
       val blockLocation = BlockLocation(lastBlockId, block.hash, archiveId, offset, block.size)
       content += blockLocation
       hashIndex += block.hash -> blockLocation
+      sender ! BlockAdded(lastBlockId)
   }
 
   private def save() = {

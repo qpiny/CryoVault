@@ -53,10 +53,10 @@ object Json extends Formats {
   override val typeHints = NoTypeHints
   override val customSerializers =
     JsonDataEntry ::
-    JsonFileElement ::
-    JsonFilefilter ::
-    JsonPathFileFilter ::
-    JsonDataStatus :: Nil
+      JsonFileElement ::
+      JsonFilefilter ::
+      JsonPathFileFilter ::
+      JsonDataStatus :: Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
@@ -101,19 +101,14 @@ private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
       JField("id", JString(id)) ::
         JField("dataType", JString(dataType)) ::
         JField("creationDate", JString(creationDate)) ::
+        JField("status", JString(status)) ::
         JField("size", JInt(size)) ::
         JField("checksum", JString(checksum)) ::
         Nil) =>
-      val status = (o \ "status") match {
-        case JString(s) =>
-          ObjectStatus(s)
-        case _ =>
-          ObjectStatus.Unknown()
-      }
       DataStatus(UUID.fromString(id),
-          DataType.withName(dataType),
-          Json.readDate(creationDate).getOrElse(new Date),
-          status, size.toLong, checksum)
+        DataType.withName(dataType),
+        Json.readDate(creationDate).getOrElse(new Date),
+        ObjectStatus(status), size.toLong, checksum)
   },
   {
     case ds: DataStatus =>
@@ -133,7 +128,7 @@ private object JsonPathFileFilter extends CustomSerializer[(Path, FileFilter)](f
     case (path, fileFilter) =>
       (path.toString.replace(File.separatorChar, '!') -> fileFilter.toString)
   }))
-  
+
 private object JsonFilefilter extends CustomSerializer[FileFilter](format => (
   {
     case JObject(JField("filter", JString(ff)) :: Nil) => FileFilter(ff)

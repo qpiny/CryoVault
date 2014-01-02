@@ -198,13 +198,39 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
               .eflatMap("Fail to write block data", {
                 case DataWritten(_, pos, _) =>
                   cryoctx.hashcatalog ? AddBlock(block, aid, pos)
-              }).emap("Fail to update hash catalog", {
+              }).eflatMap("Fail to update hash catalog", {
                 case BlockAdded(bid) =>
                   index.putLong(bid)
-                  State(index, blockIds + bid, aid, len + data.length)
+                  
+                  if (len + data.length >= cryoctx.archiveSize) {
+                    (cryoctx.cryo ? UploadData(aid, DataType.Data))
+                      .eflatMap("Fail to upload data", {
+                        case DataUploaded(_) => (cryoctx.datastore ? CreateArchive)
+                      }).emap("Fail to create new archive", {
+                        case ArchiveCreated(newId) => State(index, blockIds, newId, 0)
+                      })
+                  } else {
+                    Future(State(index, blockIds + bid, aid, len + data.length))
+                  }
               })
         }
       }
+
+//      def flush(): Future[State] = {
+//        current.flatMap {
+//          case s @ State(index, blockIds, aid, len) =>
+//            if (len > cryoctx.archiveSize) {
+//              (cryoctx.cryo ? UploadData(aid, DataType.Data))
+//                .eflatMap("Fail to upload data", {
+//                  case DataUploaded(_) => (cryoctx.datastore ? CreateArchive)
+//                }).emap("Fail to create new archive", {
+//                  case ArchiveCreated(newId) => State(index, blockIds, newId, 0)
+//                })
+//            } else {
+//              Future(s)
+//            }
+//        }
+//      }
 
       def putPath(path: Path): Future[State] = {
         current.map {
@@ -270,9 +296,9 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
       state = state.putPath(filename)
       state = (state /: blocks) {
         case (st, block) =>
-          (cryoctx.hashcatalog ? GetBlockLocation(block, true))
+          (cryoctx.hashcatalog ? ReserveBlock(block))
             .eflatMap("", {
-              case BlockLocationNotFound(_) => st.writeBlock(block)
+              case BlockReserved() => st.writeBlock(block)
               case bl: BlockLocation => st.putLong(bl.id)
             })
       }

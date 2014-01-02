@@ -124,7 +124,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       }
       val entryAttributeBuilder = attributeBuilder / id
       repository.get(id) match {
-        case Some(d: DataEntryCreated) if d.state.dataType == Internal =>
+        case Some(d) if d.state.dataType == Internal =>
           d.close
           repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, entryAttributeBuilder("size", size))
           sender ! DataCreated(id)

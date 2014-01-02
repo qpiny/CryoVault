@@ -2,7 +2,6 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.JavaConversions.bufferAsJavaList
-
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.file.Files
@@ -11,14 +10,12 @@ import java.nio.file.StandardCopyOption._
 import java.nio.channels.FileChannel
 import java.security.MessageDigest
 import java.util.{ Date, UUID }
-
 import akka.util.ByteString
-
 import com.amazonaws.services.glacier.TreeHashGenerator
-
 import org.rejna.util.MultiRange
 import DataType._
 import ObjectStatus._
+import java.nio.file.CopyOption
 
 // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)
 sealed abstract class DataEntry(
@@ -143,6 +140,7 @@ class DataEntryCreating(
     log.debug(s"Closing ${id} size = ${Files.size(file)}")
     if (blockSize > 0)
       checksums += digest.digest
+    Files.move(file, file.resolveSibling(id.toString), REPLACE_EXISTING)
     new DataEntryCreated(cryoctx, id, glacierId, dataType, creationDate, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
   }
   

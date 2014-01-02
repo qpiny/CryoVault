@@ -27,7 +27,7 @@ object ObjectStatus {
   case class Unknown() extends ObjectStatus
   
   def apply(name: String) = {
-    val regex = """(\w+)(?:\((\w+)\))?""".r
+    val regex = """(\w+)(?:\((\w*)\))?""".r
     val regex(clazz, id) = name
     clazz match {
       case "Creating" => Creating()
