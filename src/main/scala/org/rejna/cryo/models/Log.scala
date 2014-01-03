@@ -4,6 +4,7 @@ import scala.language.implicitConversions
 import scala.util.{ Success, Failure }
 
 import akka.actor.{ Actor, ActorContext, ActorRef }
+import akka.event.LogSource
 import akka.event.Logging._
 
 import org.slf4j.{ Marker, LoggerFactory, MarkerFactory, MDC }
@@ -70,24 +71,37 @@ case class CryoDebug(source: String, message: String, marker: Marker = Markers.n
 case class CryoInfo(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.INFO }
 case class CryoWarn(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.WARN }
 case class CryoError(source: String, message: String, marker: Marker = Markers.errMsgMarker, cause: Throwable = Error.NoCause) extends Exception with CryoLog { val level = Level.ERROR }
-abstract class GenericError extends Exception with CryoLog { val level = Level.ERROR }
+abstract class GenericError extends Exception with CryoLog { val level = Level.ERROR; val source: String }
 
-object CryoError {
-  private def apply(message: String, marker: Marker, a: Any): CryoError = a match {
-    case Failure(e) => CryoError(s"${message}: failure", marker, e)
-    case Success(e) => CryoError(s"${message}: success", marker, e)
-    case e: CryoError => e
-    case e: Throwable => new CryoError("", message, marker, e)
-    case e: Any => new CryoError("", s"${message}: unexpected message: ${e}", marker)
-  }
-  //def apply(source: String, message: String, marker: Marker, cause: Throwable) = new CryoError(source, message, marker, cause)
-  def apply(message: String, a: Any): CryoError = {
+//object CryoError {
+//  private def apply(message: String, marker: Marker, a: Any): CryoError = a match {
+//    case Failure(e) => CryoError(s"${message}: failure", marker, e)
+//    case Success(e) => CryoError(s"${message}: success", marker, e)
+//    case e: CryoError => e
+//    case e: Throwable => new CryoError("FIXME : no source", message, marker, e)
+//    case e: Any => new CryoError("FIXME : no source", s"${message}: unexpected message: ${e}", marker)
+//  }
+//  //def apply(source: String, message: String, marker: Marker, cause: Throwable) = new CryoError(source, message, marker, cause)
+//  def apply[T](message: String, a: Any)(implicit source: LogSource[T]): CryoError = {
+//    a match {
+//      case e: CryoError => e.copy(message = message + ":" + e.message)
+//      case e: Any => CryoError(message, Markers.errMsgMarker, e)
+//    }
+//  }
+//  def apply(message: String): CryoError = new CryoError(org.slf4j.Logger.ROOT_LOGGER_NAME, message)
+//}
+
+trait ErrorGenerator {
+  val source = getClass.getName
+  def cryoError(message: String, a: Any): CryoError = {
     a match {
-      case e: CryoError => e
-      case e: Any => CryoError(message, Markers.errMsgMarker, e)
+      case e: CryoError => e.copy(message = s"${message} : ${e.message}")
+      case Failure(e) => cryoError(s"${message} (failure)", e)
+      case Success(e) => cryoError(s"${message} (success)", e)
+      case e: Throwable => new CryoError(source, message, Markers.errMsgMarker, e)
+      case e: Any => new CryoError(source, s"${message} : unexpected message: ${e}", Markers.errMsgMarker)
     }
   }
-  def apply(message: String): CryoError = new CryoError(org.slf4j.Logger.ROOT_LOGGER_NAME, message)
 }
 
 class SimpleLogger(source: String, cryoctx: CryoContext) {

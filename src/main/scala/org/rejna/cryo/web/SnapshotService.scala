@@ -33,14 +33,14 @@ trait SnapshotService
       pathEndOrSingleSlash {
         post { implicit ctx =>
           (cryoctx.inventory ? CreateSnapshot()) expect {
-            case SnapshotCreated(snapshotId) => snapshotId
+            case Created(snapshotId) => snapshotId
           }
         }
       } ~
         path("list") {
           get { implicit ctx =>
             (cryoctx.inventory ? GetSnapshotList()) expect {
-              case SnapshotList(_, _, snapshots) => snapshots
+              case ObjectList(_, _, snapshots) => snapshots
             }
           }
         } ~
@@ -50,7 +50,7 @@ trait SnapshotService
           } ~
             delete { implicit ctx =>
               (cryoctx.inventory ? DeleteSnapshot(snapshotId)) expect {
-                case SnapshotDeleted(id) => s"OK snapshot ${id} deleted"
+                case Deleted(id) => s"OK snapshot ${id} deleted"
               }
             }
         } ~
@@ -58,35 +58,35 @@ trait SnapshotService
           pathPrefix("files") {
             get { implicit ctx =>
               val path = ctx.unmatchedPath.toString.dropWhile(_ == '/').replace("!", "/")
-              (cryoctx.inventory ? SnapshotGetFiles(snapshotId, path)) expect {
-                case SnapshotFiles(_, _, fe) => fe
+              (cryoctx.inventory ? GetFileList(snapshotId, path)) expect {
+                case FileList(_, _, fe) => fe
               }
             }
           } ~
             path("filter" / filePath) { filepath =>
               get { implicit ctx =>
-                (cryoctx.inventory ? SnapshotGetFilter(snapshotId, filepath)) expect {
+                (cryoctx.inventory ? GetFilter(snapshotId, filepath)) expect {
                   case SnapshotFilter(_, _, filter) => filter
                 }
               } ~
                 delete { implicit ctx =>
-                  (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, NoOne)) expect {
-                    case FilterUpdated() => "OK filter removed"
+                  (cryoctx.inventory ? UpdateFilter(snapshotId, filepath, NoOne)) expect {
+                    case Done() => "OK filter removed"
                   }
                 } ~
                 post {
                   entity(as[FileFilter]) { filter =>
                     implicit ctx =>
-                      (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
-                        case FilterUpdated() => "OK filter updated"
+                      (cryoctx.inventory ? UpdateFilter(snapshotId, filepath, filter)) expect {
+                        case Done() => "OK filter updated"
                       }
                   }
                 } ~
                 put {
                   entity(as[FileFilter]) { filter =>
                     implicit ctx =>
-                      (cryoctx.inventory ? SnapshotUpdateFilter(snapshotId, filepath, filter)) expect {
-                        case FilterUpdated() => "OK filter updated"
+                      (cryoctx.inventory ? UpdateFilter(snapshotId, filepath, filter)) expect {
+                        case Done() => "OK filter updated"
                       }
                   }
                 }
@@ -94,8 +94,8 @@ trait SnapshotService
             path("upload") {
               post {
                 implicit ctx =>
-                  (cryoctx.inventory ? SnapshotUpload(snapshotId)) expect {
-                    case SnapshotUploaded(id) => s"OK snapshot ${id} uploaded"
+                  (cryoctx.inventory ? Upload(snapshotId, null)) expect {
+                    case Uploaded(id) => s"OK snapshot ${id} uploaded"
                   }
               }
             }

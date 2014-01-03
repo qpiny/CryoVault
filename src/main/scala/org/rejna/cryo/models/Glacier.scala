@@ -32,18 +32,6 @@ object ArchiveDescription {
   }
 }
 
-class CryoRequest extends Request
-class CryoResponse extends Response
-
-case class RefreshJobList() extends CryoRequest
-case class JobListRefreshed() extends CryoResponse
-case class RefreshInventory() extends CryoRequest
-case class RefreshInventoryRequested(job: Job) extends CryoResponse
-case class DownloadArchive(archiveId: String) extends CryoRequest
-case class DownloadArchiveRequested(job: Job) extends CryoResponse
-case class UploadData(id: UUID, dataType: DataType) extends CryoRequest
-case class DataUploaded(id: UUID) extends CryoResponse
-
 class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
   val glacier = new AmazonGlacierClient(cryoctx.awsCredentials, cryoctx.awsConfig)
@@ -51,7 +39,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   if (cryoctx.config.getBoolean("cryo.add-proxy-auth-pref")) HttpClientProxyHack(glacier)
   val futureSnsTopicARN = (cryoctx.notification ? GetNotificationARN()) map {
     case NotificationARN(arn) => arn
-    case e: Any => throw CryoError("Fail to get notification ARN", e)
+    case e: Any => throw cryoError("Fail to get notification ARN", e)
   }
   //lazy val snsTopicARN = Await.result(futureSnsTopicARN, 10 seconds)
 
@@ -74,7 +62,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
               case DataStatus(id, dataType, _, ObjectStatus.Creating(), _, _) => // TODO will be Loading when implemented
                 (cryoctx.datastore ? CreateData(Some(id), dataType))
             }).emap("Fail to create data", {
-              case DataCreated(dataId) =>
+              case Created(dataId) =>
                 log.debug(s"Data ${dataId} created, starting download")
                 dataId
             })
@@ -104,7 +92,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
               case dataId => (cryoctx.datastore ? CloseData(dataId))
             }).onComplete({
               case Success(DataClosed(id)) => log.info(s"Data ${id} downloaded")
-              case o: Any => log(CryoError(s"Download job ${job.id} data has failed", o))
+              case o: Any => log(cryoError(s"Download job ${job.id} data has failed", o))
             })
           } catch {
             case rnfe: ResourceNotFoundException => log.warn(s"Job ${job.id} is outdated. It can't be downloaded")
@@ -112,7 +100,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           }
           (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
             case Success(j: Job) => log.info(s"Data ${job.objectId} download job finalized")
-            case o: Any => log(CryoError(s"Fail to finalize data ${job.objectId}", o))
+            case o: Any => log(cryoError(s"Fail to finalize data ${job.objectId}", o))
           }
       }
 
@@ -124,7 +112,7 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         .toList
       (cryoctx.manager ? UpdateJobList(jobList))
         .emap("Fail to update job list", {
-          case JobListUpdated(jobs) => JobListRefreshed()
+          case JobListUpdated(jobs) => Done()
         }).reply("Fail to refresh job list", sender)
 
     case RefreshInventory() =>
@@ -140,8 +128,6 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
                   .withSNSTopic(snsTopicARN)))
             val job = new Job(jobResult.getJobId(), "", new Date, InProgress(), None, "inventory")
             cryoctx.manager ? AddJob(job)
-        }).emap("Fail to add refresh inventory job", {
-          case JobAdded(job) => RefreshInventoryRequested(job)
         }).reply("Fail to refresh inventory", sender)
 
     case DownloadArchive(archiveId) =>
@@ -159,10 +145,10 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             val job = new Job(jobResult.getJobId, "", new Date, InProgress(), None, archiveId)
             cryoctx.manager ? AddJob(job)
         }).emap("Fail to add archive download job", {
-          case JobAdded(job) => DownloadArchiveRequested(job)
+          case JobAdded(job) => JobRequested(job)
         }).reply("Fail to add download archive job", sender)
 
-    case UploadData(id, dataType) =>
+    case Upload(id, dataType) =>
       val _sender = sender
       (cryoctx.datastore ? GetDataStatus(id)) onComplete {
         case Success(DataStatus(_, _, _, ObjectStatus.Cached(_), size, checksum)) =>
@@ -193,8 +179,8 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
               .withChecksum(checksum)
               .withUploadId(uploadId)).getArchiveId
           }
-          _sender ! DataUploaded(id)
-        case o: Any => _sender ! CryoError(s"Upload error : fail to get status of data ${id}", o)
+          _sender ! Uploaded(id)
+        case o: Any => _sender ! cryoError(s"Upload error : fail to get status of data ${id}", o)
       }
   }
 }

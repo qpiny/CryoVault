@@ -16,8 +16,6 @@ import org.slf4j.Marker
 trait CryoMessage
 
 trait Event extends CryoMessage { val path: String }
-trait Request extends CryoMessage
-trait Response extends CryoMessage
 
 object CryoEventBus extends EventBus with SubchannelClassification {
   type Event = org.rejna.cryo.models.Event

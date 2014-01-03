@@ -12,9 +12,9 @@ import org.slf4j.{ Logger, MarkerFactory }
 trait OptionalMessage
 
 class CryoAskableActorRef(actorName: String, val cryoctx: CryoContext, actorRef: ActorRef)(implicit executionContext: ExecutionContext) {
-  
+
   val log = new SimpleLogger(actorName, cryoctx)
-  
+
   def ?(message: Any) = {
     log.debug(s"${message} - ${actorRef}", marker = Markers.askMsgMarker)
     val timeout = cryoctx.getTimeout(message.getClass)
@@ -26,27 +26,27 @@ class CryoAskableActorRef(actorName: String, val cryoctx: CryoContext, actorRef:
       case e =>
         log.error(s"${actorRef} has failed to process message ${message} in ${timeout}", e)
         Future.failed(e)
-    } 
+    }
   }
 }
 
-trait CryoAskSupport extends LoggingClass {
-  implicit def ask(actorRef: ActorRef)(implicit executionContext: ExecutionContext, cryoctx : CryoContext) = new CryoAskableActorRef(getClass.getName, cryoctx, actorRef)
-  
+trait CryoAskSupport extends LoggingClass with ErrorGenerator {
+  implicit def ask(actorRef: ActorRef)(implicit executionContext: ExecutionContext, cryoctx: CryoContext) = new CryoAskableActorRef(getClass.getName, cryoctx, actorRef)
+
   implicit class FutureMap[A](future: Future[A]) {
     def emap[B](message: String, f: PartialFunction[A, B])(implicit executionContext: ExecutionContext) = {
       future.map(f.orElse {
-        case unexpected => throw CryoError(message, unexpected)
+        case unexpected => throw cryoError(message, unexpected)
       })
     }
-    
+
     def eflatMap[B](message: String, f: PartialFunction[A, Future[B]])(implicit executionContext: ExecutionContext) = {
       future.flatMap(f.orElse {
-        case unexpected => throw CryoError(message, unexpected)
+        case unexpected => throw cryoError(message, unexpected)
       })
     }
-    
-    def reply(message: String, sender: ActorRef)(implicit executionContext: ExecutionContext, cryoctx : CryoContext) = {
+
+    def reply(message: String, sender: ActorRef)(implicit executionContext: ExecutionContext, cryoctx: CryoContext) = {
       future.onComplete {
         case Success(m) if (sender == cryoctx.system.deadLetters) =>
           log.info(s"Ignoring reply message: ${m}")
@@ -59,9 +59,9 @@ trait CryoAskSupport extends LoggingClass {
           sender ! ce
         case Failure(ge: GenericError) =>
           log.error(s"${message} failed", ge)
-          sender ! ge 
+          sender ! ge
         case Failure(t) =>
-          val e = CryoError(message, t)
+          val e = cryoError(message, t)
           log(e)
           sender ! e
       }
@@ -69,9 +69,9 @@ trait CryoAskSupport extends LoggingClass {
   }
 }
 
-trait CryoActorLogger extends LoggingClass { self: Actor =>
+trait CryoActorLogger extends LoggingClass with ErrorGenerator { self: Actor =>
   import Markers._
-  
+
   def cryoReceive(f: Actor.Receive) = new Actor.Receive {
     def isDefinedAt(o: Any): Boolean = {
       val handled = f.isDefinedAt(o)
@@ -90,7 +90,7 @@ trait CryoActorLogger extends LoggingClass { self: Actor =>
         log.debug(s"${o}", marker = successMsgMarker)
       } catch {
         case t: Throwable =>
-          val e = CryoError(s"Message ${o} has generated an error", t)
+          val e = cryoError(s"Message ${o} has generated an error", t)
           sender ! e
           log(e)
       }
@@ -98,7 +98,12 @@ trait CryoActorLogger extends LoggingClass { self: Actor =>
   }
 }
 
-abstract class CryoActor(_cryoctx: CryoContext) extends Actor with CryoActorLogger with CryoAskSupport {
+abstract class CryoActor(_cryoctx: CryoContext)
+  extends Actor
+  with CryoActorLogger
+  with CryoAskSupport
+  with ErrorGenerator {
+  
   implicit val cryoctx = _cryoctx
   implicit val executionContext = context.system.dispatcher
 }

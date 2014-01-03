@@ -17,54 +17,6 @@ import java.util.{ Date, UUID }
 
 import DataType._
 
-sealed abstract class DatastoreRequest extends Request
-sealed abstract class DatastoreResponse extends Response { val id: UUID }
-sealed abstract class DatastoreError(message: String, cause: Throwable) extends GenericError {
-  val source = classOf[Datastore].getName
-  val marker = Markers.errMsgMarker
-}
-
-case class CreateData(idOption: Option[UUID], dataType: DataType, size: Long = 0L) extends DatastoreRequest
-case class DataCreated(id: UUID) extends DatastoreResponse
-
-case class DefineData(id: UUID, glacierId: String, dataType: DataType, creationDate: Date, size: Long, checksum: String) extends DatastoreRequest
-case class DataDefined(id: UUID) extends DatastoreResponse
-
-case class DeleteData(id: UUID) extends DatastoreRequest
-case class DataDeleted(id: UUID) extends DatastoreResponse
-
-case class WriteData(id: UUID, position: Long, buffer: ByteString) extends DatastoreRequest
-object WriteData { def apply(id: UUID, buffer: ByteString): WriteData = WriteData(id, -1, buffer) } // AppendData
-case class DataWritten(id: UUID, position: Long, length: Long) extends DatastoreResponse
-
-case class ReadData(id: UUID, position: Long, length: Int) extends DatastoreRequest
-case class DataRead(id: UUID, position: Long, buffer: ByteString) extends DatastoreResponse
-
-case class ClearLocalCache(id: UUID) extends DatastoreRequest
-case class LocalCacheCleared(id: UUID) extends DatastoreResponse
-
-case class PrepareDownload(id: UUID) extends DatastoreRequest
-case class DownloadPrepared(id: UUID) extends DatastoreResponse
-
-case class CloseData(id: UUID) extends DatastoreRequest
-case class DataClosed(id: UUID) extends DatastoreResponse
-
-case class PackData(id: UUID, glacierId: String) extends DatastoreRequest
-case class DataPacked(id: UUID, glacierId: String) extends DatastoreResponse
-
-case class GetDataStatus(id: Either[UUID, String]) extends DatastoreRequest
-object GetDataStatus {
-  def apply(id: UUID) = new GetDataStatus(Left(id))
-  def apply(glacierId: String) = new GetDataStatus(Right(glacierId))
-}
-case class DataStatus(id: UUID, dataType: DataType, creationDate: Date, status: ObjectStatus, size: Long, checksum: String) extends DatastoreResponse
-
-case class OpenError(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
-case class WriteError(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
-case class ReadError(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
-case class DataNotFoundError(id: Either[UUID, String], message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
-case class InvalidDataStatus(message: String, cause: Throwable = Error.NoCause) extends DatastoreError(message, cause)
-
 // TODO Replace all internal ID string with UUID
 // this makes no confusion with glacier ID
 class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
@@ -82,12 +34,12 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         .map { _.state }
       channel.write(ByteBuffer.wrap(Json.write(repo).getBytes))
     } catch {
-      case t: Throwable => log(CryoError("Datastore has failed to store its state", t))
+      case t: Throwable => log(cryoError("Datastore has failed to store its state", t))
     } finally {
       channel.close
     }
   } catch {
-    case t: Throwable => log(CryoError("Datastore has failed to open its state file", t))
+    case t: Throwable => log(cryoError("Datastore has failed to open its state file", t))
   }
 
   override def preStart = try {
@@ -107,7 +59,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   def getDataEntry(id: UUID): DataEntry = {
     repository.get(id) match {
       case Some(de) => de
-      case None => throw DataNotFoundError(Left(id), s"Data ${id} not found")
+      case None => throw NotFoundError(s"Data ${id} not found")
     }
   }
 
@@ -127,10 +79,10 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case Some(d) if d.state.dataType == Internal =>
           d.close
           repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, entryAttributeBuilder("size", size))
-          sender ! DataCreated(id)
+          sender ! Created(id)
         case None =>
           repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, entryAttributeBuilder("size", size))
-          sender ! DataCreated(id)
+          sender ! Created(id)
         case Some(d) =>
           sender ! OpenError(s"Data ${id} can't be created (${d.status})")
       }
@@ -148,9 +100,9 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       repository.remove(id) match {
         case Some(e) =>
           Files.deleteIfExists(e.file)
-          sender ! DataDeleted(id)
+          sender ! Deleted(id)
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFoundError(s"Data ${id} not found")
       }
 
     case WriteData(id, position, buffer) =>
@@ -201,7 +153,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 }
 
 @Deprecated
-class DatastoreInputStream(cryoctx: CryoContext, id: UUID, val size: Long = 0, var position: Long = 0) extends InputStream {
+class DatastoreInputStream(cryoctx: CryoContext, id: UUID, val size: Long = 0, var position: Long = 0) extends InputStream with ErrorGenerator {
   implicit val contextExecutor = cryoctx.system.dispatcher
   implicit val timeout = Timeout(10 seconds)
   import akka.pattern.ask
@@ -220,8 +172,8 @@ class DatastoreInputStream(cryoctx: CryoContext, id: UUID, val size: Long = 0, v
             val dataSize = data.length
             limit += dataSize
             dataSize
-          case e: DatastoreError =>
-            throw e
+          case e: Any =>
+            throw cryoError("Fail to read more data", e)
         }, timeout.duration)
     } else
       -1

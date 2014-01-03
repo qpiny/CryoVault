@@ -20,7 +20,7 @@ trait ArchiveService
       path("list") {
         get { implicit ctx =>
           (cryoctx.inventory ? GetArchiveList()) expect {
-            case ArchiveList(_, _, archives) => archives
+            case ObjectList(_, _, archives) => archives
           }
         }
       } ~

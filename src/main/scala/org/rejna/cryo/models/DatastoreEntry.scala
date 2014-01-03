@@ -43,7 +43,7 @@ sealed abstract class DataEntry(
   def close: Unit
 }
 
-object DataEntry {
+object DataEntry extends ErrorGenerator {
   def apply(cryoctx: CryoContext, attributeBuilder: CryoAttributeBuilder, state: DataStatus) = {
     val entryAttributeBuilder = attributeBuilder / state.id
     state.status match {
@@ -54,7 +54,7 @@ object DataEntry {
       case Remote(_) | Downloading(_) =>
         new DataEntryRemote(cryoctx, state.id, state.status.getGlacierId.get, state.dataType, state.creationDate, state.size, state.checksum, entryAttributeBuilder("size", state.size))
       case e =>
-        throw CryoError(s"Unsupported data entry status ${e}")
+        throw InvalidState(s"Unsupported data entry status ${e}")
     }
   }
 }
@@ -73,15 +73,15 @@ class DataEntryRemote(
 
   def prepareForDownload = new DataEntryDownloading(cryoctx, id, glacierId, dataType, creationDate, size, checksum, sizeAttribute)
 
-  def read(position: Long, length: Int) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for read")
+  def read(position: Long, length: Int) = throw InvalidState(s"Data ${id}(${status}) has invalid status for read")
   
   def clearLocalCache = this
   
   def close = Unit
   
-  def pack(gid: String) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for pack")
+  def pack(gid: String) = throw InvalidState(s"Data ${id}(${status}) has invalid status for pack")
   
-  def write(position: Long, buffer: ByteString) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for write")
+  def write(position: Long, buffer: ByteString) = throw InvalidState(s"Data ${id}(${status}) has invalid status for write")
 }
 
 class DataEntryCreating(
@@ -144,13 +144,13 @@ class DataEntryCreating(
     new DataEntryCreated(cryoctx, id, glacierId, dataType, creationDate, sizeAttribute, TreeHashGenerator.calculateTreeHash(checksums))
   }
   
-  def clearLocalCache = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for clearLocalCache")
+  def clearLocalCache = throw InvalidState(s"Data ${id}(${status}) has invalid status for clearLocalCache")
   
   def close = if (channel.isOpen) channel.close
   
-  def prepareForDownload = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for prepareForDownload")
+  def prepareForDownload = throw InvalidState(s"Data ${id}(${status}) has invalid status for prepareForDownload")
   
-  def read(position: Long, length: Int) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for read")
+  def read(position: Long, length: Int) = throw InvalidState(s"Data ${id}(${status}) has invalid status for read")
 }
 
 class DataEntryCreated(
@@ -180,7 +180,7 @@ class DataEntryCreated(
     c
   }
 
-  def write(position: Long, buffer: ByteString): Int = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for write")
+  def write(position: Long, buffer: ByteString): Int = throw InvalidState(s"Data ${id}(${status}) has invalid status for write")
 
   def close = channel.close
   
@@ -188,7 +188,7 @@ class DataEntryCreated(
   
   def clearLocalCache = new DataEntryRemote(cryoctx, id, glacierId, dataType, creationDate, size, checksum, sizeAttribute)
   
-  def pack(gid: String) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for pack")
+  def pack(gid: String) = throw InvalidState(s"Data ${id}(${status}) has invalid status for pack")
   
 }
 
@@ -221,11 +221,11 @@ class DataEntryDownloading(
     channel.close
   }
 
-  def prepareForDownload = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for prepareForDownload")
+  def prepareForDownload = throw InvalidState(s"Data ${id}(${status}) has invalid status for prepareForDownload")
   
-  def clearLocalCache = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for clearLocalCache")
+  def clearLocalCache = throw InvalidState(s"Data ${id}(${status}) has invalid status for clearLocalCache")
   
-  def read(position: Long, length: Int) = throw InvalidDataStatus(s"Data ${id}(${status}) has invalid status for read")
+  def read(position: Long, length: Int) = throw InvalidState(s"Data ${id}(${status}) has invalid status for read")
   
   def pack(glacierId: String): DataEntryCreated = {
     channel.close

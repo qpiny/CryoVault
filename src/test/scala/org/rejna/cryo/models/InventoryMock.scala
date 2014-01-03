@@ -28,14 +28,14 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
       snapshots += snapshot.id
       cryoctx.datastore ? AddDataMock(snapshot) map {
         case DataAddedMock(id) => _sender ! SnapshotAddedMock(id)
-        case e: Any => _sender ! CryoError("Error while creating a new snapshot", e)
+        case e: Any => _sender ! cryoError("Error while creating a new snapshot", e)
       }
     case AddArchiveMock(archive) =>
       val _sender = sender
       archives += archive.id
       cryoctx.datastore ? AddDataMock(archive) map {
         case DataAddedMock(id) => _sender ! ArchiveAddedMock(id)
-        case e: Any => _sender ! CryoError("Error while creating a new archive", e)
+        case e: Any => _sender ! cryoError("Error while creating a new archive", e)
       }
     case _ =>
       stash()
@@ -47,40 +47,40 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
       snapshots += snapshot.id
       cryoctx.datastore ? AddDataMock(snapshot) map {
         case DataAddedMock(id) => _sender ! SnapshotAddedMock(id)
-        case e: Any => _sender ! CryoError("Error while creating a new snapshot", e)
+        case e: Any => _sender ! cryoError("Error while creating a new snapshot", e)
       }
     case AddArchiveMock(archive) =>
       val _sender = sender
       archives += archive.id
       cryoctx.datastore ? AddDataMock(archive) map {
         case DataAddedMock(id) => _sender ! ArchiveAddedMock(id)
-        case e: Any => _sender ! CryoError("Error while creating a new archive", e)
+        case e: Any => _sender ! cryoError("Error while creating a new archive", e)
       }
     case CreateArchive() =>
-      sender ! ArchiveCreated(UUID.randomUUID())
+      sender ! Created(UUID.randomUUID())
     case CreateSnapshot() =>
-      sender ! SnapshotCreated(UUID.randomUUID())
+      sender ! Created(UUID.randomUUID())
     case GetArchiveList() =>
       val _sender = sender
       Future.sequence(archives.map(cryoctx.datastore ? GetDataStatus(_))) map {
         case dsl =>
           val archiveList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
-          _sender ! ArchiveList(new Date,
+          _sender ! ObjectList(new Date,
             Cached(UUID.randomUUID().toString()),
             archiveList)
       } onFailure {
-        case e: Throwable => _sender ! CryoError("Error while retrieving archive list", e)
+        case e: Throwable => _sender ! cryoError("Error while retrieving archive list", e)
       }
     case GetSnapshotList() =>
       val _sender = sender
       Future.sequence(snapshots.map(cryoctx.datastore ? GetDataStatus(_))) map {
         case dsl =>
           val snapshotList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
-          _sender ! SnapshotList(new Date,
+          _sender ! ObjectList(new Date,
             Cached(UUID.randomUUID().toString),
             snapshotList)
       } onFailure {
-        case e: Throwable => _sender ! CryoError("Error while retrieving snapshot list", e)
+        case e: Throwable => _sender ! cryoError("Error while retrieving snapshot list", e)
       }
   }
 }

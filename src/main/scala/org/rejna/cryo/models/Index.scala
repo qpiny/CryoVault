@@ -16,27 +16,6 @@ import java.nio.channels.FileChannel
 import java.nio.{ ByteOrder, ByteBuffer }
 import java.util.UUID
 
-sealed abstract class SnapshotRequest extends Request { val id: UUID }
-sealed abstract class SnapshotResponse extends Response
-sealed abstract class SnapshotError(val message: String, cause: Throwable) extends GenericError {
-  val source = classOf[SnapshotCreating].getName
-  val marker = Markers.errMsgMarker
-}
-
-case class SnapshotUpdateFilter(id: UUID, file: String, filter: FileFilter) extends SnapshotRequest
-case class SnapshotGetFiles(id: UUID, path: String) extends SnapshotRequest
-case class SnapshotFiles(id: UUID, path: String, files: List[FileElement])
-case class FileElement(path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
-case class SnapshotGetFilter(id: UUID, path: String)
-case class SnapshotFilter(id: UUID, path: String, filter: Option[FileFilter])
-case class FilterUpdated() extends SnapshotResponse
-case class SnapshotUpload(id: UUID) extends SnapshotRequest
-case class SnapshotUploaded(id: UUID) extends SnapshotResponse
-case class GetID() extends Request
-case class ID(id: UUID) extends SnapshotResponse
-case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause) extends SnapshotError(s"Directory traversal attempt : ${directory}", cause)
-case class UninitializedSnapshot(id: UUID, cause: Throwable = Error.NoCause) extends SnapshotError("", cause)
-case class AlreadyInitializedSnapshot(id: UUID, cause: Throwable = Error.NoCause) extends SnapshotError("", cause)
 
 /*
  * Snapshot type:
@@ -61,32 +40,32 @@ class Snapshot(_cryoctx: CryoContext, val id: UUID) extends CryoActor(_cryoctx) 
   def receive = cryoReceive {
     case PrepareToDie() =>
       sender ! ReadyToDie()
-    case SnapshotUpdateFilter(id, file, filter) =>
-      snapshot.getOrElse(throw UninitializedSnapshot(id)).updateFilter(file, filter)
-      sender ! FilterUpdated()
-    case SnapshotGetFiles(id, path) =>
-      val files = snapshot.getOrElse(throw UninitializedSnapshot(id)).getFiles(path)
-      sender ! SnapshotFiles(id, path, files)
-    case SnapshotGetFilter(id, path) =>
-      val filter = snapshot.getOrElse(throw UninitializedSnapshot(id)).getFilter(path)
+    case UpdateFilter(id, file, filter) =>
+      snapshot.getOrElse(throw InvalidState(s"Uninitialized snapshot : ${id}")).updateFilter(file, filter)
+      sender ! Done()
+    case GetFileList(id, path) =>
+      val files = snapshot.getOrElse(throw InvalidState(s"Uninitialized snapshot : ${id}")).getFiles(path)
+      sender ! FileList(id, path, files)
+    case GetFilter(id, path) =>
+      val filter = snapshot.getOrElse(throw InvalidState(s"Uninitialized snapshot : ${id}")).getFilter(path)
       sender ! SnapshotFilter(id, path, filter)
-    case SnapshotUpload(id) =>
-      snapshot.getOrElse(throw UninitializedSnapshot(id)).upload
-      sender ! SnapshotUploaded(id)
+    case Upload(id, _) =>
+      snapshot.getOrElse(throw InvalidState(s"Uninitialized snapshot : ${id}")).upload
+      sender ! Uploaded(id)
     case GetID() =>
-      sender ! ID(id)
+      sender ! id
     case ObjectStatus.Creating() =>
       if (snapshot.isDefined)
-        sender ! AlreadyInitializedSnapshot(id)
-      else
-        snapshot = Some(new SnapshotCreating(cryoctx, id))
+        throw InvalidState(s"Already initialized snapshot : ${id}")
+      snapshot = Some(new SnapshotCreating(cryoctx, id))
   }
 }
 
 class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
   extends BaseSnapshot
   with LoggingClass
-  with CryoAskSupport {
+  with CryoAskSupport
+  with ErrorGenerator {
 
   implicit val cryoctx = _cryoctx
   implicit val executionContext = cryoctx.executionContext
@@ -126,7 +105,7 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
       case e: AccessDeniedException =>
         new FileElement(cryoctx.filesystem.getPath(path).resolve("_Access_denied_"), false, None, 0, 0) :: Nil
       case t: Throwable =>
-        throw CryoError("Error while getting snapshot files", t)
+        throw cryoError("Error while getting snapshot files", t)
     }
   }
 
@@ -148,6 +127,8 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
     builder.addFilters(fileFilters())
     builder.addFiles(files())
     builder.addCatalog()
+    builder.save()
+    
   }
 
   private object updateFiles extends AttributeListCallback {
@@ -201,13 +182,13 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
               }).eflatMap("Fail to update hash catalog", {
                 case BlockAdded(bid) =>
                   index.putLong(bid)
-                  
+
                   if (len + data.length >= cryoctx.archiveSize) {
-                    (cryoctx.cryo ? UploadData(aid, DataType.Data))
+                    (cryoctx.cryo ? Upload(aid, DataType.Data))
                       .eflatMap("Fail to upload data", {
-                        case DataUploaded(_) => (cryoctx.datastore ? CreateArchive)
+                        case Uploaded(_) => (cryoctx.inventory ? CreateArchive())
                       }).emap("Fail to create new archive", {
-                        case ArchiveCreated(newId) => State(index, blockIds, newId, 0)
+                        case Created(newId) => State(index, blockIds, newId, 0)
                       })
                   } else {
                     Future(State(index, blockIds + bid, aid, len + data.length))
@@ -215,22 +196,6 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
               })
         }
       }
-
-//      def flush(): Future[State] = {
-//        current.flatMap {
-//          case s @ State(index, blockIds, aid, len) =>
-//            if (len > cryoctx.archiveSize) {
-//              (cryoctx.cryo ? UploadData(aid, DataType.Data))
-//                .eflatMap("Fail to upload data", {
-//                  case DataUploaded(_) => (cryoctx.datastore ? CreateArchive)
-//                }).emap("Fail to create new archive", {
-//                  case ArchiveCreated(newId) => State(index, blockIds, newId, 0)
-//                })
-//            } else {
-//              Future(s)
-//            }
-//        }
-//      }
 
       def putPath(path: Path): Future[State] = {
         current.map {
@@ -283,7 +248,7 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
 
     var state = (cryoctx.inventory ? CreateArchive())
       .emap("Fail to create data", {
-        case ArchiveCreated(aid) => State(new ByteStringBuilder, Set.empty, aid, 0)
+        case Created(aid) => State(new ByteStringBuilder, Set.empty, aid, 0)
       })
 
     def addFiles(files: List[Path]) = {
@@ -298,7 +263,7 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
         case (st, block) =>
           (cryoctx.hashcatalog ? ReserveBlock(block))
             .eflatMap("", {
-              case BlockReserved() => st.writeBlock(block)
+              case Done() => st.writeBlock(block)
               case bl: BlockLocation => st.putLong(bl.id)
             })
       }
@@ -326,16 +291,32 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
             })
       }
     }
+
+    def save() = {
+      state = state.flatMap({
+        case s @ State(index, blockIds, aid, len) =>
+          if (len > 0)
+            (cryoctx.cryo ? Upload(aid, DataType.Data))
+              .emap("Fail to upload data", {
+                case Uploaded(_) => State(index, blockIds, null, 0)
+              })
+          else
+            (cryoctx.inventory ? DeleteArchive(aid))
+              .emap("Fail to remove unused archive", {
+                case Deleted(_) => State(index, blockIds, null, 0)
+              })
+      }).flatMap({
+        case s @ State(index, blockIds, aid, len) =>
+          (cryoctx.datastore ? WriteData(id, index.result))
+            .eflatMap("Fail to write index data", {
+              case DataWritten(_, _, _) => (cryoctx.cryo ? Upload(id, DataType.Index))
+            }).emap("Fail to upload index", {
+              case Uploaded(_) => State(new ByteStringBuilder, Set.empty, aid, 0)
+            })
+      })
+    }
   }
-  //  object IndexBuilder {
-  //    def apply() = {
-  //      val state = (cryoctx.inventory ? CreateArchive())
-  //        .emap("Fail to create data", {
-  //          case ArchiveCreated(aid) => new IndexBuilderState(ByteString.empty, aid, 0)
-  //        })
-  //      new IndexBuilder(state)
-  //    }
-  //  }
+
   private def splitFile(f: Path) = new Traversable[Block] {
     def foreach[U](func: Block => U) = {
       val input = FileChannel.open(cryoctx.baseDirectory.resolve(f), READ)
@@ -353,6 +334,14 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
       }
     }
   }
+}
+
+class SnapshotCreated(_cryoctx: CryoContext, val id: UUID)
+  extends BaseSnapshot {
+  def updateFilter(file: String, filter: FileFilter): Unit = {}
+  def getFiles(path: String): List[FileElement] = Nil
+  def getFilter(path: String): Option[FileFilter] = None
+  def upload(): Unit = {}
 }
 
 class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {

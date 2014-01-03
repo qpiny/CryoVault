@@ -9,7 +9,7 @@ class NotificationMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case PrepareToDie() =>
       sender ! ReadyToDie()
     case GetNotification() =>
-      sender ! NotificationGot() 
+      sender ! Done() 
     case GetNotificationARN() =>
       sender ! NotificationARN("dummy ARN")
   }

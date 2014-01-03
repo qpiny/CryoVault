@@ -53,7 +53,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         i
       }
       repository += id -> DataEntryMock(id, dataType, new Date, size, "", ByteString.empty)
-      sender ! DataCreated(id)
+      sender ! Created(id)
 
     case DefineData(id, glacierId, dataType, creationDate, size, checksum) =>
       repository.get(id) match {

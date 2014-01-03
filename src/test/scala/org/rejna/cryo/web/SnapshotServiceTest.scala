@@ -29,7 +29,7 @@ class SnapshotServiceTest
   def receive = PartialFunction.empty
 
   val snapshotId = Await.result((cryoctx.inventory ? CreateSnapshot()) map {
-    case SnapshotCreated(id) => id
+    case Created(id) => id
   }, 20 seconds)
 
   "Snapshot service" must "update file filter" in {

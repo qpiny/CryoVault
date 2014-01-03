@@ -13,15 +13,6 @@ import com.amazonaws.services.sqs.model._
 import com.amazonaws.services.sns.AmazonSNSClient
 import com.amazonaws.services.sns.model._
 
-sealed abstract class NotificationRequest extends Request
-sealed abstract class NotificationResponse extends Response
-sealed class NotificationError(message: String, cause: Throwable) extends CryoError(classOf[Notification].getName, message, cause = cause)
-
-case class GetNotification() extends NotificationRequest
-case class NotificationGot() extends NotificationResponse
-case class GetNotificationARN() extends NotificationRequest
-case class NotificationARN(arn: String) extends NotificationResponse
-
 case class NotificationMessage(
   notificationType: String,
   messageId: String,
@@ -144,12 +135,12 @@ class QueueNotification(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with 
                 log.error(s"Fail to add jobs from notification : ${failure}")
               val addedJobIds = success.asInstanceOf[Set[JobAdded]].map(_.job)
               removeMessage(addedJobIds.map(jobsReceipt.apply(_)))
-              NotificationGot()
+              Done()
           }).recover({
-            case t: Any => log(CryoError("Fail to remove notification message", t))
+            case t: Any => log(cryoError("Fail to remove notification message", t))
           }).reply("Fail to add job from notirication", sender)
       } else
-        sender ! NotificationGot()
+        sender ! Done()
 
     case GetNotificationARN() =>
       sender ! NotificationARN(notificationArn)

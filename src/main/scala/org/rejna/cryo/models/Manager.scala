@@ -43,7 +43,7 @@ case class Job(id: String,
   creationDate: Date,
   status: JobStatus,
   completedDate: Option[Date],
-  objectId: String) extends ManagerResponse
+  objectId: String)
 
 object Job {
   def getStatus(status: String, message: String) = status match {
@@ -76,27 +76,6 @@ object Job {
   }
 }
 
-sealed abstract class ManagerRequest extends Request
-sealed abstract class ManagerResponse extends Response
-sealed abstract class ManagerError(message: String, cause: Throwable) extends GenericError {
-  val source = classOf[Manager].getName
-  val marker = Markers.errMsgMarker
-}
-
-case class AddJob(job: Job) extends ManagerRequest
-//object AddJob { def apply(jobs: Job*): AddJobs = AddJobs(jobs.toList) }
-case class JobAdded(job: Job) extends ManagerResponse
-case class RemoveJob(jobId: String) extends ManagerRequest
-//object RemoveJobs { def apply(jobIds: String*): RemoveJobs = RemoveJobs(jobIds.toList) }
-case class JobRemoved(jobId: String) extends ManagerResponse
-case class UpdateJobList(jobs: List[Job]) extends ManagerRequest
-case class JobListUpdated(jobs: List[Job]) extends ManagerResponse
-case class GetJobList() extends ManagerRequest
-case class JobList(jobs: List[Job]) extends ManagerResponse
-case class GetJob(jobId: String) extends ManagerRequest
-case class JobNotFound(jobId: String, message: String, cause: Throwable = Error.NoCause) extends ManagerError(message, cause)
-case class FinalizeJob(jobId: String) extends ManagerRequest
-
 class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder("/cryo/manager")
   val jobs = attributeBuilder.map("jobs", Map[String, Job]())
@@ -106,27 +85,27 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
   val finalizedJobsId = new UUID(0x0000000000001000L, 0xC47000000002L)
   val finalizedJobsGlacierId = "finalizedJobs"
-    
+
   override def preStart = {
     log.info("Starting manager ...")
     log.info("Refreshing job list")
     (cryoctx.cryo ? RefreshJobList()) onComplete {
-      case Success(JobListRefreshed()) => log.info("Job list has been refreshed")
-      case o: Any => log(CryoError("Fail to refresh job list", o))
+      case Success(Done()) => log.info("Job list has been refreshed")
+      case o: Any => log(cryoError("Fail to refresh job list", o))
     }
 
     (cryoctx.datastore ? GetDataStatus("finalizedJobs"))
-    .eflatMap("Fail to get finalizedJobs", {
-      case DataStatus(id, _, _, status, size, _) if status == Cached && size > 0 =>
-        (cryoctx.datastore ? ReadData(id, 0, size.toInt))
-    }).emap("Fail to read finalizedJobs", {
-      case DataRead(_, _, buffer) =>
-        finalizedJobs ++= Json.read[List[Job]](buffer).map(j => j.id -> j)
-    }).onComplete {
-      case Success(_) => log.info("Finalized jobs loaded")
-      case Failure(DataNotFoundError(_, _, _)) => log.info("Finalized jobs not found")
-      case Failure(e) => log.error("Fail to load Finalized jobs", e)
-    }
+      .eflatMap("Fail to get finalizedJobs", {
+        case DataStatus(id, _, _, Cached(_), size, _) if size > 0 =>
+          (cryoctx.datastore ? ReadData(id, 0, size.toInt))
+      }).emap("Fail to read finalizedJobs", {
+        case DataRead(_, _, buffer) =>
+          finalizedJobs ++= Json.read[List[Job]](buffer).map(j => j.id -> j)
+      }).onComplete {
+        case Success(_) => log.info("Finalized jobs loaded")
+        case Failure(DataNotFoundError(_, _, _)) => log.info("Finalized jobs not found")
+        case Failure(e) => log.error("Fail to load Finalized jobs", e)
+      }
 
   }
 
@@ -135,19 +114,19 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       isDying = true
 
       (cryoctx.datastore ? CreateData(Some(finalizedJobsId), DataType.Internal))
-      .eflatMap("Fail to create finalizedJobs data", {
-        case DataCreated(id) => cryoctx.datastore ? WriteData(id, ByteString((Json.write(finalizedJobs.values))))
-      }).eflatMap("Fail to write finalizedJobs data", {
-        case DataWritten(id, _, _) => cryoctx.datastore ? CloseData(id)
-      }).emap("Fail to save finalized jobs", {
-        case DataClosed(_) =>
-          log.info("FinalizedJobs data has been stored")
-          ReadyToDie()
-      }).recover({
-        case t: Any =>
-          log(CryoError("Fail to save finalized jobs", t))
-          ReadyToDie()
-      }).reply("Fail to save finalized jobs", sender)
+        .eflatMap("Fail to create finalizedJobs data", {
+          case Created(id) => cryoctx.datastore ? WriteData(id, ByteString((Json.write(finalizedJobs.values))))
+        }).eflatMap("Fail to write finalizedJobs data", {
+          case DataWritten(id, _, _) => cryoctx.datastore ? PackData(id, finalizedJobsGlacierId)
+        }).emap("Fail to save finalized jobs", {
+          case DataPacked(_, _) =>
+            log.info("FinalizedJobs data has been stored")
+            ReadyToDie()
+        }).recover({
+          case t: Any =>
+            log(cryoError("Fail to save finalized jobs", t))
+            ReadyToDie()
+        }).reply("Fail to save finalized jobs", sender)
 
     case AddJob(addedJob) =>
       if (!finalizedJobs.contains(addedJob.id))
@@ -159,7 +138,7 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         jobs -= jobId
         sender ! JobRemoved(jobId)
       } else {
-        sender ! JobNotFound(jobId, "Can't remove a non-existent job")
+        sender ! NotFoundError(s"Can't remove a non-existent job ${jobId}")
       }
 
     case UpdateJobList(jl) =>
@@ -191,14 +170,14 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case None =>
           finalizedJobs.get(jobId) match {
             case Some(j) => sender ! j
-            case None => sender ! JobNotFound(jobId, s"Job ${jobId} is not found and can't be finalized")
+            case None => sender ! NotFoundError(s"Job ${jobId} is not found and can't be finalized")
           }
       }
 
     case GetJob(jobId) =>
       jobs.get(jobId).orElse(finalizedJobs.get(jobId)) match {
         case Some(j) => sender ! j
-        case None => sender ! JobNotFound(jobId, s"Job ${jobId} is not found")
+        case None => sender ! NotFoundError(s"Job ${jobId} is not found")
       }
 
   }

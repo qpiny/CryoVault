@@ -12,15 +12,10 @@ import org.json4s.native.Serialization
 
 import org.rejna.cryo.models._
 
-//case class GetArchiveList() extends RequestEvent
-//case class ArchiveList(archives: List[String]) extends ResponseEvent("<null>")
-//case class SnapshotList(snapshots: List[String]) extends ResponseEvent("<null>")
-//
-//case class GetSnapshotList() extends RequestEvent
-case class Subscribe(subscription: String) extends Request
-case class Unsubscribe(subscription: String) extends Request
-case class AddIgnoreSubscription(subscription: String) extends Request
-case class RemoveIgnoreSubscription(subscription: String) extends Request
+case class Subscribe(subscription: String)
+case class Unsubscribe(subscription: String)
+case class AddIgnoreSubscription(subscription: String)
+case class RemoveIgnoreSubscription(subscription: String)
 
 object JsonWithTypeHints extends Formats {
   implicit val format = this

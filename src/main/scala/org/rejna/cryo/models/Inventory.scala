@@ -18,36 +18,10 @@ import java.nio.{ CharBuffer, ByteBuffer }
 import java.nio.channels.FileChannel
 import java.util.{ Date, UUID }
 
-sealed abstract class InventoryInternalMessage
-sealed abstract class InventoryRequest extends Request
-sealed abstract class InventoryResponse extends Response
-sealed abstract class InventoryError(message: String, cause: Throwable) extends GenericError {
-  val source = classOf[Inventory].getName
-  val marker = Markers.errMsgMarker
-}
-
-case class UpdateInventoryDate(date: Date) extends InventoryInternalMessage
-case class AddArchive(id: UUID) extends InventoryInternalMessage
-case class AddSnapshot(id: UUID) extends InventoryInternalMessage
-case class CreateArchive() extends InventoryRequest
-case class ArchiveCreated(id: UUID) extends InventoryResponse
-case class CreateSnapshot() extends InventoryRequest
-case class SnapshotCreated(id: UUID) extends InventoryResponse
-case class DeleteSnapshot(id: UUID) extends InventoryRequest
-case class SnapshotDeleted(id: UUID) extends InventoryResponse
-case class DeleteArchive(id: UUID) extends InventoryRequest
-case class ArchiveDeleted(id: UUID) extends InventoryResponse
-case class GetArchiveList() extends InventoryRequest
-case class ArchiveList(date: Date, status: ObjectStatus, archives: List[DataStatus]) extends InventoryResponse
-
-case class GetSnapshotList() extends InventoryRequest
-case class SnapshotList(date: Date, status: ObjectStatus, snapshots: List[DataStatus]) extends InventoryResponse
-case class ArchiveNotFound(id: UUID, message: String, cause: Throwable = Error.NoCause) extends InventoryError(message, cause)
-case class SnapshotNotFound(id: UUID, message: String, cause: Throwable = Error.NoCause) extends InventoryError(message, cause)
-
-//case class DataStatus(id: String, description: String, creationDate: Date, status: EntryStatus.EntryStatus, size: Long, checksum: String) extends DatastoreResponse
-//case class InventoryEntry(id: String, description: String, creationDate: Date, size: Long, checksum: String)
 case class InventoryMessage(date: Date, entries: List[DataStatus])
+case class UpdateInventoryDate(date: Date)
+case class AddArchive(id: UUID)
+case class AddSnapshot(id: UUID)
 
 import ObjectStatus._
 import DataType._
@@ -88,7 +62,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case Success(addedDataStatus) =>
           log.debug(s"attribute[${path}] add: ${addedValues.take(10)} remove: ${removedValues.take(10)}")
           CryoEventBus.publish(AttributeListChange(path, addedDataStatus, removedValues))
-        case e: Any => log(CryoError("Fail to publish inventory change", e))
+        case e: Any => log(cryoError("Fail to publish inventory change", e))
       }
     }
   }
@@ -139,7 +113,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   private def save(): Future[Unit] = {
     (cryoctx.datastore ? CreateData(Some(inventoryId), DataType.Internal))
       .eflatMap("Fail to create inventory", {
-        case DataCreated(id) =>
+        case Created(id) =>
           getDataStatusList(archiveIds ++ snapshotIds)
             .flatMap {
               case archiveList =>
@@ -198,14 +172,14 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           log.info("No inventory found in datastore")
           (cryoctx.notification ? GetNotification())
             .emap("Fail to get notification", {
-              case NotificationGot() =>
+              case Done() =>
             }).flatMap({
               case _ => (cryoctx.manager ? GetJobList())
             }).eflatMap("Fail to get job list", {
               case JobList(jl) if !jl.exists(_.objectId == "inventory") =>
                 (cryoctx.cryo ? RefreshInventory())
                   .emap("Fail to refresh inventory", {
-                    case RefreshInventoryRequested(job) =>
+                    case JobRequested(job) =>
                       log.info(s"Inventory update requested (${job.id})")
                       Downloading(inventoryGlacierId)
                   })
@@ -215,7 +189,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             })
       }).onComplete({
         case Failure(t) =>
-          log(CryoError("An error has occured while updating inventory", t))
+          log(cryoError("An error has occured while updating inventory", t))
         case Success(s) =>
           status = s
       })
@@ -224,7 +198,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   private def createSnapshot: Future[UUID] = {
     (cryoctx.datastore ? CreateData(None, Index))
       .emap("Error while creating a new snapshot", {
-        case DataCreated(id) =>
+        case Created(id) =>
           //val aref = context.actorOf(Props(classOf[SnapshotCreating], cryoctx, id))
           snapshotIds += id
           id
@@ -241,7 +215,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           case _ => ReadyToDie()
         }).recover({
           case e: Any =>
-            log(CryoError("Inventory shutdown has generated an error", e))
+            log(cryoError("Inventory shutdown has generated an error", e))
             ReadyToDie()
         }).reply("", sender)
 
@@ -272,42 +246,36 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case CreateArchive() =>
       (cryoctx.datastore ? CreateData(None, Data))
         .emap("Fail to create data", {
-          case DataCreated(id) =>
+          case Created(id) =>
             archiveIds += id
-            ArchiveCreated(id)
+            Created(id)
         }).reply("Error while creating a new archive", sender)
 
     case DeleteArchive(id) =>
       archiveIds -= id
       (cryoctx.datastore ? DeleteData(id))
-        .emap("Fail to delete data", {
-          case DataDeleted(id) => ArchiveDeleted(id)
-          case DataNotFoundError(Left(id), str, _) => ArchiveNotFound(id, s"Archive ${id} was not found")
-        }).reply(s"Error while deleting archive ${id}", sender)
+        .reply(s"Error while deleting archive ${id}", sender)
 
     case DeleteSnapshot(id) =>
       snapshotIds -= id
       (cryoctx.datastore ? DeleteData(id))
-        .emap("Fail to delete data", {
-          case DataDeleted(id) => SnapshotDeleted(id)
-          case DataNotFoundError(Left(id), str, _) => SnapshotNotFound(id, s"Snapshot ${id} was not found")
-        }).reply(s"Error while deleting snapshot ${id}", sender)
+        .reply(s"Error while deleting snapshot ${id}", sender)
 
     case CreateSnapshot() =>
-      createSnapshot.map(SnapshotCreated(_))
+      createSnapshot.map(Created(_))
         .reply("Fail to create snapshot", sender)
 
     case GetArchiveList() =>
       getDataStatusList(archiveIds)
-        .map(ArchiveList(date, status, _))
+        .map(ObjectList(date, status, _))
         .reply("Can't get archive list", sender)
 
     case GetSnapshotList() =>
       getDataStatusList(snapshotIds)
-        .map(SnapshotList(date, status, _))
+        .map(ObjectList(date, status, _))
         .reply("Can't get snapshot list", sender)
 
-    case sr: SnapshotRequest =>
+    case sr: SnapshotMessage =>
       val id = sr.id
       if (snapshotIds.contains(id)) {
         snapshotActors.get(id) match {
@@ -325,11 +293,11 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
               //                snapshotActors += id -> aref
               //                aref.tell(sr, _sender)
               case e: Any =>
-                _sender ! CryoError(s"Fail to process snapshot request ${sr}", e)
+                _sender ! cryoError(s"Fail to process snapshot request ${sr}", e)
             }
         }
       } else {
-        sender ! SnapshotNotFound(id, s"Snapshot ${sr.id} was not found")
+        sender ! NotFoundError(s"Snapshot ${sr.id} was not found")
       }
     //    case MigrateArchive(archive, newId, size, hash) =>
     //      // TODO create an actor which manage store (all archive files)

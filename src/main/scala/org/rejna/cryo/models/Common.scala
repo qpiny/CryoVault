@@ -40,7 +40,7 @@ object ObjectStatus {
   }
 }
 
-case object InvalidStateException extends Exception
+
 
 //case class BlockLocation(val hash: Hash, val archiveId: String, val offset: Long, val size: Int) {
 //  def read = {

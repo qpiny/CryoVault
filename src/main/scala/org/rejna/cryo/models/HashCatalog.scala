@@ -14,26 +14,7 @@ import akka.event.Logging.Error
 import akka.actor.Stash
 import akka.util.ByteString
 
-sealed abstract class HashCatalogRequest extends Request
-sealed abstract class HashCatalogResponse extends Response
-sealed abstract class HashCatalogError(val message: String, val cause: Throwable = Error.NoCause) extends GenericError {
-  val source = classOf[HashCatalog].getName
-  val marker = Markers.errMsgMarker
-}
-
-case class ReserveBlock(block: Block) extends HashCatalogRequest
-case class BlockReserved() extends HashCatalogResponse
-
-//case class GetBlockLocation(block: Block) extends HashCatalogRequest
-case class BlockLocation(id: Long, hash: Hash, archiveId: UUID, offset: Long, size: Int) extends HashCatalogResponse
-
-case class AddBlock(block: Block, archiveId: UUID, offset: Long) extends HashCatalogRequest
-case class BlockAdded(blockId: Long) extends HashCatalogResponse
-
-case class BlockLocationNotFound(hash: Hash) extends HashCatalogError("Blocklocation was not found")
-
-case class GetCatalogContent(blockIds: Option[Set[Long]]) extends HashCatalogRequest
-case class CatalogContent(catalog: List[BlockLocation]) extends HashCatalogResponse
+case class BlockLocation(id: Long, hash: Hash, archiveId: UUID, offset: Long, size: Int)
 
 class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash {
   private val content = ArrayBuffer.empty[BlockLocation]
@@ -68,7 +49,7 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
           sender ! bl
         case _ =>
           hashIndex += block.hash -> reservedBlockLocation
-          sender ! BlockReserved()
+          sender ! Done()
         
       }
 //    case GetBlockLocation(block) =>
@@ -97,16 +78,16 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
   private def save() = {
     (cryoctx.datastore ? CreateData(Some(catalogId), DataType.Internal))
       .eflatMap("Fail to create catalog", {
-        case DataCreated(id) =>
+        case Created(id) =>
           cryoctx.datastore ? WriteData(id, ByteString(Json.write(content)))
       }).eflatMap("Fail to write catalog", {
         case DataWritten(id, _, _) =>
-          cryoctx.datastore ? CloseData(id)
+          cryoctx.datastore ? PackData(id, catalogGlacierId)
       }).onComplete({
-        case Success(DataClosed(id)) =>
+        case Success(DataPacked(_, _)) =>
           log.info("Catalog saved")
         case o: Any =>
-          log(CryoError("Fail to close catalog", o))
+          log(cryoError("Fail to close catalog", o))
       })
   }
 
@@ -118,9 +99,9 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
           val catalog = Json.read[Array[BlockLocation]](message)
           content ++= catalog
           hashIndex ++= catalog.map(bl => bl.hash -> bl)
-          lastBlockId = content.maxBy(_.id).id
+          lastBlockId = if (content.isEmpty) 0 else content.maxBy(_.id).id
         case o: Any =>
-          log(CryoError("Fail to read catalog data", o))
+          log(cryoError("Fail to read catalog data", o))
       })
   }
 }
