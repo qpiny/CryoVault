@@ -5,9 +5,9 @@ import java.util.{ UUID, Date }
 
 import akka.event.Logging.Error
 import akka.util.ByteString
+
 import DataType._
-
-
+import ObjectStatus._
 
 /* Common */
 case class Created(id: UUID)
@@ -17,13 +17,13 @@ case class Done()
 case class Uploaded(id: UUID)
 
 
-case class NotFoundError(message: String, cause: Throwable = Error.NoCause) extends GenericError
-case class OpenError(message: String, cause: Throwable = Error.NoCause) extends GenericError
-case class WriteError(message: String, cause: Throwable = Error.NoCause) extends GenericError
-case class ReadError(message: String, cause: Throwable = Error.NoCause) extends GenericError
-case class DataNotFoundError(id: Either[UUID, String], message: String, cause: Throwable = Error.NoCause) extends GenericError
-case class InvalidState(message: String, cause: Throwable = Error.NoCause) extends GenericError
-case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause) extends GenericError // SnapshotError(s"Directory traversal attempt : ${directory}", cause)
+case class NotFoundError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class OpenError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class WriteError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class ReadError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class DataNotFoundError(id: Either[UUID, String], message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class InvalidState(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError { val message = s"Directory traversal attempt : ${directory}" }
 
 
 /* Datastore */
@@ -55,7 +55,7 @@ object GetDataStatus {
   def apply(id: UUID) = new GetDataStatus(Left(id))
   def apply(glacierId: String) = new GetDataStatus(Right(glacierId))
 }
-case class DataStatus(id: UUID, dataType: DataType, creationDate: Date, status: ObjectStatus, size: Long, checksum: String)
+case class DataStatus(id: UUID, glacierId: Option[String], dataType: DataType, creationDate: Date, status: ObjectStatus, size: Long, checksum: String)
 
 
 
@@ -88,13 +88,12 @@ case class CatalogContent(catalog: List[BlockLocation])
 
 /* Snapshot */
 trait SnapshotMessage { val id: UUID }
-case class UpdateFilter(id: UUID, file: String, filter: FileFilter)
-case class GetFileList(id: UUID, path: String)
+case class UpdateFilter(id: UUID, file: String, filter: FileFilter) extends SnapshotMessage
+case class GetFileList(id: UUID, path: String) extends SnapshotMessage
 case class FileList(id: UUID, path: String, files: List[FileElement])
 case class FileElement(path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
-case class GetFilter(id: UUID, path: String)
+case class GetFilter(id: UUID, path: String) extends SnapshotMessage
 case class SnapshotFilter(id: UUID, path: String, filter: Option[FileFilter])
-case class GetID()
 
 
 /* Manager */

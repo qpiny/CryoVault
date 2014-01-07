@@ -17,8 +17,6 @@ import java.util.{ Date, UUID }
 
 import DataType._
 
-// TODO Replace all internal ID string with UUID
-// this makes no confusion with glacier ID
 class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   val attributeBuilder = CryoAttributeBuilder("/cryo/datastore")
   val repository = attributeBuilder.map("repository", Map.empty[UUID, DataEntry])
@@ -31,7 +29,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       repository.values.map { d => log.debug(s"${d.status} | ${d.size} | ${d.id}") }
       val repo = repository.values
         // FIXME        .filter { d => d.status == ObjectStatus.Cached || d.status == Remote }
-        .map { _.state }
+        .map { _.dataStatus }
       channel.write(ByteBuffer.wrap(Json.write(repo).getBytes))
     } catch {
       case t: Throwable => log(cryoError("Datastore has failed to store its state", t))
@@ -47,7 +45,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     val repoData = source.getLines mkString "\n"
     source.close()
     val entries = Json.read[List[DataStatus]](repoData) map {
-      case state => DataEntry(cryoctx, attributeBuilder, state)
+      case state => new DataEntry(cryoctx, attributeBuilder, state.id, None /* FIXME */, state.dataType, state.creationDate /* FIXME */)
     }
     repository ++= entries.map(e => e.id -> e)
     log.info("Repository loaded : " + entries.map(_.id).mkString(","))
@@ -76,23 +74,20 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       }
       val entryAttributeBuilder = attributeBuilder / id
       repository.get(id) match {
-        case Some(d) if d.state.dataType == Internal =>
-          d.close
-          repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, entryAttributeBuilder("size", size))
-          sender ! Created(id)
-        case None =>
-          repository += id -> new DataEntryCreating(cryoctx, id, dataType, size, entryAttributeBuilder("size", size))
-          sender ! Created(id)
         case Some(d) =>
-          sender ! OpenError(s"Data ${id} can't be created (${d.status})")
+          if (d.dataType == Internal)
+            d.close
+            else throw OpenError(s"Data ${id} can't be created (${d.status})")
       }
+      repository += id -> new DataEntry(cryoctx, entryAttributeBuilder, id, None, dataType)
+      sender ! Created(id)
 
     case DefineData(id, glacierId, dataType, creationDate, size, checksum) =>
       repository.get(id) match {
         case Some(_) => // data already defined, ignore it
         case None =>
           val entryAttributeBuilder = attributeBuilder / id
-          repository += id -> new DataEntryRemote(cryoctx, id, glacierId, dataType, creationDate, size, checksum, entryAttributeBuilder("size", size))
+          repository += id -> new DataEntry(cryoctx, entryAttributeBuilder, id, Some(glacierId), dataType, creationDate, ObjectStatus.Readable, size, checksum)
       }
       sender ! DataDefined(id)
 
@@ -111,11 +106,11 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     case GetDataStatus(Left(id)) =>
       val de = getDataEntry(id)
-      sender ! de.state
+      sender ! de.dataStatus
 
     case GetDataStatus(Right(glacierId)) =>
       repository.collectFirst {
-        case (_, de: DataEntry) if de.glacierId.isDefined && de.glacierId.get == glacierId => sender ! de.state
+        case (_, de: DataEntry) if de.glacierId.isDefined && de.glacierId.get == glacierId => sender ! de.dataStatus
       } getOrElse {
         sender ! DataNotFoundError(Right(glacierId), s"Data ${glacierId} not found")
       }
@@ -125,29 +120,19 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       sender ! DataRead(id, position, de.read(position, length))
 
     case ClearLocalCache(id) =>
-      val de = getDataEntry(id)
-      val newde = de.clearLocalCache
-      repository += id -> newde
-      CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(de.status), newde.status))
+      getDataEntry(id).setRemote
       sender ! LocalCacheCleared(id)
 
     case PrepareDownload(id) =>
-      val de = getDataEntry(id)
-      val newde = de.prepareForDownload
-      repository += id -> newde
-      CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(de.status), newde.status))
+      getDataEntry(id).setWritable
       sender ! DownloadPrepared(id)
 
     case PackData(id, glacierId) =>
-      val de = getDataEntry(id)
-      val newde = de.pack(glacierId)
-      repository += id -> newde
-      CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(de.status), newde.status))
+      getDataEntry(id).setReadable
       sender ! DataPacked(id, glacierId)
       
     case CloseData(id) =>
-      val de = getDataEntry(id)
-      de.close
+      getDataEntry(id).close()
       sender ! DataClosed(id)
   }
 }

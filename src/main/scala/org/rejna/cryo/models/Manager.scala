@@ -96,7 +96,7 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     (cryoctx.datastore ? GetDataStatus("finalizedJobs"))
       .eflatMap("Fail to get finalizedJobs", {
-        case DataStatus(id, _, _, Cached(_), size, _) if size > 0 =>
+        case DataStatus(id, _, _, _, Readable, size, _) if size > 0 =>
           (cryoctx.datastore ? ReadData(id, 0, size.toInt))
       }).emap("Fail to read finalizedJobs", {
         case DataRead(_, _, buffer) =>

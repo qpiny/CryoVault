@@ -78,7 +78,7 @@ case object JsonDataEntry extends CustomSerializer[DataEntry](format => (
     case JNull => null
   },
   {
-    case de: DataEntry => Json.write(de.state)
+    case de: DataEntry => Json.write(de.dataStatus)
   }))
 
 case object JsonFileElement extends CustomSerializer[FileElement](format => (

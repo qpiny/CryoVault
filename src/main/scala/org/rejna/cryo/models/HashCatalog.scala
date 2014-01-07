@@ -27,7 +27,7 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
 
   override def preStart = {
     (cryoctx.datastore ? GetDataStatus(catalogId)) map {
-      case DataStatus(_, _, _, _, size, _) => loadFromDataStore(size)
+      case DataStatus(_, _, _, _, _, size, _) => loadFromDataStore(size)
       case DataNotFoundError(_, _, _) => log.warn("Catalog data not found in datastore, using empty catalog")
     }
   }

@@ -27,6 +27,8 @@ import java.util.UUID
  */
 
 trait BaseSnapshot {
+  implicit val logSource = getClass.getName
+  
   def updateFilter(file: String, filter: FileFilter): Unit
   def getFiles(path: String): List[FileElement]
   def getFilter(path: String): Option[FileFilter]
@@ -52,9 +54,7 @@ class Snapshot(_cryoctx: CryoContext, val id: UUID) extends CryoActor(_cryoctx) 
     case Upload(id, _) =>
       snapshot.getOrElse(throw InvalidState(s"Uninitialized snapshot : ${id}")).upload
       sender ! Uploaded(id)
-    case GetID() =>
-      sender ! id
-    case ObjectStatus.Creating() =>
+    case ObjectStatus.Writable =>
       if (snapshot.isDefined)
         throw InvalidState(s"Already initialized snapshot : ${id}")
       snapshot = Some(new SnapshotCreating(cryoctx, id))
@@ -337,8 +337,25 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID)
 }
 
 class SnapshotCreated(_cryoctx: CryoContext, val id: UUID)
-  extends BaseSnapshot {
-  def updateFilter(file: String, filter: FileFilter): Unit = {}
+  extends BaseSnapshot
+  with LoggingClass
+  with CryoAskSupport
+  with ErrorGenerator {
+  
+  import ObjectStatus._
+  
+  implicit val cryoctx = _cryoctx
+  implicit val executionContext = cryoctx.executionContext
+  val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
+  
+  def load() = {
+    (cryoctx.datastore ? GetDataStatus(id))
+    .eflatMap(s"Fail to get status of Snapshot ${id}", {
+      case DataStatus(_, Some(glacierId), _, _, Remote, size, _) =>
+        (cryoctx.cryo ? DownloadArchive(glacierId))
+    })
+  }
+  def updateFilter(file: String, filter: FileFilter): Unit = throw InvalidState(s"Snapshot ${id} has invalid status (created) for updateFilter")
   def getFiles(path: String): List[FileElement] = Nil
   def getFilter(path: String): Option[FileFilter] = None
   def upload(): Unit = {}

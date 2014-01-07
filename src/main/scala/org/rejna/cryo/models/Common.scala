@@ -15,30 +15,31 @@ object DataType extends Enumeration {
   def unapply(dt: String) = DataType.withName(dt)
 }
 
-sealed class ObjectStatus {
-  def getGlacierId: Option[String] = None
+object ObjectStatus extends Enumeration {
+  type ObjectStatus = Value
+  val Readable, Writable, Remote = Value
 }
-object ObjectStatus {
-  case class Creating() extends ObjectStatus
-  case class Uploading() extends ObjectStatus
-  case class Cached(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
-  case class Remote(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
-  case class Downloading(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
-  case class Unknown() extends ObjectStatus
-  
-  def apply(name: String) = {
-    val regex = """(\w+)(?:\((\w*)\))?""".r
-    val regex(clazz, id) = name
-    clazz match {
-      case "Creating" => Creating()
-      case "Uploading" => Uploading()
-      case "Cached" if id != null => Cached(id)
-      case "Remote" if id != null => Remote(id)
-      case "Downloading" if id != null => Downloading(id)
-      case "Unknown" => Unknown()
-    }
-  }
-}
+//object ObjectStatus {
+//  case class Creating() extends ObjectStatus
+//  case class Uploading() extends ObjectStatus
+//  case class Cached(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
+//  case class Remote(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
+//  case class Downloading(glacierId: String) extends ObjectStatus { override def getGlacierId = Some(glacierId) }
+//  case class Unknown() extends ObjectStatus
+//  
+//  def apply(name: String) = {
+//    val regex = """(\w+)(?:\((\w*)\))?""".r
+//    val regex(clazz, id) = name
+//    clazz match {
+//      case "Creating" => Creating()
+//      case "Uploading" => Uploading()
+//      case "Cached" if id != null => Cached(id)
+//      case "Remote" if id != null => Remote(id)
+//      case "Downloading" if id != null => Downloading(id)
+//      case "Unknown" => Unknown()
+//    }
+//  }
+//}
 
 
 

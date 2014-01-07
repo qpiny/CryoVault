@@ -38,7 +38,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
   def date = dateAttribute()
   def date_= = dateAttribute() = _
 
-  val statusAttribute = attributeBuilder("status", Unknown(): ObjectStatus)
+  val statusAttribute = attributeBuilder("status", Remote: ObjectStatus)
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
@@ -125,7 +125,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           cryoctx.datastore ? PackData(id, inventoryGlacierId)
       }).emap("Fail to close inventory", {
         case Success(DataPacked(id, glacierId)) =>
-          status = Cached(glacierId)
+          status = Readable
           log.info("Inventory saved")
       })
   }
@@ -140,15 +140,16 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           val inventory = Json.read[InventoryMessage](message)
           cryoctx.inventory ! UpdateInventoryDate(inventory.date)
           inventory.entries.collect {
-            case ds @ DataStatus(id, dataType, creationDate, status, size, checksum) =>
+            case ds @ DataStatus(id, glacierId, dataType, creationDate, status, size, checksum) =>
               dataType match {
                 case Data => cryoctx.inventory ! AddArchive(id)
                 case Index => cryoctx.inventory ! AddSnapshot(id)
                 case _ =>
               }
+              if (glacierId.isDefined)
               status match {
-                case Remote(glacierId) =>
-                  (cryoctx.datastore ? DefineData(id, glacierId, dataType, creationDate, size, checksum))
+                case Remote =>
+                  (cryoctx.datastore ? DefineData(id, glacierId.get, dataType, creationDate, size, checksum))
                     .emap("Fail to define data for ${ds}", {
                       case DataDefined(id) => log.info(s"Remote data ${id} defined")
                     })
@@ -156,16 +157,16 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
               }
 
           }
-          Cached(inventoryGlacierId)
+          Readable
       })
   }
 
   private def reload() = {
     (cryoctx.datastore ? GetDataStatus(inventoryId))
       .eflatMap("Fail to get job list", {
-        case DataStatus(_, _, _, Cached(_), size, _) =>
+        case DataStatus(_, _, _, _, Readable, size, _) =>
           loadFromDataStore(size)
-        case DataStatus(_, _, _, status, _, _) =>
+        case DataStatus(_, _, _, _, status, _, _) =>
           log.info("Waiting for inventory download completion")
           Future(status)
         case DataNotFoundError(id, _, _) =>
@@ -181,11 +182,11 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
                   .emap("Fail to refresh inventory", {
                     case JobRequested(job) =>
                       log.info(s"Inventory update requested (${job.id})")
-                      Downloading(inventoryGlacierId)
+                      Writable
                   })
               case _: JobList =>
                 log.info("Inventory update has been already requested")
-                Future(Downloading(inventoryGlacierId))
+                Future(Writable)
             })
       }).onComplete({
         case Failure(t) =>
@@ -230,7 +231,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case AttributePath("datastore", objectId, attr) if objectId == inventoryId.toString =>
           if (attr == "status")
             CryoEventBus.publish(AttributeChange("/cryo/inventory#status", previous, now))
-          if (now == Cached) {
+          if (now == Readable) {
             reload
           }
         case AttributePath("datastore", _id, attr) =>
@@ -283,9 +284,9 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
           case None =>
             val _sender = sender
             (cryoctx.datastore ? GetDataStatus(id)) onComplete {
-              case Success(DataStatus(_, _, _, _ /* DEBUG Creating */ , _, _)) =>
+              case Success(DataStatus(_, _, _, _, _ /* DEBUG Creating */ , _, _)) =>
                 val aref = context.actorOf(Props(classOf[Snapshot], cryoctx, id))
-                aref ! Creating()
+                aref ! Writable
                 snapshotActors += id -> aref
                 aref.tell(sr, _sender)
               //              case Success(d: DataStatus) =>

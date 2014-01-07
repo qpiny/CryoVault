@@ -16,7 +16,7 @@ import ch.qos.logback.core.spi.FilterReply
 import java.net.InetSocketAddress
 
 sealed trait CryoLog extends Event {
-  val source: String
+  val logSource: String
   val level: Level
   val marker: Marker
   val message: String
@@ -66,12 +66,12 @@ object Markers {
   }
 }
 
-case class CryoTrace(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.TRACE }
-case class CryoDebug(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.DEBUG }
-case class CryoInfo(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.INFO }
-case class CryoWarn(source: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.WARN }
-case class CryoError(source: String, message: String, marker: Marker = Markers.errMsgMarker, cause: Throwable = Error.NoCause) extends Exception with CryoLog { val level = Level.ERROR }
-abstract class GenericError extends Exception with CryoLog { val level = Level.ERROR; val source: String }
+case class CryoTrace(logSource: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.TRACE }
+case class CryoDebug(logSource: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.DEBUG }
+case class CryoInfo(logSource: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.INFO }
+case class CryoWarn(logSource: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.WARN }
+case class CryoError(logSource: String, message: String, marker: Marker = Markers.errMsgMarker, cause: Throwable = Error.NoCause) extends Exception with CryoLog { val level = Level.ERROR }
+abstract class GenericError extends Exception with CryoLog { val level = Level.ERROR; val marker= Markers.noMarker }
 
 //object CryoError {
 //  private def apply(message: String, marker: Marker, a: Any): CryoError = a match {
@@ -92,14 +92,15 @@ abstract class GenericError extends Exception with CryoLog { val level = Level.E
 //}
 
 trait ErrorGenerator {
-  val source = getClass.getName
+  implicit val logSource = getClass.getName
+  
   def cryoError(message: String, a: Any): CryoError = {
     a match {
       case e: CryoError => e.copy(message = s"${message} : ${e.message}")
       case Failure(e) => cryoError(s"${message} (failure)", e)
       case Success(e) => cryoError(s"${message} (success)", e)
-      case e: Throwable => new CryoError(source, message, Markers.errMsgMarker, e)
-      case e: Any => new CryoError(source, s"${message} : unexpected message: ${e}", Markers.errMsgMarker)
+      case e: Throwable => new CryoError(logSource, message, Markers.errMsgMarker, e)
+      case e: Any => new CryoError(logSource, s"${message} : unexpected message: ${e}", Markers.errMsgMarker)
     }
   }
 }
@@ -175,7 +176,7 @@ object CryoLogger {
   }
 
   def apply(e: CryoLog) = {
-    val logger = LoggerFactory.getLogger(e.source)
+    val logger = LoggerFactory.getLogger(e.logSource)
     val cause = if (e.cause == Error.NoCause) null else e.cause
     e match {
       case l: CryoTrace => withMdc(l)(logger.trace(l.marker, l.message, cause))
