@@ -41,7 +41,6 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case NotificationARN(arn) => arn
     case e: Any => throw cryoError("Fail to get notification ARN", e)
   }
-  //lazy val snsTopicARN = Await.result(futureSnsTopicARN, 10 seconds)
 
   CryoEventBus.subscribe(self, "/cryo/manager#jobs")
 
@@ -50,58 +49,54 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       sender ! ReadyToDie()
 
     case AttributeListChange("/cryo/manager#jobs", addedJobs, removedJobs) =>
-      val succeededJobs = addedJobs
-        .asInstanceOf[List[(String, Job)]]
-        .collect { case (_, j) if j.status.isSucceeded => j }
+      for (job <- addedJobs.asInstanceOf[List[(String, Job)]].toMap.values if job.status.isSucceeded) {
+        log.info(s"Job ${job.id} is completed, downloading data ${job.objectId}")
 
-      succeededJobs.map {
-        case job =>
-          log.info(s"Job ${job.id} is completed, downloading data ${job.objectId}")
-          var transfer = (cryoctx.datastore ? GetDataStatus(job.objectId))
-            .eflatMap("Invalid data status", {
-              case DataStatus(id, _, dataType, _, _, _, _) => // FIXME ! TODO will be Loading when implemented
-                (cryoctx.datastore ? CreateData(Some(id), dataType))
-            }).emap("Fail to create data", {
-              case Created(dataId) =>
-                log.debug(s"Data ${dataId} created, starting download")
-                dataId
-            })
+        var transfer = (cryoctx.datastore ? GetDataStatus(job.objectId))
+          .eflatMap("Invalid data status", {
+            case DataStatus(id, _, _, _, ObjectStatus.Remote, _, _) =>
+              (cryoctx.datastore ? PrepareDownload(id))
+          }).emap("Fail to create data", {
+            case DownloadPrepared(id) =>
+              log.debug(s"Data ${job.objectId} created, starting download (${id})")
+              id
+          })
+        try {
+          val input = glacier.getJobOutput(new GetJobOutputRequest()
+            .withJobId(job.id)
+            .withVaultName(cryoctx.vaultName)).getBody
           try {
-            val input = glacier.getJobOutput(new GetJobOutputRequest()
-              .withJobId(job.id)
-              .withVaultName(cryoctx.vaultName)).getBody
-            try {
-              val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
-              Iterator.continually(input.read(buffer))
-                .takeWhile(_ != -1)
-                .foreach { nRead =>
-                  transfer = transfer.eflatMap("Fail to write data", {
-                    case dataId: UUID =>
-                      (cryoctx.datastore ? WriteData(dataId, -1, ByteString.fromArray(buffer, 0, nRead)))
-                  }).emap("Fail to write data", {
-                    case DataWritten(dataId, _, s) =>
-                      log.debug(s"${s} bytes written in ${job.objectId}")
-                      dataId
-                  })
-                }
-            } finally {
-              input.close()
-            }
+            val buffer = Array.ofDim[Byte](cryoctx.bufferSize.intValue)
+            Iterator.continually(input.read(buffer))
+              .takeWhile(_ != -1)
+              .foreach { nRead =>
+                transfer = transfer.eflatMap("Fail to write data", {
+                  case dataId =>
+                    (cryoctx.datastore ? WriteData(dataId, -1, ByteString.fromArray(buffer, 0, nRead)))
+                }).emap("Fail to write data", {
+                  case DataWritten(dataId, _, s) =>
+                    log.debug(s"${s} bytes written in ${job.objectId}")
+                    dataId
+                })
+              }
+          } finally {
+            input.close()
+          }
 
-            transfer.eflatMap("Fail to close data", {
-              case dataId => (cryoctx.datastore ? CloseData(dataId))
-            }).onComplete({
-              case Success(DataClosed(id)) => log.info(s"Data ${id} downloaded")
-              case o: Any => log(cryoError(s"Download job ${job.id} data has failed", o))
-            })
-          } catch {
-            case rnfe: ResourceNotFoundException => log.warn(s"Job ${job.id} is outdated. It can't be downloaded")
-            case t: Throwable => log.error(s"Fail to download job ${job.id}", t)
-          }
-          (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
-            case Success(j: Job) => log.info(s"Data ${job.objectId} download job finalized")
-            case o: Any => log(cryoError(s"Fail to finalize data ${job.objectId}", o))
-          }
+          transfer.eflatMap("Fail to close data", {
+            case dataId => (cryoctx.datastore ? CloseData(dataId))
+          }).onComplete({
+            case Success(DataClosed(id)) => log.info(s"Data ${id} downloaded")
+            case o: Any => log(cryoError(s"Download job ${job.id} data has failed", o))
+          })
+        } catch {
+          case rnfe: ResourceNotFoundException => log.warn(s"Job ${job.id} is outdated. It can't be downloaded")
+          case t: Throwable => log.error(s"Fail to download job ${job.id}", t)
+        }
+        (cryoctx.manager ? FinalizeJob(job.id)) onComplete {
+          case Success(j: Job) => log.info(s"Data ${job.objectId} download job finalized")
+          case o: Any => log(cryoError(s"Fail to finalize data ${job.objectId}", o))
+        }
       }
 
     case RefreshJobList() =>
@@ -116,37 +111,34 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         }).reply("Fail to refresh job list", sender)
 
     case RefreshInventory() =>
-      futureSnsTopicARN
-        .flatMap({
-          case snsTopicARN =>
-            log.debug("initiateInventoryJob")
-            val jobResult = glacier.initiateJob(new InitiateJobRequest()
-              .withVaultName(cryoctx.vaultName)
-              .withJobParameters(
-                new JobParameters()
-                  .withType("inventory-retrieval")
-                  .withSNSTopic(snsTopicARN)))
-            val job = new Job(jobResult.getJobId(), "", new Date, InProgress(), None, "inventory")
-            cryoctx.manager ? AddJob(job)
-        }).reply("Fail to refresh inventory", sender)
+      futureSnsTopicARN.flatMap({
+        case snsTopicARN =>
+          log.debug("initiateInventoryJob")
+          val jobResult = glacier.initiateJob(new InitiateJobRequest()
+            .withVaultName(cryoctx.vaultName)
+            .withJobParameters(
+              new JobParameters()
+                .withType("inventory-retrieval")
+                .withSNSTopic(snsTopicARN)))
+          val job = new Job(jobResult.getJobId(), "", new Date, InProgress(), None, "inventory")
+          cryoctx.manager ? AddJob(job)
+      }).reply("Fail to refresh inventory", sender)
 
     case DownloadArchive(archiveId) =>
-      val _sender = sender
-      futureSnsTopicARN
-        .flatMap({
-          case snsTopicARN =>
-            val jobResult = glacier.initiateJob(new InitiateJobRequest()
-              .withVaultName(cryoctx.vaultName)
-              .withJobParameters(
-                new JobParameters()
-                  .withArchiveId(archiveId)
-                  .withType("archive-retrieval")
-                  .withSNSTopic(snsTopicARN)))
-            val job = new Job(jobResult.getJobId, "", new Date, InProgress(), None, archiveId)
-            cryoctx.manager ? AddJob(job)
-        }).emap("Fail to add archive download job", {
-          case JobAdded(job) => JobRequested(job)
-        }).reply("Fail to add download archive job", sender)
+      futureSnsTopicARN.flatMap({
+        case snsTopicARN =>
+          val jobResult = glacier.initiateJob(new InitiateJobRequest()
+            .withVaultName(cryoctx.vaultName)
+            .withJobParameters(
+              new JobParameters()
+                .withArchiveId(archiveId)
+                .withType("archive-retrieval")
+                .withSNSTopic(snsTopicARN)))
+          val job = new Job(jobResult.getJobId, "", new Date, InProgress(), None, archiveId)
+          cryoctx.manager ? AddJob(job)
+      }).emap("Fail to add archive download job", {
+        case JobAdded(job) => JobRequested(job)
+      }).reply("Fail to add download archive job", sender)
 
     case Upload(id, dataType) =>
       val _sender = sender

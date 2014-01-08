@@ -180,7 +180,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
               case JobList(jl) if !jl.exists(_.objectId == "inventory") =>
                 (cryoctx.cryo ? RefreshInventory())
                   .emap("Fail to refresh inventory", {
-                    case JobRequested(job) =>
+                    case JobAdded(job) =>
                       log.info(s"Inventory update requested (${job.id})")
                       Writable
                   })
@@ -268,12 +268,12 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     case GetArchiveList() =>
       getDataStatusList(archiveIds)
-        .map(ObjectList(date, status, _))
+        .map(ObjectList(date, _))
         .reply("Can't get archive list", sender)
 
     case GetSnapshotList() =>
       getDataStatusList(snapshotIds)
-        .map(ObjectList(date, status, _))
+        .map(ObjectList(date, _))
         .reply("Can't get snapshot list", sender)
 
     case sr: SnapshotMessage =>

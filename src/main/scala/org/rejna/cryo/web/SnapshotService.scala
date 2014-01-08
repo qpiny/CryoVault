@@ -40,7 +40,7 @@ trait SnapshotService
         path("list") {
           get { implicit ctx =>
             (cryoctx.inventory ? GetSnapshotList()) expect {
-              case ObjectList(_, _, snapshots) => snapshots
+              case ObjectList(_, snapshots) => snapshots
             }
           }
         } ~

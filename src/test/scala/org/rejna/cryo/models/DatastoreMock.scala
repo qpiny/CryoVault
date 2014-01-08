@@ -10,9 +10,8 @@ import java.util.{ UUID, Date }
 import DataType._
 import ObjectStatus._
 
-case class DataEntryMock(id: UUID, dataType: DataType, creationDate: Date, size: Long, checksum: String, content: ByteString) {
-  def write(buffer: ByteString) =
-    DataEntryMock(id, dataType, creationDate, content.size + buffer.size, checksum, content.concat(buffer))
+case class DataEntryMock(id: UUID, glacierId: Option[String], dataType: DataType, creationDate: Date, status: ObjectStatus, size: Long, checksum: String, content: ByteString) {
+  def write(buffer: ByteString) = copy(content = content.concat(buffer))
 
   def read(position: Long, length: Int) =
     content.slice(position.toInt, position.toInt + length)
@@ -45,23 +44,31 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
 
     case CreateData(idOption, dataType, size) =>
       val id = idOption.getOrElse {
-        
+
         var i = UUID.randomUUID
         while (repository contains i) {
           i = UUID.randomUUID
         }
         i
       }
-      repository += id -> DataEntryMock(id, dataType, new Date, size, "", ByteString.empty)
+      repository += id -> DataEntryMock(id, None, dataType, new Date, Writable, size, "", ByteString.empty)
       sender ! Created(id)
 
     case DefineData(id, glacierId, dataType, creationDate, size, checksum) =>
       repository.get(id) match {
         case Some(_) => // data already defined, ignore it
         case None =>
-          repository += id -> DataEntryMock(id, dataType, new Date, size, checksum, ByteString.empty)
+          repository += id -> DataEntryMock(id, Some(glacierId), dataType, new Date, Remote, size, checksum, ByteString.empty)
       }
       sender ! DataDefined(id)
+
+    case DeleteData(id) =>
+      repository.remove(id) match {
+        case Some(e) =>
+          sender ! Deleted(id)
+        case None =>
+          sender ! NotFoundError(s"Data ${id} not found")
+      }
 
     case WriteData(id, position, buffer) => // append only
       repository.get(id) match {
@@ -78,7 +85,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
           sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
         case Some(de) =>
           log.info(s"Send data status to ${sender}]")
-          sender ! DataStatus(id, de.dataType, de.creationDate, Creating(), de.size, de.checksum)
+          sender ! DataStatus(id, de.glacierId, de.dataType, de.creationDate, de.status, de.size, de.checksum)
       }
 
     case ReadData(id, position, length) =>
@@ -89,10 +96,45 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
           sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
       }
 
+    case ClearLocalCache(id) =>
+      repository.get(id) match {
+        case Some(de) if de.status == Readable =>
+          repository += id -> de.copy(status = Remote)
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Readable), Remote))
+          sender ! LocalCacheCleared(id)
+        case Some(_) =>
+          throw InvalidState("")
+        case None =>
+          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+      }
+
+    case PrepareDownload(id) =>
+      repository.get(id) match {
+        case Some(de) if de.status == Remote =>
+          repository += id -> de.copy(status = Writable)
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Remote), Writable))
+          sender ! DownloadPrepared(id)
+        case Some(_) =>
+          throw InvalidState("")
+        case None =>
+          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+      }
+
+    case PackData(id, glacierId) =>
+      repository.get(id) match {
+        case Some(de) if de.status == Writable =>
+          repository += id -> de.copy(status = Readable)
+          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Writable), Readable))
+          sender ! DataPacked(id, glacierId)
+        case Some(_) =>
+          throw InvalidState("")
+        case None =>
+          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+      }
+
     case CloseData(id) =>
       repository.get(id) match {
         case Some(de) =>
-          CryoEventBus.publish(AttributeChange(s"/cryo/datastore/${id}#status", Some(Creating), Cached))
           sender ! DataClosed(id)
         case None =>
           sender ! DataNotFoundError(Left(id), s"Data ${id} not found")

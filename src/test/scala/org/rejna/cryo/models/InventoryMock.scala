@@ -65,9 +65,7 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
       Future.sequence(archives.map(cryoctx.datastore ? GetDataStatus(_))) map {
         case dsl =>
           val archiveList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
-          _sender ! ObjectList(new Date,
-            Cached(UUID.randomUUID().toString()),
-            archiveList)
+          _sender ! ObjectList(new Date, archiveList)
       } onFailure {
         case e: Throwable => _sender ! cryoError("Error while retrieving archive list", e)
       }
@@ -76,9 +74,7 @@ class InventoryMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
       Future.sequence(snapshots.map(cryoctx.datastore ? GetDataStatus(_))) map {
         case dsl =>
           val snapshotList = dsl.filter(_.isInstanceOf[DataStatus]).toList.asInstanceOf[List[DataStatus]]
-          _sender ! ObjectList(new Date,
-            Cached(UUID.randomUUID().toString),
-            snapshotList)
+          _sender ! ObjectList(new Date, snapshotList)
       } onFailure {
         case e: Throwable => _sender ! cryoError("Error while retrieving snapshot list", e)
       }

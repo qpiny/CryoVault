@@ -12,7 +12,7 @@ import ObjectStatus._
 /* Common */
 case class Created(id: UUID)
 case class Deleted(id: UUID)
-case class ObjectList(date: Date, status: ObjectStatus, archives: List[DataStatus])
+case class ObjectList(date: Date, archives: List[DataStatus])
 case class Done()
 case class Uploaded(id: UUID)
 
@@ -69,7 +69,7 @@ case class GetSnapshotList()
 
 /* Glacier */
 case class RefreshJobList()
-case class RefreshInventory()
+case class RefreshInventory() // JobAdded
 case class JobRequested(job: Job)
 case class DownloadArchive(archiveId: String)
 case class Upload(id: UUID, dataType: DataType)
