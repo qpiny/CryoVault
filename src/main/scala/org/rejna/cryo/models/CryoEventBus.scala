@@ -39,45 +39,75 @@ object CryoAttributeBuilder {
 }
 
 class CryoAttributeBuilder(path: List[String])(implicit val cryoctx: CryoContext) extends LoggingClass {
+
   object callback extends AttributeSimpleCallback {
-    override def onChange[A](name: String, previous: Option[A], now: A) = {
+    override def onChange[A](name: String, previous: Option[A], now: A): Unit = {
       log.debug("attribute[%s#%s] change: %s -> %s".format(path.mkString("(", ",", ")"), name, previous, now))
       for (p <- path) CryoEventBus.publish(AttributeChange(p + '#' + name, previous, now))
     }
   }
+
   object listCallback extends AttributeListCallback {
-    override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit = {
+    override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]): Unit = {
       log.debug("attribute[%s#%s] add: %s remove: %s".format(path.mkString("(", ",", ")"), name, addedValues.take(10), removedValues.take(10)))
       for (p <- path) CryoEventBus.publish(AttributeListChange(p + '#' + name, addedValues, removedValues))
     }
   }
 
+  case class TranslatedCallback(fun: Any => Any, cb: AttributeSimpleCallback) extends AttributeSimpleCallback {
+    override def onChange[A](name: String, previous: Option[A], now: A) =
+      cb.onChange(name, previous.map(fun), fun(now))
+  }
+
+  case class TranslatedListCallback(fun: Any => Any, cb: AttributeListCallback) extends AttributeListCallback {
+    override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]): Unit =
+      cb.onListChange(name, addedValues.map(fun), removedValues.map(fun))
+  }
+
   def apply[A](name: String, initValue: A): SimpleAttribute[A] =
     Attribute(name, initValue) <+> callback
+  def apply[A](name: String, initValue: A, translator: Function1[Any, Any]): SimpleAttribute[A] =
+    Attribute(name, initValue) <+> TranslatedCallback(translator, callback)
 
   def apply[A](name: String, body: () => A)(implicit executionContext: ExecutionContext, timeout: Duration) =
     Attribute(name, body) <+> callback
+  def apply[A](name: String, body: () => A, translator: Function1[Any, Any])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute(name, body) <+> TranslatedCallback(translator, callback)
 
   def future[A](name: String, body: () => Future[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
     Attribute.future(name, body) <+> callback
+  def future[A](name: String, body: () => Future[A], translator: Function1[Any, Any])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.future(name, body) <+> TranslatedCallback(translator, callback)
 
   def list[A](name: String, initValue: List[A]): ListAttribute[A] =
     Attribute.list(name, initValue) <+> listCallback
+  def list[A](name: String, initValue: List[A], translator: Function1[Any, Any]): ListAttribute[A] =
+    Attribute.list(name, initValue) <+> TranslatedListCallback(translator, listCallback)
 
   def list[A](name: String, body: () => List[A])(implicit executionContext: ExecutionContext, timeout: Duration) =
     Attribute.list(name, body) <+> listCallback
+  def list[A](name: String, body: () => List[A], translator: Function1[Any, Any])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.list(name, body) <+> TranslatedListCallback(translator, listCallback)
 
   def futureList[A](name: String, body: () => Future[List[A]])(implicit executionContext: ExecutionContext, timeout: Duration) =
     Attribute.futureList(name, body) <+> listCallback
+  def futureList[A](name: String, body: () => Future[List[A]], translator: Function1[Any, Any])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.futureList(name, body) <+> TranslatedListCallback(translator, listCallback)
 
   def map[A, B](name: String, initValue: Map[A, B]): MapAttribute[A, B] =
     Attribute.map(name, initValue) <+> listCallback
+  def map[A, B](name: String, initValue: Map[A, B], translator: Function1[Any, Any]): MapAttribute[A, B] =
+    Attribute.map(name, initValue) <+> TranslatedListCallback(translator, listCallback)
 
   def map[A, B](name: String, body: () => Map[A, B])(implicit executionContext: ExecutionContext, timeout: Duration) =
     Attribute.map(name, body) <+> listCallback
+  def map[A, B](name: String, body: () => Map[A, B], translator: Function1[Any, Any])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.map(name, body) <+> TranslatedListCallback(translator, listCallback)
 
   def futureMap[A, B](name: String, body: () => Future[Map[A, B]])(implicit executionContext: ExecutionContext, timeout: Duration) =
     Attribute.futureMap(name, body) <+> listCallback
+  def futureMap[A, B](name: String, body: () => Future[Map[A, B]], translator: Function1[Any, Any])(implicit executionContext: ExecutionContext, timeout: Duration) =
+    Attribute.futureMap(name, body) <+> TranslatedListCallback(translator, listCallback)
 
   def /(subpath: Any) = CryoAttributeBuilder(path.map { p => s"${p}/${subpath}" }: _*)
 

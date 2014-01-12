@@ -26,7 +26,7 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   implicit val executionContext = system.dispatcher
   implicit val cryoctx = this
   val attributeBuilder = CryoAttributeBuilder("/cryo")
-  val statusAttribute = attributeBuilder("status", "starting")
+  val statusAttribute = attributeBuilder[String]("status", "starting")
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
