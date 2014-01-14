@@ -26,9 +26,9 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
   val reservedBlockLocation = BlockLocation(-1, Hash(Array.emptyByteArray), catalogId, 0, 0)
 
   override def preStart = {
-    (cryoctx.datastore ? GetDataStatus(catalogId)) map {
-      case DataStatus(_, _, _, _, _, size, _) => loadFromDataStore(size)
-      case DataNotFoundError(_, _, _) => log.warn("Catalog data not found in datastore, using empty catalog")
+    (cryoctx.datastore ? GetDataEntry(catalogId)) map {
+      case DataEntry(_, _, _, _, _, size, _) => loadFromDataStore(size)
+      case NotFound(_, _, _) => log.warn("Catalog data not found in datastore, using empty catalog")
     }
   }
 

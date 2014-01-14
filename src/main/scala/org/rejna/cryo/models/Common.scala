@@ -19,6 +19,12 @@ object ObjectStatus extends Enumeration {
   type ObjectStatus = Value
   val Readable, Writable, Remote = Value
 }
+
+object SnapshotStatus extends Enumeration {
+  type SnapshotStatus = Value
+  val Creating, Created, Uploading, Remote, Downloading = Value
+}
+
 //object ObjectStatus {
 //  case class Creating() extends ObjectStatus
 //  case class Uploading() extends ObjectStatus

@@ -52,9 +52,9 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       for (job <- addedJobs.asInstanceOf[List[(String, Job)]].toMap.values if job.status.isSucceeded) {
         log.info(s"Job ${job.id} is completed, downloading data ${job.objectId}")
 
-        var transfer = (cryoctx.datastore ? GetDataStatus(job.objectId))
+        var transfer = (cryoctx.datastore ? GetDataEntry(job.objectId))
           .eflatMap("Invalid data status", {
-            case DataStatus(id, _, _, _, ObjectStatus.Remote, _, _) =>
+            case DataEntry(id, _, _, _, ObjectStatus.Remote, _, _) =>
               (cryoctx.datastore ? PrepareDownload(id))
           }).emap("Fail to create data", {
             case DownloadPrepared(id) =>
@@ -142,8 +142,8 @@ class Glacier(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
 
     case Upload(id, dataType) =>
       val _sender = sender
-      (cryoctx.datastore ? GetDataStatus(id)) onComplete {
-        case Success(DataStatus(_, _, _, _, ObjectStatus.Readable, size, checksum)) =>
+      (cryoctx.datastore ? GetDataEntry(id)) onComplete {
+        case Success(DataEntry(_, _, _, _, ObjectStatus.Readable, size, checksum)) =>
           if (size < cryoctx.multipartThreshold) {
             glacier.uploadArchive(new UploadArchiveRequest()
               .withArchiveDescription(ArchiveDescription(dataType, id).toString)

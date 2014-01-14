@@ -23,7 +23,7 @@ import ObjectStatus._
 import DataType._
 
 // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)
-class DataEntry(
+class DataItem(
   val cryoctx: CryoContext,
   val attributeBuilder: CryoAttributeBuilder,
   val id: UUID,
@@ -53,7 +53,7 @@ class DataEntry(
 
   def checksum = Try(TreeHashGenerator.calculateTreeHash(checksums)).getOrElse(_checksum)
 
-  def dataStatus = DataStatus(id, glacierId, dataType, creationDate, status, size, checksum)
+  def dataEntry = DataEntry(id, glacierId, dataType, creationDate, status, size, checksum)
 
   val digest = MessageDigest.getInstance(cryoctx.hashAlgorithm)
   val MB = 1024 * 1024

@@ -26,8 +26,8 @@ object JsonWithTypeHints extends Formats {
       classOf[Unsubscribe] ::
       classOf[AttributeChange[_]] ::
       classOf[AttributeListChange[_]] ::
-      classOf[DataStatus] ::
       classOf[DataEntry] ::
+      classOf[DataItem] ::
       Nil)
 
   val dateFormat = Json.dateFormat

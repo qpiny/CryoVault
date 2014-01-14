@@ -26,7 +26,7 @@ trait ArchiveService
       } ~
         path(Segment) { archiveId =>
           get { implicit ctx =>
-            (cryoctx.datastore ? GetDataStatus(archiveId)).expect[DataStatus]
+            (cryoctx.datastore ? GetDataEntry(archiveId)).expect[DataEntry]
           }
         }
     }

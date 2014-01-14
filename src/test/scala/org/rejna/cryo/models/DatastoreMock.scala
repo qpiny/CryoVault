@@ -76,16 +76,16 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
           repository += id -> de.write(buffer)
           sender ! DataWritten(id, position, buffer.size)
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFound(Left(id), s"Data ${id} not found")
       }
 
-    case GetDataStatus(Left(id)) =>
+    case GetDataEntry(Left(id)) =>
       repository.get(id) match {
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFound(Left(id), s"Data ${id} not found")
         case Some(de) =>
           log.info(s"Send data status to ${sender}]")
-          sender ! DataStatus(id, de.glacierId, de.dataType, de.creationDate, de.status, de.size, de.checksum)
+          sender ! DataEntry(id, de.glacierId, de.dataType, de.creationDate, de.status, de.size, de.checksum)
       }
 
     case ReadData(id, position, length) =>
@@ -93,7 +93,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case Some(de) =>
           sender ! DataRead(id, position, de.read(position, length))
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFound(Left(id), s"Data ${id} not found")
       }
 
     case ClearLocalCache(id) =>
@@ -105,7 +105,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case Some(_) =>
           throw InvalidState("")
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFound(Left(id), s"Data ${id} not found")
       }
 
     case PrepareDownload(id) =>
@@ -117,7 +117,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case Some(_) =>
           throw InvalidState("")
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFound(Left(id), s"Data ${id} not found")
       }
 
     case PackData(id, glacierId) =>
@@ -129,7 +129,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case Some(_) =>
           throw InvalidState("")
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFound(Left(id), s"Data ${id} not found")
       }
 
     case CloseData(id) =>
@@ -137,7 +137,7 @@ class DatastoreMock(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stas
         case Some(de) =>
           sender ! DataClosed(id)
         case None =>
-          sender ! DataNotFoundError(Left(id), s"Data ${id} not found")
+          sender ! NotFound(Left(id), s"Data ${id} not found")
       }
   }
 }

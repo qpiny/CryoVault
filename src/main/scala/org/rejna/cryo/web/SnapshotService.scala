@@ -46,7 +46,7 @@ trait SnapshotService
         } ~
         path(uuid) { snapshotId =>
           get { implicit ctx =>
-            (cryoctx.datastore ? GetDataStatus(snapshotId)).expect[DataStatus]
+            (cryoctx.datastore ? GetDataEntry(snapshotId)).expect[DataEntry]
           } ~
             delete { implicit ctx =>
               (cryoctx.inventory ? DeleteSnapshot(snapshotId)) expect {

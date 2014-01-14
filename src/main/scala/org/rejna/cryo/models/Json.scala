@@ -52,11 +52,12 @@ object Json extends Formats {
   }
   override val typeHints = NoTypeHints
   override val customSerializers =
-    JsonDataEntry ::
+    JsonDataEntry::
       JsonFileElement ::
       JsonFilefilter ::
       JsonPathFileFilter ::
-      JsonDataStatus :: Nil
+      //JsonDataStatus ::
+      Nil
 
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
@@ -73,12 +74,12 @@ object Json extends Formats {
   }
 }
 
-case object JsonDataEntry extends CustomSerializer[DataEntry](format => (
+case object JsonDataEntry extends CustomSerializer[DataItem](format => (
   {
     case JNull => null
   },
   {
-    case de: DataEntry => Json.write(de.dataStatus)
+    case di: DataItem => Json.write(di.dataEntry)
   }))
 
 case object JsonFileElement extends CustomSerializer[FileElement](format => (
@@ -95,30 +96,31 @@ case object JsonFileElement extends CustomSerializer[FileElement](format => (
         ("size" -> fe.size)
   }))
 
-private object JsonDataStatus extends CustomSerializer[DataStatus](format => (
-  {
-    case o @ JObject(
-      JField("id", JString(id)) ::
-        JField("dataType", JString(dataType)) ::
-        JField("creationDate", JString(creationDate)) ::
-        JField("status", JString(status)) ::
-        JField("size", JInt(size)) ::
-        JField("checksum", JString(checksum)) ::
-        Nil) =>
-      DataStatus(UUID.fromString(id),
-        DataType.withName(dataType),
-        Json.readDate(creationDate).getOrElse(new Date),
-        ObjectStatus(status), size.toLong, checksum)
-  },
-  {
-    case ds: DataStatus =>
-      ("id" -> JString(ds.id.toString)) ~
-        ("dataType" -> JString(ds.dataType.toString)) ~
-        ("creationDate" -> Json.writeDate(ds.creationDate)) ~
-        ("status" -> ds.status.toString) ~
-        ("size" -> ds.size) ~
-        ("checksum" -> ds.checksum)
-  }))
+//private object JsonDataStatus extends CustomSerializer[DataEntry](format => (
+//  {
+//    case o @ JObject(
+//      JField("id", JString(id)) ::
+//        JField("dataType", JString(dataType)) ::
+//        JField("creationDate", JString(creationDate)) ::
+//        JField("status", JString(status)) ::
+//        JField("size", JInt(size)) ::
+//        JField("checksum", JString(checksum)) ::
+//        Nil) =>
+//      DataEntry(UUID.fromString(id),
+//          None,
+//        DataType.withName(dataType),
+//        Json.readDate(creationDate).getOrElse(new Date),
+//        ObjectStatus(status), size.toLong, checksum)
+//  },
+//  {
+//    case ds: DataEntry =>
+//      ("id" -> JString(ds.id.toString)) ~
+//        ("dataType" -> JString(ds.dataType.toString)) ~
+//        ("creationDate" -> Json.writeDate(ds.creationDate)) ~
+//        ("status" -> ds.status.toString) ~
+//        ("size" -> ds.size) ~
+//        ("checksum" -> ds.checksum)
+//  }))
 
 private object JsonPathFileFilter extends CustomSerializer[(Path, FileFilter)](format => (
   {

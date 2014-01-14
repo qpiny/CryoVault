@@ -94,16 +94,16 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       case o: Any => log(cryoError("Fail to refresh job list", o))
     }
 
-    (cryoctx.datastore ? GetDataStatus("finalizedJobs"))
+    (cryoctx.datastore ? GetDataEntry("finalizedJobs"))
       .eflatMap("Fail to get finalizedJobs", {
-        case DataStatus(id, _, _, _, Readable, size, _) if size > 0 =>
+        case DataEntry(id, _, _, _, Readable, size, _) if size > 0 =>
           (cryoctx.datastore ? ReadData(id, 0, size.toInt))
       }).emap("Fail to read finalizedJobs", {
         case DataRead(_, _, buffer) =>
           finalizedJobs ++= Json.read[List[Job]](buffer).map(j => j.id -> j)
       }).onComplete {
         case Success(_) => log.info("Finalized jobs loaded")
-        case Failure(DataNotFoundError(_, _, _)) => log.info("Finalized jobs not found")
+        case Failure(NotFound(_, _, _)) => log.info("Finalized jobs not found")
         case Failure(e) => log.error("Fail to load Finalized jobs", e)
       }
 
