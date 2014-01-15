@@ -7,7 +7,7 @@ import akka.event.Logging.Error
 import akka.util.ByteString
 
 import DataType._
-import ObjectStatus._
+import DataStatus._
 
 /* Common */
 case class Created(id: UUID)

@@ -15,7 +15,7 @@ object DataType extends Enumeration {
   def unapply(dt: String) = DataType.withName(dt)
 }
 
-object ObjectStatus extends Enumeration {
+object DataStatus extends Enumeration {
   type ObjectStatus = Value
   val Readable, Writable, Remote = Value
 }

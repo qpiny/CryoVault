@@ -23,7 +23,7 @@ case class UpdateInventoryDate(date: Date)
 //case class AddArchive(id: UUID)
 //case class AddSnapshot(id: UUID, status: DataStatus)
 
-import ObjectStatus._
+import DataStatus._
 import DataType._
 
 class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {

@@ -8,7 +8,7 @@ import akka.util.ByteString
 import java.util.{ UUID, Date }
 
 import DataType._
-import ObjectStatus._
+import DataStatus._
 
 case class DataEntryMock(id: UUID, glacierId: Option[String], dataType: DataType, creationDate: Date, status: ObjectStatus, size: Long, checksum: String, content: ByteString) {
   def write(buffer: ByteString) = copy(content = content.concat(buffer))

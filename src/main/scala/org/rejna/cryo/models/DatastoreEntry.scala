@@ -16,10 +16,10 @@ import akka.util.ByteString
 import com.amazonaws.services.glacier.TreeHashGenerator
 import org.rejna.util.MultiRange
 import DataType._
-import ObjectStatus._
+import DataStatus._
 import java.nio.file.CopyOption
 
-import ObjectStatus._
+import DataStatus._
 import DataType._
 
 // serialization : status + size + (status!=Creating ? checksum) + (status==Loading ? range)

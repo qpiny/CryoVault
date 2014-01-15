@@ -7,7 +7,7 @@ import akka.actor.{ Actor, Stash }
 
 import java.util.{ Date, UUID }
 
-import ObjectStatus._
+import DataStatus._
 
 case class AddSnapshotMock(snapshot: DataEntryMock)
 case class SnapshotAddedMock(snapshotId: UUID)

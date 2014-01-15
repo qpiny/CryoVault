@@ -23,7 +23,7 @@ abstract class BaseSnapshot(id: UUID, _status: SnapshotStatus.SnapshotStatus) {
   def getFiles(path: String): List[FileElement]
   def getFilter(path: String): Option[FileFilter]
   def upload(): BaseSnapshot
-  def updateDataStatus(previous: Option[ObjectStatus.ObjectStatus], now: ObjectStatus.ObjectStatus): BaseSnapshot
+  def updateDataStatus(previous: Option[DataStatus.ObjectStatus], now: DataStatus.ObjectStatus): BaseSnapshot
 
   val statusAttribute = attributeBuilder("status", _status)
   def status = statusAttribute()
@@ -37,10 +37,10 @@ class Snapshot(_cryoctx: CryoContext, val id: UUID, status: SnapshotStatus.Snaps
       case DataEntry(_, _, _, _, dataStatus, _, _) => (Some(dataStatus), status)
       case NotFound(_, _, _) => (None, status)
     }).emap("Invalid status", {
-      case (Some(ObjectStatus.Writable), SnapshotStatus.Downloading) => new SnapshotRemote(cryoctx, id, status)
-      case (Some(ObjectStatus.Readable), SnapshotStatus.Created) => new SnapshotCreated(cryoctx, id, status)
-      case (Some(ObjectStatus.Readable), SnapshotStatus.Uploading) => new SnapshotCreated(cryoctx, id, status)
-      case (Some(ObjectStatus.Remote), SnapshotStatus.Remote) => new SnapshotRemote(cryoctx, id, status)
+      case (Some(DataStatus.Writable), SnapshotStatus.Downloading) => new SnapshotRemote(cryoctx, id, status)
+      case (Some(DataStatus.Readable), SnapshotStatus.Created) => new SnapshotCreated(cryoctx, id, status)
+      case (Some(DataStatus.Readable), SnapshotStatus.Uploading) => new SnapshotCreated(cryoctx, id, status)
+      case (Some(DataStatus.Remote), SnapshotStatus.Remote) => new SnapshotRemote(cryoctx, id, status)
       case (None, SnapshotStatus.Creating) => new SnapshotCreating(cryoctx, id, status)
     })
 
@@ -51,8 +51,8 @@ class Snapshot(_cryoctx: CryoContext, val id: UUID, status: SnapshotStatus.Snaps
       sender ! ReadyToDie()
     case AttributeChange(path, previous, now) =>
       snapshot = snapshot.map(_.updateDataStatus(
-        previous.asInstanceOf[Option[ObjectStatus.ObjectStatus]],
-        now.asInstanceOf[ObjectStatus.ObjectStatus]))
+        previous.asInstanceOf[Option[DataStatus.ObjectStatus]],
+        now.asInstanceOf[DataStatus.ObjectStatus]))
     case UpdateFilter(id, file, filter) =>
       snapshot = snapshot.map(_.updateFilter(file, filter))
       sender ! Done()
@@ -131,21 +131,21 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
  */
 
   def upload: BaseSnapshot /* FIXME snapshotCached */ = {
-    //val _sender = sender
+    status = SnapshotStatus.Uploading
     val builder = new IndexBuilder
 
     builder.addFilters(fileFilters())
     builder.addFiles(files())
     builder.addCatalog()
     builder.save()
-    this
+    new SnapshotCreated(cryoctx, id, SnapshotStatus.Created)
   }
 
-  def updateDataStatus(previous: Option[ObjectStatus.ObjectStatus], now: ObjectStatus.ObjectStatus): BaseSnapshot = {
+  def updateDataStatus(previous: Option[DataStatus.ObjectStatus], now: DataStatus.ObjectStatus): BaseSnapshot = {
     now match {
-      case ObjectStatus.Writable => this
-      case ObjectStatus.Remote => throw InvalidState("Data has been removed !")
-      case ObjectStatus.Readable =>
+      case DataStatus.Writable => this
+      case DataStatus.Remote => throw InvalidState("Data has been removed !")
+      case DataStatus.Readable =>
         status = SnapshotStatus.Uploading
         this
     }
@@ -362,7 +362,7 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   with CryoAskSupport
   with ErrorGenerator {
 
-  import ObjectStatus._
+  import DataStatus._
 
   implicit val cryoctx = _cryoctx
   implicit val executionContext = cryoctx.executionContext
@@ -380,15 +380,15 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   def getFilter(path: String): Option[FileFilter] = None
   def upload(): BaseSnapshot = this
 
-  def updateDataStatus(previous: Option[ObjectStatus.ObjectStatus], now: ObjectStatus.ObjectStatus): BaseSnapshot = {
+  def updateDataStatus(previous: Option[DataStatus.ObjectStatus], now: DataStatus.ObjectStatus): BaseSnapshot = {
     now match {
-      case ObjectStatus.Writable =>
+      case DataStatus.Writable =>
         status = SnapshotStatus.Downloading
         new SnapshotRemote(cryoctx, id, SnapshotStatus.Downloading)
-      case ObjectStatus.Remote =>
+      case DataStatus.Remote =>
         status = SnapshotStatus.Remote
         new SnapshotRemote(cryoctx, id, SnapshotStatus.Remote)
-      case ObjectStatus.Readable =>
+      case DataStatus.Readable =>
         status = SnapshotStatus.Created
         this
     }
@@ -402,7 +402,7 @@ class SnapshotRemote(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStatu
   with CryoAskSupport
   with ErrorGenerator {
 
-  import ObjectStatus._
+  import DataStatus._
 
   implicit val cryoctx = _cryoctx
   implicit val executionContext = cryoctx.executionContext
@@ -420,15 +420,15 @@ class SnapshotRemote(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStatu
   def getFilter(path: String): Option[FileFilter] = None
   def upload(): BaseSnapshot = this
 
-  def updateDataStatus(previous: Option[ObjectStatus.ObjectStatus], now: ObjectStatus.ObjectStatus): BaseSnapshot = {
+  def updateDataStatus(previous: Option[DataStatus.ObjectStatus], now: DataStatus.ObjectStatus): BaseSnapshot = {
     now match {
-      case ObjectStatus.Writable =>
+      case DataStatus.Writable =>
         status = SnapshotStatus.Downloading
         this
-      case ObjectStatus.Remote =>
+      case DataStatus.Remote =>
         status = SnapshotStatus.Remote
         new SnapshotRemote(cryoctx, id, SnapshotStatus.Remote)
-      case ObjectStatus.Readable =>
+      case DataStatus.Readable =>
         status = SnapshotStatus.Created
         new SnapshotCreated(cryoctx, id, SnapshotStatus.Created)
     }

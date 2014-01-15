@@ -92,7 +92,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case Some(_) => // data already defined, ignore it
         case None =>
           val entryAttributeBuilder = attributeBuilder / id
-          repository += id -> new DataItem(cryoctx, entryAttributeBuilder, id, Some(glacierId), dataType, creationDate, ObjectStatus.Readable, size, checksum)
+          repository += id -> new DataItem(cryoctx, entryAttributeBuilder, id, Some(glacierId), dataType, creationDate, DataStatus.Readable, size, checksum)
       }
       sender ! DataDefined(id)
 
