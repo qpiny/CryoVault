@@ -52,13 +52,19 @@ object Json extends Formats {
   }
   override val typeHints = NoTypeHints
   override val customSerializers =
-    JsonDataEntry::
       JsonFileElement ::
       JsonFilefilter ::
+      new EnumNameSerializer(DataType) ::
+      new EnumNameSerializer(DataStatus) ::
       JsonPathFileFilter ::
-      //JsonDataStatus ::
+      JsonUUID ::
       Nil
-
+/*
+ *  inferred type arguments [org.json4s.Serializer[_10939] forSome {
+ *  	type _10929 >: DataStatus.type with DataType.type <: Enumeration; type _10939 >: _10929#Value with java.util.UUID <: Comparable[_10938] forSome { val _10937: _10929; type 
+	 _10938 >: _10937.Value with java.util.UUID <: java.io.Serializable } with java.io.Serializable }] do not conform to method ::'s type parameter bounds [B >: 
+	 org.json4s.ext.EnumNameSerializer[_ >: org.rejna.cryo.models.DataStatus.type with org.rejna.cryo.models.DataType.type <: Enumeration]]
+ */
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
 
@@ -74,13 +80,29 @@ object Json extends Formats {
   }
 }
 
-case object JsonDataEntry extends CustomSerializer[DataItem](format => (
-  {
-    case JNull => null
-  },
-  {
-    case di: DataItem => Json.write(di.dataEntry)
-  }))
+case object JsonUUID extends CustomSerializer[UUID](format => (
+    {
+      case JString(uuid) => UUID.fromString(uuid)
+    },
+    {
+      case uuid: UUID => JString(uuid.toString)
+    }
+    ))
+//case class DataEntry(id: UUID, glacierId: Option[String], dataType: DataType, creationDate: Date, status: ObjectStatus, size: Long, checksum: String)
+//case object JsonDataEntry extends CustomSerializer[DataEntry](format => (
+//  {
+//    case JObject(
+//      JField("id", JString(id)) ::
+//      JField("glacierId", JString(glacierId)) ::
+//        JField("dataType", JString(dataType)) ::
+//        JField("creationDate", JString(creationDate)) ::
+//        JField("status", JString(status)) ::
+//        JField("size", J
+//    case JNull => null
+//  },
+//  {
+//    case de: DataEntry => Json.write(di.dataEntry)
+//  }))
 
 case object JsonFileElement extends CustomSerializer[FileElement](format => (
   {

@@ -70,8 +70,8 @@ case class CryoTrace(logSource: String, message: String, marker: Marker = Marker
 case class CryoDebug(logSource: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.DEBUG }
 case class CryoInfo(logSource: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.INFO }
 case class CryoWarn(logSource: String, message: String, marker: Marker = Markers.noMarker, cause: Throwable = Error.NoCause) extends CryoLog { val level = Level.WARN }
-case class CryoError(logSource: String, message: String, marker: Marker = Markers.errMsgMarker, cause: Throwable = Error.NoCause) extends Exception with CryoLog { val level = Level.ERROR }
-abstract class GenericError extends Exception with CryoLog { val level = Level.ERROR; val marker= Markers.noMarker }
+case class CryoError(logSource: String, message: String, marker: Marker = Markers.errMsgMarker, cause: Throwable = Error.NoCause) extends Exception(message, cause) with CryoLog { val level = Level.ERROR }
+abstract class GenericError(message: String, cause: Throwable = Error.NoCause) extends Exception(message, cause) with CryoLog { val level = Level.ERROR; val marker= Markers.noMarker }
 
 //object CryoError {
 //  private def apply(message: String, marker: Marker, a: Any): CryoError = a match {

@@ -15,16 +15,16 @@ case class Deleted(id: UUID)
 case class ObjectList(date: Date, archives: List[DataEntry])
 case class Done()
 case class Uploaded(id: UUID)
-case class NotFound(id: Either[UUID, String], message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class NotFound(id: Either[UUID, String], message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(message, cause)
 
 
-case class NotFoundError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
-case class OpenError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
-case class WriteError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
-case class ReadError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
+case class NotFoundError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(message, cause)
+case class OpenError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(message, cause)
+case class WriteError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(message, cause)
+case class ReadError(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(message, cause)
 //case class DataNotFoundError(id: Either[UUID, String], message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
-case class InvalidState(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError
-case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError { val message = s"Directory traversal attempt : ${directory}" }
+case class InvalidState(message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(message, cause)
+case class DirectoryTraversalError(directory: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(s"Directory traversal attempt : ${directory}", cause) { val message = s"Directory traversal attempt : ${directory}" }
 
 
 /* Datastore */

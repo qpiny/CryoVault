@@ -32,10 +32,23 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
     }
   }
 
-  override def postStop = save
-
   def receive = cryoReceive {
-    case PrepareToDie() => sender ! ReadyToDie()
+    case PrepareToDie() =>
+      (cryoctx.datastore ? CreateData(Some(catalogId), DataType.Internal))
+      .eflatMap("Fail to create catalog", {
+        case Created(id) =>
+          cryoctx.datastore ? WriteData(id, ByteString(Json.write(content)))
+      }).eflatMap("Fail to write catalog", {
+        case DataWritten(id, _, _) =>
+          cryoctx.datastore ? PackData(id, catalogGlacierId)
+      }).emap("Fail to pack catalog data", {
+        case Success(DataPacked(_, _)) =>
+          log.info("Catalog saved")
+          ReadyToDie()
+        case o: Any =>
+          log(cryoError("Fail to close catalog", o))
+          ReadyToDie()
+      }).reply("Fail to save catalog", sender)
 
     case GetCatalogContent(blockIds) =>
       blockIds match {
@@ -73,22 +86,6 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
       content += blockLocation
       hashIndex += block.hash -> blockLocation
       sender ! BlockAdded(lastBlockId)
-  }
-
-  private def save() = {
-    (cryoctx.datastore ? CreateData(Some(catalogId), DataType.Internal))
-      .eflatMap("Fail to create catalog", {
-        case Created(id) =>
-          cryoctx.datastore ? WriteData(id, ByteString(Json.write(content)))
-      }).eflatMap("Fail to write catalog", {
-        case DataWritten(id, _, _) =>
-          cryoctx.datastore ? PackData(id, catalogGlacierId)
-      }).onComplete({
-        case Success(DataPacked(_, _)) =>
-          log.info("Catalog saved")
-        case o: Any =>
-          log(cryoError("Fail to close catalog", o))
-      })
   }
 
   private def loadFromDataStore(size: Long) = {
