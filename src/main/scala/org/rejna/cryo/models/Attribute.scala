@@ -20,32 +20,32 @@ trait AttributeListCallback {
 }
 
 object Attribute {
-  def apply[A](name: String, initValue: A)(implicit cryoctx: CryoContext): SimpleAttribute[A] =
-    new SimpleAttribute(name)(None, initValue)
+  def apply[A](name: String, initValue: A, translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext): SimpleAttribute[A] =
+    new SimpleAttribute(name, translator)(None, initValue)
 
-  def apply[A](name: String, body: () => A)(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
-    new MetaAttribute(name, () => Future(body()))
+  def apply[A](name: String, body: () => A, translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
+    new MetaAttribute(name, () => Future(body()), translator)
 
-  def future[A](name: String, body: () => Future[A])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
-    new MetaAttribute(name, body)
+  def future[A](name: String, body: () => Future[A], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
+    new MetaAttribute(name, body, translator)
 
-  def list[A](name: String, initValue: List[A])(implicit cryoctx: CryoContext): ListAttribute[A] =
-    new ListAttribute[A](name)(None, initValue)
+  def list[A](name: String, initValue: List[A], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext): ListAttribute[A] =
+    new ListAttribute[A](name, translator)(None, initValue)
 
-  def list[A](name: String, body: () => List[A])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
-    new MetaListAttribute(name, () => Future(body()))
+  def list[A](name: String, body: () => List[A], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
+    new MetaListAttribute(name, () => Future(body()), translator)
 
-  def futureList[A](name: String, body: () => Future[List[A]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
-    new MetaListAttribute(name, body)
+  def futureList[A](name: String, body: () => Future[List[A]], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
+    new MetaListAttribute(name, body, translator)
 
-  def map[A, B](name: String, initValue: IMap[A, B])(implicit cryoctx: CryoContext): MapAttribute[A, B] =
-    new MapAttribute[A, B](name)(None, initValue.toList)
+  def map[A, B](name: String, initValue: IMap[A, B], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext): MapAttribute[A, B] =
+    new MapAttribute[A, B](name, translator)(None, initValue.toList)
 
-  def map[A, B](name: String, body: () => IMap[A, B])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
-    new MetaMapAttribute(name, () => Future(body()))
+  def map[A, B](name: String, body: () => IMap[A, B], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
+    new MetaMapAttribute(name, () => Future(body()), translator)
 
-  def futureMap[A, B](name: String, body: () => Future[IMap[A, B]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
-    new MetaMapAttribute(name, body)
+  def futureMap[A, B](name: String, body: () => Future[IMap[A, B]], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration) =
+    new MetaMapAttribute(name, body, translator)
 }
 
 trait Attribute[A] {
@@ -57,6 +57,7 @@ trait Attribute[A] {
 }
 
 trait SimpleCallbackable extends LoggingClass { self: Attribute[_] =>
+  val translator: Option[Function[Any, Any]]
   private var callbacks = List[AttributeSimpleCallback]()
 
   def addCallback(attributeCallback: AttributeSimpleCallback): this.type = {
@@ -78,10 +79,14 @@ trait SimpleCallbackable extends LoggingClass { self: Attribute[_] =>
     addCallback(ac)
   }
 
-  def processCallbacks[A]() = for (c <- callbacks) { c.onChange(name, previous, now) }
+  def processCallbacks[A]() = for (c <- callbacks) {
+    c.onChange(name,
+      previous.map(p => translator.map(_(p)).getOrElse(p)),
+      translator.map(_(now)).getOrElse(now))
+  }
 }
 
-class MetaAttribute[A](val name: String, body: () => Future[A])(implicit val cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration)
+class MetaAttribute[A](val name: String, body: () => Future[A], val translator: Option[Function[Any, Any]])(implicit val cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration)
   extends Attribute[A] with SimpleCallbackable with LoggingClass {
   var value: Future[(Option[A], A)] = body().map(v => (None, v))
   var callbackChain: Future[Unit] = Future.successful()
@@ -128,15 +133,15 @@ class MetaAttribute[A](val name: String, body: () => Future[A])(implicit val cry
   }
 }
 
-class MetaListAttribute[A](name: String, body: () => Future[List[A]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration)
-  extends MetaAttribute[List[A]](name, body)(cryoctx, executionContext, timeout)
+class MetaListAttribute[A](name: String, body: () => Future[List[A]], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration)
+  extends MetaAttribute[List[A]](name, body, translator)(cryoctx, executionContext, timeout)
   with ListCallbackable[A]
 
-class MetaMapAttribute[A, B](name: String, body: () => Future[IMap[A, B]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration)
-  extends MetaAttribute[List[(A, B)]](name, () => body().map(_.toList))(cryoctx, executionContext, timeout)
+class MetaMapAttribute[A, B](name: String, body: () => Future[IMap[A, B]], translator: Option[Function[Any, Any]])(implicit cryoctx: CryoContext, executionContext: ExecutionContext, timeout: Duration)
+  extends MetaAttribute[List[(A, B)]](name, () => body().map(_.toList), translator)(cryoctx, executionContext, timeout)
   with ListCallbackable[(A, B)]
 
-class SimpleAttribute[A](val name: String)(private var _previous: Option[A], var _now: A)(implicit val cryoctx: CryoContext) extends Attribute[A] with SimpleCallbackable {
+class SimpleAttribute[A](val name: String, val translator: Option[Function[Any, Any]])(private var _previous: Option[A], var _now: A)(implicit val cryoctx: CryoContext) extends Attribute[A] with SimpleCallbackable {
 
   def update(newValue: A) = {
     if (_now != newValue) {
@@ -179,25 +184,25 @@ trait ListCallbackable[A] { self: Attribute[List[A]] with SimpleCallbackable =>
     }
   })
 
-//  def onAdd(cb: (=> Unit) => Unit) = {
-//    lazy val ac: AttributeListCallback = new AttributeListCallback {
-//      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
-//        cb { removeCallback(ac) }
-//    }
-//    addCallback(ac)
-//  }
-//
-//  def onRemove(cb: (=> Unit) => Unit) = {
-//    lazy val ac: AttributeListCallback = new AttributeListCallback {
-//      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
-//        cb { removeCallback(ac) }
-//    }
-//    addCallback(ac)
-//  }
+  //  def onAdd(cb: (=> Unit) => Unit) = {
+  //    lazy val ac: AttributeListCallback = new AttributeListCallback {
+  //      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
+  //        cb { removeCallback(ac) }
+  //    }
+  //    addCallback(ac)
+  //  }
+  //
+  //  def onRemove(cb: (=> Unit) => Unit) = {
+  //    lazy val ac: AttributeListCallback = new AttributeListCallback {
+  //      override def onListChange[B](name: String, addedValues: List[B], removedValues: List[B]): Unit =
+  //        cb { removeCallback(ac) }
+  //    }
+  //    addCallback(ac)
+  //  }
 }
 
-class ListAttribute[A](name: String)(__previous: Option[List[A]], __now: List[A])(implicit cryoctx: CryoContext)
-  extends SimpleAttribute[List[A]](name)(__previous, __now)
+class ListAttribute[A](name: String, translator: Option[Function[Any, Any]])(__previous: Option[List[A]], __now: List[A])(implicit cryoctx: CryoContext)
+  extends SimpleAttribute[List[A]](name, translator)(__previous, __now)
   with Buffer[A]
   with ListCallbackable[A] {
 
@@ -244,8 +249,8 @@ class ListAttribute[A](name: String)(__previous: Option[List[A]], __now: List[A]
   def iterator = now.iterator
 }
 
-class MapAttribute[A, B](name: String)(__previous: Option[List[(A, B)]], __now: List[(A, B)])(implicit cryoctx: CryoContext)
-  extends SimpleAttribute[List[(A, B)]](name)(__previous, __now)
+class MapAttribute[A, B](name: String, translator: Option[Function[Any, Any]])(__previous: Option[List[(A, B)]], __now: List[(A, B)])(implicit cryoctx: CryoContext)
+  extends SimpleAttribute[List[(A, B)]](name, translator)(__previous, __now)
   with Map[A, B]
   with ListCallbackable[(A, B)]
   with LoggingClass {

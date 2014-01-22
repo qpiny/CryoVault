@@ -65,7 +65,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     }
   }
   //implicit val timeout = 10 seconds
-  val snapshots = attributeBuilder.map("snapshot", Map.empty[UUID, ActorRef], (s: Any) => s.asInstanceOf[(UUID, ActorRef)]._1)
+  val snapshots = attributeBuilder.map("snapshot", Map.empty[UUID, ActorRef], (s: Any) => s.asInstanceOf[List[(UUID, ActorRef)]].map(_._1))
   //  val snapshots = attributeBuilder.futureList("snapshots", () => {
   //    Future.sequence(snapshotIds.keys.map {
   //      case sid => (cryoctx.datastore ? GetDataStatus(sid)).mapTo[DataStatus]

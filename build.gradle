@@ -22,7 +22,7 @@ ext {
 	majorScalaVersion = '2.10'
 	scalaVersion = '2.10.3'
 	akkaVersion = '2.2.3'
-	sprayVersion = '1.2-RC3'
+	sprayVersion = '1.2.0'
 	inWebdevel = false
 	executor = null
 }
@@ -54,24 +54,25 @@ dependencies {
 	compile group: 'com.typesafe.akka', name: 'akka-slf4j_' + majorScalaVersion, version: akkaVersion
 	compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
 	compile group: 'joda-time', name: 'joda-time', version: '2.3'
-	compile group: 'com.amazonaws', name: 'aws-java-sdk', version: '1.6.0.1'
+	compile group: 'com.amazonaws', name: 'aws-java-sdk', version: '1.6.12'
 	compile group: 'org.json4s', name: 'json4s_' + majorScalaVersion, version: '3.2.6'
 	compile group: 'org.json4s', name: 'json4s-ext_' + majorScalaVersion, version: '3.2.6'
 	compile group: 'org.json4s', name: 'json4s-native_' + majorScalaVersion, version: '3.2.6'
 	
-	testCompile group: 'junit', name: 'junit', version: '4.11'
-	testCompile group: 'org.scalatest', name: 'scalatest_' + majorScalaVersion, version: '2.0.RC1'
-	testCompile group: 'org.specs2', name: 'specs2_' + majorScalaVersion, version: '2.3.4'
+	// TEST //
+	//compile group: 'junit', name: 'junit', version: '4.11'
+	//compile group: 'org.scalatest', name: 'scalatest_' + majorScalaVersion, version: '2.0.RC1'
+	//compile group: 'org.specs2', name: 'specs2_' + majorScalaVersion, version: '2.3.4'
 	
-	testCompile group: 'io.spray', name: 'spray-testkit', version: sprayVersion
-	testCompile group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
+	//compile group: 'io.spray', name: 'spray-testkit', version: sprayVersion
+	//compile group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
 	fmpp group: 'net.sourceforge.fmpp', name: 'fmpp', version: '0.9.14'
-	cljs 'leiningen:leiningen:2.3.3'
+	cljs 'leiningen:leiningen:2.3.4'
 	cljs 'org.slf4j:slf4j-simple:1.7.5'
 	
-	compile group: 'junit', name: 'junit', version: '4.11'
-	compile group: 'org.scalatest', name: 'scalatest_' + majorScalaVersion, version: '2.0.RC1'
-	compile group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
+	//compile group: 'junit', name: 'junit', version: '4.11'
+	//compile group: 'org.scalatest', name: 'scalatest_' + majorScalaVersion, version: '2.0.RC1'
+	//compile group: 'com.typesafe.akka', name: 'akka-testkit_' + majorScalaVersion, version: akkaVersion
 
 }
 

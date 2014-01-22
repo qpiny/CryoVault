@@ -51,20 +51,16 @@ object Json extends Formats {
     def format(d: Date): String = jodaDateFormat.print(new DateTime(d))
   }
   override val typeHints = NoTypeHints
+  val enumSerializers: List[Serializer[_]] = JsonDataType ::
+      JsonDataStatus ::
+      Nil
   override val customSerializers =
       JsonFileElement ::
       JsonFilefilter ::
-      new EnumNameSerializer(DataType) ::
-      new EnumNameSerializer(DataStatus) ::
       JsonPathFileFilter ::
       JsonUUID ::
-      Nil
-/*
- *  inferred type arguments [org.json4s.Serializer[_10939] forSome {
- *  	type _10929 >: DataStatus.type with DataType.type <: Enumeration; type _10939 >: _10929#Value with java.util.UUID <: Comparable[_10938] forSome { val _10937: _10929; type 
-	 _10938 >: _10937.Value with java.util.UUID <: java.io.Serializable } with java.io.Serializable }] do not conform to method ::'s type parameter bounds [B >: 
-	 org.json4s.ext.EnumNameSerializer[_ >: org.rejna.cryo.models.DataStatus.type with org.rejna.cryo.models.DataType.type <: Enumeration]]
- */
+      enumSerializers
+
   def readDate(s: String): Option[Date] = dateFormat.parse(s)
   def writeDate(date: Date): String = dateFormat.format(date)
 
@@ -79,6 +75,10 @@ object Json extends Formats {
     Serialization.write(t)
   }
 }
+
+case object JsonDataType extends EnumNameSerializer(DataType)
+
+case object JsonDataStatus extends EnumNameSerializer(DataStatus)
 
 case object JsonUUID extends CustomSerializer[UUID](format => (
     {

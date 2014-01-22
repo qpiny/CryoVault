@@ -94,7 +94,7 @@ class Manager(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
       case o: Any => log(cryoError("Fail to refresh job list", o))
     }
 
-    (cryoctx.datastore ? GetDataEntry("finalizedJobs"))
+    (cryoctx.datastore ? GetDataEntry(finalizedJobsId))
       .eflatMap("Fail to get finalizedJobs", {
         case DataEntry(id, _, _, _, Readable, size, _) if size > 0 =>
           (cryoctx.datastore ? ReadData(id, 0, size.toInt))

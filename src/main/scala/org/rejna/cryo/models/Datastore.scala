@@ -45,7 +45,20 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     val repoData = source.getLines mkString "\n"
     source.close()
     val entries = Json.read[List[DataEntry]](repoData) map {
-      case entry => new DataItem(cryoctx, attributeBuilder, entry.id, None /* FIXME */, entry.dataType, entry.creationDate /* FIXME */)
+      case entry => new DataItem(cryoctx, attributeBuilder, entry)
+      /*
+       * class DataItem(
+  val cryoctx: CryoContext,
+  val attributeBuilder: CryoAttributeBuilder,
+  val id: UUID,
+  val _glacierId: Option[String] = None,
+  val dataType: DataType,
+  val creationDate: Date = new Date,
+  _status: ObjectStatus = Writable,
+  _size: Long = 0L,
+  _checksum: String = "") extends LoggingClass {
+  
+       */
       
 //  _status: ObjectStatus = Writable,
 //  _size: Long = 0L,
@@ -84,7 +97,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
             else throw OpenError(s"Data ${id} can't be created (${d.status})")
         case None =>
       }
-      repository += id -> new DataItem(cryoctx, entryAttributeBuilder, id, None, dataType)
+      repository += id -> new DataItem(cryoctx, entryAttributeBuilder, DataEntry(id, None, dataType, new Date, DataStatus.Writable, 0L, ""))
       sender ! Created(id)
 
     case DefineData(id, glacierId, dataType, creationDate, size, checksum) =>
@@ -92,7 +105,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
         case Some(_) => // data already defined, ignore it
         case None =>
           val entryAttributeBuilder = attributeBuilder / id
-          repository += id -> new DataItem(cryoctx, entryAttributeBuilder, id, Some(glacierId), dataType, creationDate, DataStatus.Readable, size, checksum)
+          repository += id -> new DataItem(cryoctx, entryAttributeBuilder, DataEntry(id, Some(glacierId), dataType, creationDate, DataStatus.Readable, size, checksum))
       }
       sender ! DataDefined(id)
 

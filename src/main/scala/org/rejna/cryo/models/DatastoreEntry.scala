@@ -26,32 +26,30 @@ import DataType._
 class DataItem(
   val cryoctx: CryoContext,
   val attributeBuilder: CryoAttributeBuilder,
-  val id: UUID,
-  val _glacierId: Option[String] = None,
-  val dataType: DataType,
-  val creationDate: Date = new Date,
-  _status: ObjectStatus = Writable,
-  _size: Long = 0L,
-  _checksum: String = "") extends LoggingClass {
+  val entry: DataEntry) extends LoggingClass {
 
+  
+  val id = entry.id
+  val dataType = entry.dataType
+  val creationDate = entry.creationDate
   val file = cryoctx.workingDirectory.resolve(id.toString)
   val filePart = cryoctx.workingDirectory.resolve(id.toString + ".part")
 
   implicit val logSource = getClass.getName
 
-  val sizeAttribute = attributeBuilder("size", 0L)
+  val sizeAttribute = attributeBuilder("size", entry.size)
   def size = sizeAttribute()
   def size_= = sizeAttribute() = _
 
-  private val statusAttribute = attributeBuilder("status", _status)
+  private val statusAttribute = attributeBuilder("status", entry.status)
   def status = statusAttribute()
   private def status_= = statusAttribute() = _
 
-  private val glacierIdAttribute = attributeBuilder("glacierId", _glacierId)
+  private val glacierIdAttribute = attributeBuilder("glacierId", entry.glacierId)
   def glacierId = glacierIdAttribute()
   private def glacierId_= = glacierIdAttribute() = _
 
-  def checksum = Try(TreeHashGenerator.calculateTreeHash(checksums)).getOrElse(_checksum)
+  def checksum = Try(TreeHashGenerator.calculateTreeHash(checksums)).getOrElse(entry.checksum)
 
   def dataEntry = DataEntry(id, glacierId, dataType, creationDate, status, size, checksum)
 
@@ -85,7 +83,7 @@ class DataItem(
 
   def read(position: Long, length: Int): ByteString = {
     if (status != Readable)
-      throw InvalidState("")
+      throw InvalidState(s"Data ${id} has invalid state (${status}) for read")
     val buffer = ByteBuffer.allocate(length)
     getChannel.position(position)
     val n = getChannel.read(buffer)

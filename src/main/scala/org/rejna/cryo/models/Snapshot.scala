@@ -41,6 +41,7 @@ class Snapshot(_cryoctx: CryoContext, val id: UUID, status: SnapshotStatus.Snaps
       case (Some(DataStatus.Readable), SnapshotStatus.Created) => new SnapshotCreated(cryoctx, id, status)
       case (Some(DataStatus.Readable), SnapshotStatus.Uploading) => new SnapshotCreated(cryoctx, id, status)
       case (Some(DataStatus.Remote), SnapshotStatus.Remote) => new SnapshotRemote(cryoctx, id, status)
+      case (Some(DataStatus.Writable), SnapshotStatus.Creating) => new SnapshotCreating(cryoctx, id, status)
       case (None, SnapshotStatus.Creating) => new SnapshotCreating(cryoctx, id, status)
     })
 
