@@ -41,6 +41,9 @@ class Snapshot(_cryoctx: CryoContext, val id: UUID, status: SnapshotStatus.Snaps
       case (Some(DataStatus.Writable), SnapshotStatus.Creating) => new SnapshotCreating(cryoctx, id, status)
       case (None, SnapshotStatus.Creating) => new SnapshotCreating(cryoctx, id, status)
     })
+  snapshot.onFailure({
+    case t => log(cryoError("Fail to create snapshot", t))
+  })
 
   CryoEventBus.subscribe(self, s"/cryo/datastore/${id}#status")
 
