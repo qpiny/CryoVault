@@ -14,7 +14,6 @@ case class Created(id: UUID)
 case class Deleted(id: UUID)
 case class ObjectList(date: Date, archives: List[DataEntry])
 case class Done()
-case class Uploaded(id: UUID)
 case class NotFound(id: Either[UUID, String], message: String, cause: Throwable = Error.NoCause)(implicit val logSource: String) extends GenericError(message, cause)
 
 
@@ -73,7 +72,6 @@ case class RefreshJobList()
 case class RefreshInventory() // JobAdded
 case class JobRequested(job: Job)
 case class DownloadArchive(archiveId: String)
-case class Upload(id: UUID, dataType: DataType)
 
 
 /* Catalog */
@@ -96,6 +94,8 @@ case class FileList(id: UUID, path: String, files: List[FileElement])
 case class FileElement(path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
 case class GetFilter(id: UUID, path: String) extends SnapshotMessage
 case class SnapshotFilter(id: UUID, path: String, filter: Option[FileFilter])
+case class Upload(id: UUID, dataType: DataType) extends SnapshotMessage
+case class Uploaded(id: UUID)
 
 
 /* Manager */

@@ -18,16 +18,13 @@ import java.util.UUID
 
 abstract class BaseSnapshot(id: UUID, _status: SnapshotStatus.SnapshotStatus) {
 
-  def attributeBuilder: CryoAttributeBuilder
   def updateFilter(file: String, filter: FileFilter): BaseSnapshot
   def getFiles(path: String): List[FileElement]
   def getFilter(path: String): Option[FileFilter]
   def upload(): BaseSnapshot
   def updateDataStatus(previous: Option[DataStatus.ObjectStatus], now: DataStatus.ObjectStatus): BaseSnapshot
 
-  val statusAttribute = attributeBuilder("status", _status)
-  def status = statusAttribute()
-  def status_= = statusAttribute() = _
+  def status: SnapshotStatus.SnapshotStatus
 }
 
 class Snapshot(_cryoctx: CryoContext, val id: UUID, status: SnapshotStatus.SnapshotStatus) extends CryoActor(_cryoctx) {
@@ -79,7 +76,11 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
 
   implicit val cryoctx = _cryoctx
   implicit val executionContext = cryoctx.executionContext
-  def attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
+  val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
+
+  val statusAttribute = attributeBuilder("status", _status)
+  def status = statusAttribute()
+  def status_= = statusAttribute() = _
 
   val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
   val files = attributeBuilder.list("files", List.empty[Path])
@@ -369,6 +370,10 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   implicit val executionContext = cryoctx.executionContext
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
 
+  val statusAttribute = attributeBuilder("status", _status)
+  def status = statusAttribute()
+  def status_= = statusAttribute() = _
+
   def load() = {
     (cryoctx.datastore ? GetDataEntry(id))
       .eflatMap(s"Fail to get status of Snapshot ${id}", {
@@ -408,6 +413,10 @@ class SnapshotRemote(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStatu
   implicit val cryoctx = _cryoctx
   implicit val executionContext = cryoctx.executionContext
   val attributeBuilder = CryoAttributeBuilder(s"/cryo/snapshot/${id}")
+
+  val statusAttribute = attributeBuilder("status", _status)
+  def status = statusAttribute()
+  def status_= = statusAttribute() = _
 
   def load() = {
     (cryoctx.datastore ? GetDataEntry(id))
