@@ -28,7 +28,6 @@
 						<ul class="nav nav-tabs nav-stacked">
 							<li x-ng-repeat="archive in archives" x-ng-class="{active: archive.id==params.archiveId}"">
 								<a href="#/archives/{{archive.id}}">
-									{{archive.id}}<br/>
 									{{archive.creationDate}}
 								</a>
 							</li>

@@ -257,7 +257,6 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
       def putBlockLocation(bl: BlockLocation): Future[State] = {
         current.map {
           case s @ State(index, blockIds, aid, len) =>
-            //id: Int, hash: Hash, archiveId: UUID, offset: Long, size: Int
             index.putLong(bl.id)
             val hash = bl.hash.value
             index.putByte(hash.length.asInstanceOf[Byte])
@@ -286,11 +285,14 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
       state = state.putPath(filename)
       state = (state /: blocks) {
         case (st, block) =>
-          (cryoctx.hashcatalog ? ReserveBlock(block))
-            .eflatMap("", {
-              case Done() => st.writeBlock(block)
-              case bl: BlockLocation => st.putLong(bl.id)
-            })
+          st.flatMap({
+            case State(index, blockIds, aid, len) =>
+              (cryoctx.hashcatalog ? ReserveBlock(block))
+                .eflatMap("", {
+                  case Done() => st.writeBlock(block)
+                  case bl: BlockLocation => st.putLong(bl.id)
+                })
+          })
       }
       state = state.putLong(-1) // end of block list
     }

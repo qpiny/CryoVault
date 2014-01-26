@@ -192,7 +192,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case UpdateInventoryDate(d) => date = d
     case AddItem(ds) => ds.dataType match {
       case Data => archiveIds += ds.id
-      case Index => // TODO create actor then add actorRef // snapshots += ds.id ->
+      case Index => snapshots += ds.id -> context.actorOf(Props(classOf[Snapshot], cryoctx, ds.id, SnapshotStatus.Creating)) 
     }
     //////////////////////////////////////
 

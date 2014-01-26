@@ -31,12 +31,16 @@ case class CreateData(idOption: Option[UUID], dataType: DataType, size: Long = 0
 case class DefineData(id: UUID, glacierId: String, dataType: DataType, creationDate: Date, size: Long, checksum: String)
 case class DataDefined(id: UUID)
 case class DeleteData(id: UUID) /* => Deleted */
-case class WriteData(id: UUID, position: Long, buffer: ByteString)
+case class WriteData(id: UUID, position: Long, buffer: ByteString) {
+  override def toString = s"WriteData(${id},${position},ByteString(${buffer.size})"
+}
 object WriteData { def apply(id: UUID, buffer: ByteString): WriteData = WriteData(id, -1, buffer) } // AppendData
 case class DataWritten(id: UUID, position: Long, length: Long)
 
 case class ReadData(id: UUID, position: Long, length: Int)
-case class DataRead(id: UUID, position: Long, buffer: ByteString)
+case class DataRead(id: UUID, position: Long, buffer: ByteString) {
+  override def toString = s"DataRead(${id},${position},ByteString(${buffer.size})"
+}
 
 case class ClearLocalCache(id: UUID)
 case class LocalCacheCleared(id: UUID)
