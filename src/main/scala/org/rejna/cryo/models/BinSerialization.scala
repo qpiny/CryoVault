@@ -7,7 +7,7 @@ import akka.util.{ ByteString, ByteStringBuilder }
 import java.nio.{ ByteBuffer, BufferOverflowException, ByteOrder }
 import java.nio.file.Path
 import java.nio.channels.FileChannel
-import java.util.Date
+import java.util.{ UUID, Date }
 
 import sbinary._
 import sbinary.Operations._
@@ -21,8 +21,11 @@ object ByteStringSerializer {
       bsBuilder.putInt(bs.length)
       bsBuilder ++= bs
     }
+    
     def putPath(p: Path) = putString(p.toString)
+    
     def putBlockLocation(bl: BlockLocation): ByteStringBuilder = {
+      bsBuilder.putLong(bl.id)
       putHash(bl.hash)
       putString(bl.archiveId.toString)
       bsBuilder.putLong(bl.offset)
@@ -43,6 +46,51 @@ object ByteStringSerializer {
   }
 
   implicit def bs2bss(bsBuilder: ByteStringBuilder) = BSSerializer(bsBuilder)
+  
+  case class BSDeserializer(buffer: ByteBuffer, cryoctx: CryoContext) {
+    
+    def getString = {
+      val str = Array.ofDim[Byte](buffer.getInt)
+      buffer.get(str)
+      new String(str, "UTF-8")
+    }
+    
+    def getFilter = {
+      val path = getPath
+      val filter = getString
+      (path, filter)
+    }
+    
+    def getPath = {
+      cryoctx.filesystem.getPath(getString)
+    }
+    
+    def getFile = {
+      val path = getPath
+      val blocks = Iterator.continually { buffer.getLong }
+      .takeWhile(_ != -1)
+      .toList
+      (path, blocks)
+    }
+    
+    def getHash = {
+      val hash = Array.ofDim[Byte](cryoctx.hashAlgorithm.getDigestLength)
+      buffer.get(hash)
+      new Hash(hash)
+    }
+      
+    
+    def getBlockLocation = {
+      val id = buffer.getLong
+      val hash = getHash
+      val archiveId = UUID.fromString(getString)
+      val offset = buffer.getLong
+      val size = buffer.getInt
+      BlockLocation(id, hash, archiveId, offset, size)
+    }
+  }
+  
+  implicit def bs2bsd(buffer: ByteBuffer)(implicit cryoctx: CryoContext) = BSDeserializer(buffer, cryoctx)
 }
 
 class ByteBufferOutput(fc: FileChannel) extends Output {

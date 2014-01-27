@@ -10,6 +10,7 @@ import akka.pattern.{ gracefulStop }
 import akka.util.Timeout
 
 import java.nio.file.{ Path, FileSystems }
+import java.security.MessageDigest
 import javax.crypto.{ Cipher, KeyGenerator, CipherOutputStream }
 import javax.crypto.spec.IvParameterSpec
 
@@ -44,11 +45,6 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
   }
 
   def shutdown() = {
-    /* vvv DEBUG vvv */
-    //isShuttingDown = true
-    //inventory ! PrepareToDie()
-    /* ^^^ DEBUG ^^^ */
-
     if (!isShuttingDown) {
       implicit val timeout = getTimeout(classOf[PrepareToDie])
 
@@ -73,7 +69,7 @@ class CryoContext(val system: ActorSystem, val config: Config) extends LoggingCl
     }
   }
 
-  val hashAlgorithm = config.getString("cryo.hash-algorithm") // TODO use MessageDigest.getInstance
+  val hashAlgorithm = MessageDigest.getInstance(config.getString("cryo.hash-algorithm"))
   val bufferSize = config.getBytes("cryo.buffer-size").toInt
 
   val multipartThreshold = config.getBytes("cryo.multipart-threshold")

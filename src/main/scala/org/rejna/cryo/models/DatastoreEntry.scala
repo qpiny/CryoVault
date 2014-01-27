@@ -53,7 +53,7 @@ class DataItem(
 
   def dataEntry = DataEntry(id, glacierId, dataType, creationDate, status, size, checksum)
 
-  val digest = MessageDigest.getInstance(cryoctx.hashAlgorithm)
+  val digest = cryoctx.hashAlgorithm.clone.asInstanceOf[MessageDigest]
   val MB = 1024 * 1024
   var blockSize = 0
   val checksums = ArrayBuffer.empty[Array[Byte]]

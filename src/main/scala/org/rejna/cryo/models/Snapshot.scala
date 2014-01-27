@@ -189,6 +189,23 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
     (files, size)
   }
 
+  class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
+    //def this(path: String) = this(FileSystems.getDefault.getPath(path))
+
+    def foreach[U](f: ((Path, BasicFileAttributes)) => U) {
+      class Visitor extends SimpleFileVisitor[Path] {
+        override def visitFileFailed(file: Path, exc: IOException) = FileVisitResult.CONTINUE
+        override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = try {
+          f(file -> attrs)
+          FileVisitResult.CONTINUE
+        } catch {
+          case _: Throwable => FileVisitResult.TERMINATE
+        }
+      }
+      Files.walkFileTree(path, new Visitor)
+    }
+  }
+
   class IndexBuilder {
     import ByteStringSerializer._
 
@@ -370,6 +387,7 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   with ErrorGenerator {
 
   import DataStatus._
+  import ByteStringSerializer._
 
   implicit val cryoctx = _cryoctx
   implicit val executionContext = cryoctx.executionContext
@@ -379,15 +397,63 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
-  def load() = {
+  val files = Map[Path, List[Long]]()
+
+  class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
+    def foreach[U](f: ((Path, BasicFileAttributes)) => Unit): Unit = {
+      files.collect {
+        case (p, b) if path.startsWith(p) =>
+          if (p.getParent == path) {
+            //files.
+            //FileElement(p, false, filter.get(p), files.)
+          } else {
+            val child = path.relativize(p).getName(0)
+          }
+      }
+    }
+
+    //path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
+  }
+  def xxload() = {
     (cryoctx.datastore ? GetDataEntry(id))
       .eflatMap(s"Fail to get status of Snapshot ${id}", {
-        case DataEntry(_, Some(glacierId), _, _, Remote, size, _) =>
-          (cryoctx.cryo ? DownloadArchive(glacierId))
+        case DataEntry(_, Some(glacierId), DataType.Index, _, Readable, size, _) =>
+          (cryoctx.datastore ? ReadData(id, 0, size.toInt))
+      }).emap("", {
+        case DataRead(_, _, _buffer) =>
+          val buffer = _buffer.asByteBuffer
+          val nFilter = buffer.getInt
+          val filters = List.fill[(Path, String)](nFilter)(buffer.getFilter).toMap
+
+          val nFile = buffer.getInt
+          val files = List.fill[(Path, List[Long])](nFile)(buffer.getFile).toMap
+
+          val nBlockLocation = buffer.getInt
+          val catalog = List.fill[BlockLocation](nBlockLocation)(buffer.getBlockLocation)
+
       })
   }
+
   def updateFilter(file: String, filter: FileFilter): BaseSnapshot = throw InvalidState(s"Snapshot ${id} has invalid status (created) for updateFilter")
-  def getFiles(path: String): List[FileElement] = Nil
+
+  //def 
+
+  def getFiles(pathStr: String): List[FileElement] = {
+    val path = cryoctx.filesystem.getPath(pathStr)
+    val children = files.collect {
+      case (p, b) if path.startsWith(p) =>
+      //        if (p.getParent == path) {
+      //          //files.
+      //          FileElement(p, false, filter.get(p), files.)
+      //        }
+      //        else {
+      //        val child = path.relativize(p).getName(0)
+      //        }
+    }
+
+    //path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
+    Nil
+  }
   def getFilter(path: String): Option[FileFilter] = None
   def upload(): BaseSnapshot = this
 
@@ -449,23 +515,6 @@ class SnapshotRemote(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStatu
     }
   }
 
-}
-
-class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
-  //def this(path: String) = this(FileSystems.getDefault.getPath(path))
-
-  def foreach[U](f: ((Path, BasicFileAttributes)) => U) {
-    class Visitor extends SimpleFileVisitor[Path] {
-      override def visitFileFailed(file: Path, exc: IOException) = FileVisitResult.CONTINUE
-      override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = try {
-        f(file -> attrs)
-        FileVisitResult.CONTINUE
-      } catch {
-        case _: Throwable => FileVisitResult.TERMINATE
-      }
-    }
-    Files.walkFileTree(path, new Visitor)
-  }
 }
 
 //    blocks.map {
