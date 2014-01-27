@@ -57,7 +57,7 @@ object ByteStringSerializer {
     
     def getFilter = {
       val path = getPath
-      val filter = getString
+      val filter = FileFilterParser.parse(getString)
       (path, filter)
     }
     

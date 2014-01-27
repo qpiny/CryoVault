@@ -2,7 +2,8 @@ package org.rejna.cryo.models
 
 import scala.collection.mutable.LinkedList
 import scala.collection.JavaConversions.iterableAsScalaIterable
-import scala.concurrent.Future
+import scala.concurrent.{ Future, Await }
+import scala.concurrent.duration._
 
 import akka.actor.{ Actor, ActorContext, ActorRef }
 import akka.util.{ ByteString, ByteStringBuilder }
@@ -397,24 +398,10 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
-  val files = Map[Path, List[Long]]()
+  //  val files = Map[Path, List[Long]]()
+  //  val filters = Map[Path, FileFilter]()
 
-  class TraversePath(path: Path) extends Traversable[(Path, BasicFileAttributes)] {
-    def foreach[U](f: ((Path, BasicFileAttributes)) => Unit): Unit = {
-      files.collect {
-        case (p, b) if path.startsWith(p) =>
-          if (p.getParent == path) {
-            //files.
-            //FileElement(p, false, filter.get(p), files.)
-          } else {
-            val child = path.relativize(p).getName(0)
-          }
-      }
-    }
-
-    //path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
-  }
-  def xxload() = {
+  val (files, filters) = Await.result(
     (cryoctx.datastore ? GetDataEntry(id))
       .eflatMap(s"Fail to get status of Snapshot ${id}", {
         case DataEntry(_, Some(glacierId), DataType.Index, _, Readable, size, _) =>
@@ -423,7 +410,9 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
         case DataRead(_, _, _buffer) =>
           val buffer = _buffer.asByteBuffer
           val nFilter = buffer.getInt
-          val filters = List.fill[(Path, String)](nFilter)(buffer.getFilter).toMap
+          val filters = List.fill[(Path, Either[String, FileFilter])](nFilter)(buffer.getFilter).collect {
+            case (p, Right(ff)) => (p, ff)
+          } toMap
 
           val nFile = buffer.getInt
           val files = List.fill[(Path, List[Long])](nFile)(buffer.getFile).toMap
@@ -431,30 +420,37 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
           val nBlockLocation = buffer.getInt
           val catalog = List.fill[BlockLocation](nBlockLocation)(buffer.getBlockLocation)
 
-      })
+          (files, filters)
+      }), 5 seconds)
+
+  def listPath(path: Path) = {
+    val children = files.flatMap {
+      case (p, b) if path.startsWith(p) =>
+        if (p.getParent == path)
+          Some(FileElement(p, false, filters.get(p), 1, (0 /: b)((a, c) => a)))
+        else {
+          val child = path.resolve(path.relativize(p).getName(0))
+          Some(FileElement(child, false, filters.get(child), 1, (0 /: b)((a, c) => a)))
+        }
+      case _ => None
+
+    }
+
+    children.groupBy(_.path).map {
+      case (p, l) => l.reduce((a, b) => FileElement(a.path, a.isFolder, a.filter, a.count + b.count, a.size + b.size))
+    }
   }
 
   def updateFilter(file: String, filter: FileFilter): BaseSnapshot = throw InvalidState(s"Snapshot ${id} has invalid status (created) for updateFilter")
 
-  //def 
-
   def getFiles(pathStr: String): List[FileElement] = {
     val path = cryoctx.filesystem.getPath(pathStr)
-    val children = files.collect {
-      case (p, b) if path.startsWith(p) =>
-      //        if (p.getParent == path) {
-      //          //files.
-      //          FileElement(p, false, filter.get(p), files.)
-      //        }
-      //        else {
-      //        val child = path.relativize(p).getName(0)
-      //        }
-    }
-
-    //path: Path, isFolder: Boolean, filter: Option[FileFilter], count: Int, size: Long)
-    Nil
+    listPath(path).toList
   }
-  def getFilter(path: String): Option[FileFilter] = None
+
+  
+  def getFilter(path: String): Option[FileFilter] = filters.get(cryoctx.filesystem.getPath(path))
+
   def upload(): BaseSnapshot = this
 
   def updateDataStatus(previous: Option[DataStatus.ObjectStatus], now: DataStatus.ObjectStatus): BaseSnapshot = {
