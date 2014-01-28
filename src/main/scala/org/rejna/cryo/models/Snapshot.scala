@@ -1,5 +1,6 @@
 package org.rejna.cryo.models
 
+import scala.language.postfixOps
 import scala.collection.mutable.LinkedList
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.{ Future, Await }
