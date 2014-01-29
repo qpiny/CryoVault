@@ -29,19 +29,19 @@ abstract class BaseSnapshot(id: UUID, _status: SnapshotStatus.SnapshotStatus) {
   def status: SnapshotStatus.SnapshotStatus
 }
 
-class Snapshot(_cryoctx: CryoContext, val id: UUID, status: SnapshotStatus.SnapshotStatus) extends CryoActor(_cryoctx) {
+class Snapshot(_cryoctx: CryoContext, val id: UUID, status: DataStatus.ObjectStatus) extends CryoActor(_cryoctx) {
 
   var snapshot: Future[BaseSnapshot] = (cryoctx.datastore ? GetDataEntry(id))
     .emap("Fail to get snapshot data entry", {
       case DataEntry(_, _, _, _, dataStatus, _, _) => (Some(dataStatus), status)
       case NotFound(_, _, _) => (None, status)
     }).emap("Invalid status", {
-      case (Some(DataStatus.Writable), SnapshotStatus.Downloading) => new SnapshotRemote(cryoctx, id, status)
-      case (Some(DataStatus.Readable), SnapshotStatus.Created) => new SnapshotCreated(cryoctx, id, status)
-      case (Some(DataStatus.Readable), SnapshotStatus.Uploading) => new SnapshotCreated(cryoctx, id, status)
-      case (Some(DataStatus.Remote), SnapshotStatus.Remote) => new SnapshotRemote(cryoctx, id, status)
-      case (Some(DataStatus.Writable), SnapshotStatus.Creating) => new SnapshotCreating(cryoctx, id, status)
-      case (None, SnapshotStatus.Creating) => new SnapshotCreating(cryoctx, id, status)
+      case (Some(DataStatus.Remote), _) => new SnapshotRemote(cryoctx, id, SnapshotStatus.Remote)
+      case (Some(DataStatus.Readable), DataStatus.Readable) => new SnapshotCreated(cryoctx, id, SnapshotStatus.Created)
+      case (Some(DataStatus.Readable), DataStatus.Writable) => new SnapshotCreated(cryoctx, id, SnapshotStatus.Uploading)
+      case (Some(DataStatus.Writable), DataStatus.Remote) => new SnapshotRemote(cryoctx, id, SnapshotStatus.Downloading)
+      case (Some(DataStatus.Writable), DataStatus.Writable) => new SnapshotCreating(cryoctx, id, SnapshotStatus.Creating)
+      //case (None, DataStatus.Writable) => new SnapshotCreating(cryoctx, id, SnapshotStatus.Creating)
     })
   snapshot.onFailure({
     case t => log(cryoError("Fail to create snapshot", t))
@@ -405,7 +405,7 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   val (files, filters) = Await.result(
     (cryoctx.datastore ? GetDataEntry(id))
       .eflatMap(s"Fail to get status of Snapshot ${id}", {
-        case DataEntry(_, Some(glacierId), DataType.Index, _, Readable, size, _) =>
+        case DataEntry(_, _, DataType.Index, _, Readable, size, _) =>
           (cryoctx.datastore ? ReadData(id, 0, size.toInt))
       }).emap("", {
         case DataRead(_, _, _buffer) =>

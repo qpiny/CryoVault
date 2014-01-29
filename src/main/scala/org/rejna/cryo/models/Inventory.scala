@@ -168,7 +168,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     (cryoctx.datastore ? CreateData(None, Index))
       .emap("Error while creating a new snapshot", {
         case Created(id) =>
-          val aref = context.actorOf(Props(classOf[Snapshot], cryoctx, id, SnapshotStatus.Creating))
+          val aref = context.actorOf(Props(classOf[Snapshot], cryoctx, id, DataStatus.Writable))
           snapshots += id -> aref 
           id
       })
@@ -192,7 +192,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     case UpdateInventoryDate(d) => date = d
     case AddItem(ds) => ds.dataType match {
       case Data => archiveIds += ds.id
-      case Index => snapshots += ds.id -> context.actorOf(Props(classOf[Snapshot], cryoctx, ds.id, SnapshotStatus.Creating)) 
+      case Index => snapshots += ds.id -> context.actorOf(Props(classOf[Snapshot], cryoctx, ds.id, ds.status)) 
     }
     //////////////////////////////////////
 

@@ -86,8 +86,12 @@ case class BlockAdded(blockId: Long)
 
 //case class BlockLocationNotFound(hash: Hash) extends HashCatalogError("Blocklocation was not found")
 
-case class GetCatalogContent(blockIds: Option[Set[Long]])
-case class CatalogContent(catalog: List[BlockLocation])
+case class GetCatalogContent(blockIds: Option[Set[Long]]) {
+  override def toString = s"GetCatalogContent(${blockIds.map(_.size).getOrElse(0)} blocks)"
+}
+case class CatalogContent(catalog: List[BlockLocation]) {
+  override def toString = s"CatalogContent(${catalog.size} blockLocations)"
+}
 
 /* Snapshot */
 case class SnapshotEntry(id: UUID, glacierId: Option[String], creationDate: Date, status: ObjectStatus, size: Long, checksum: String)

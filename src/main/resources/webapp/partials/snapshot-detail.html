@@ -20,9 +20,15 @@
 		<td>{{snapshot.checksum}}</td>
 	</tr>
 </table>
-<button class="btn btn-primary" x-ng-click="upload()">Upload</button>
-<div x-dyntree="true"
-     x-tree-model="filesystem"
-     x-load-node="true"
-     x-load-node-func="loadNode"
-     x-select-node-func="selectNode"></div>
+{{snapshot.status}}
+<button class="btn btn-primary" x-ng-show="snapshot.status=='Writable'" x-ng-click="upload()">Upload</button>
+<div x-ng-show="snapshot.status=='Readable'">
+	Destination path : <input x-ng-model="restorePath"><button class="btn btn-primary" x-ng-click="Restore()">Restore</button>
+</div>
+<button class="btn btn-primary" x-ng-show="snapshot.status=='Remote'" x-ng-click="upload()">Download</button>
+<div x-ng-hide="snapshot.status=='Remote'"
+	x-dyntree="true"
+	x-tree-model="filesystem"
+	x-load-node="true"
+	x-load-node-func="loadNode"
+	x-select-node-func="selectNode"></div>
