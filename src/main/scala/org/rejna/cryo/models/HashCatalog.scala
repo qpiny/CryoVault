@@ -17,7 +17,7 @@ import akka.util.ByteString
 case class BlockLocation(id: Long, hash: Hash, archiveId: UUID, offset: Long, size: Int)
 
 class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash {
-  private val content = ArrayBuffer.empty[BlockLocation]
+  private val content = HashMap.empty[Long, BlockLocation]
   private val hashIndex = HashMap.empty[Hash, BlockLocation]
   private var lastBlockId: Long = 0
 
@@ -52,8 +52,8 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
 
     case GetCatalogContent(blockIds) =>
       blockIds match {
-        case None => sender ! CatalogContent(content.toList)
-        case Some(bids) => sender ! CatalogContent(content.filter(bl => bids.contains(bl.id)).toList)
+        case None => sender ! CatalogContent(content.values.toList)
+        case Some(bids) => sender ! CatalogContent(bids.map(content).toList)
       }
 
     case ReserveBlock(block) =>
@@ -65,6 +65,14 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
           sender ! Done()
         
       }
+      
+    case UpdateCatalogContent(catalog) =>
+      hashIndex ++= catalog.map(bl => bl.hash -> bl)
+      content ++= catalog.map(bl => bl.id -> bl)
+      sender ! Done()
+      
+//    case GetBlockLocation(blockIds) =>
+//      sender ! blockIds.flatMap(content.get)
 //    case GetBlockLocation(block) =>
 //      hashIndex.get(block.hash) match {
 //        case None =>
@@ -83,7 +91,7 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
         unstashAll
       lastBlockId += 1
       val blockLocation = BlockLocation(lastBlockId, block.hash, archiveId, offset, block.size)
-      content += blockLocation
+      content += lastBlockId -> blockLocation
       hashIndex += block.hash -> blockLocation
       sender ! BlockAdded(lastBlockId)
   }
@@ -94,9 +102,9 @@ class HashCatalog(_cryoctx: CryoContext) extends CryoActor(_cryoctx) with Stash 
         case Success(DataRead(id, position, buffer)) =>
           val message = buffer.decodeString("UTF-8")
           val catalog = Json.read[Array[BlockLocation]](message)
-          content ++= catalog
+          content ++= catalog.map(bl => bl.id -> bl)
           hashIndex ++= catalog.map(bl => bl.hash -> bl)
-          lastBlockId = if (content.isEmpty) 0 else content.maxBy(_.id).id
+          lastBlockId = if (content.isEmpty) 0 else content.keys.max
         case o: Any =>
           log(cryoError("Fail to read catalog data", o))
       })

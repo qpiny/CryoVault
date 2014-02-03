@@ -86,11 +86,15 @@ case class BlockAdded(blockId: Long)
 
 //case class BlockLocationNotFound(hash: Hash) extends HashCatalogError("Blocklocation was not found")
 
-case class GetCatalogContent(blockIds: Option[Set[Long]]) {
+case class GetCatalogContent(blockIds: Option[List[Long]]) {
   override def toString = s"GetCatalogContent(${blockIds.map(_.size).getOrElse(0)} blocks)"
 }
 case class CatalogContent(catalog: List[BlockLocation]) {
   override def toString = s"CatalogContent(${catalog.size} blockLocations)"
+}
+
+case class UpdateCatalogContent(catalog: List[BlockLocation]) {
+  override def toString = s"UpdateCatalogContent(${catalog.size} blockLocations)"
 }
 
 /* Snapshot */

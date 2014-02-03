@@ -5,6 +5,7 @@ import scala.collection.mutable.LinkedList
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.{ Future, Await }
 import scala.concurrent.duration._
+import scala.concurrent.duration._
 
 import akka.actor.{ Actor, ActorContext, ActorRef }
 import akka.util.{ ByteString, ByteStringBuilder }
@@ -327,7 +328,7 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
     def addCatalog() = {
       state = state.flatMap {
         case s @ State(index, blockIds, aid, len) =>
-          (cryoctx.hashcatalog ? GetCatalogContent(Some(blockIds)))
+          (cryoctx.hashcatalog ? GetCatalogContent(Some(blockIds.toList)))
             .emap("Fail to get catalog", {
               case CatalogContent(catalog) =>
                 index.putInt(catalog.length)
@@ -399,10 +400,30 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   def status = statusAttribute()
   def status_= = statusAttribute() = _
 
-  //  val files = Map[Path, List[Long]]()
-  //  val filters = Map[Path, FileFilter]()
+  val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
+  val selectedFiles = attributeBuilder.list("files", List.empty[Path])
 
-  val (files, filters) = Await.result(
+  fileFilters <+> updateFiles
+
+  private object updateFiles extends AttributeListCallback {
+    override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
+      if (removedValues.isEmpty) {
+        val addedFileFilters = addedValues.asInstanceOf[List[(Path, FileFilter)]]
+        selectedFiles ++= addedFileFilters.flatMap {
+          case (p, f) => listPath(p).collect {
+            case fe if f.accept(fe.path) => fe.path
+          }
+        }
+      } else {
+        selectedFiles() = fileFilters.flatMap {
+          case (p, f) => listPath(p).collect {
+            case fe if f.accept(fe.path) => fe.path
+          }
+        } toList
+      }
+    }
+  }
+  val (files, savedFilters) = Await.result(
     (cryoctx.datastore ? GetDataEntry(id))
       .eflatMap(s"Fail to get status of Snapshot ${id}", {
         case DataEntry(_, _, DataType.Index, _, Readable, size, _) =>
@@ -420,37 +441,74 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
 
           val nBlockLocation = buffer.getInt
           val catalog = List.fill[BlockLocation](nBlockLocation)(buffer.getBlockLocation)
+          (cryoctx.hashcatalog ? UpdateCatalogContent(catalog)).emap("Fail to update catalog", {
+            case Done() =>
+          })
 
           (files, filters)
       }), 5 seconds)
 
-  def listPath(path: Path) = {
-    val children = files.flatMap {
-      case (p, b) if path.startsWith(p) =>
-        if (p.getParent == path)
-          Some(FileElement(p, false, filters.get(p), 1, (0 /: b)((a, c) => a)))
-        else {
-          val child = path.resolve(path.relativize(p).getName(0))
-          Some(FileElement(child, false, filters.get(child), 1, (0 /: b)((a, c) => a)))
-        }
-      case _ => None
+  def getPathSize(blockIds: List[Long]) = {
+    val fsize = (cryoctx.hashcatalog ? GetCatalogContent(Some(blockIds))).emap("", {
+      case CatalogContent(catalog) => (0 /: catalog)((a, bl) => a + bl.size)
+    })
+    Await.result(fsize, 5 seconds)
+  }
 
+  def listPath(path: Path) = {
+    val children = if (path == cryoctx.filesystem.getPath("")) {
+      files.map {
+        case (p, b) if p.getParent == null =>
+          if (selectedFiles.contains(p))
+            FileElement(p, false, fileFilters.get(p), 1, getPathSize(b))
+          else
+            FileElement(p, false, fileFilters.get(p), 0, 0)
+        case (p, b) =>
+          val child = p.getName(0)
+          if (selectedFiles.contains(p))
+            FileElement(child, false, fileFilters.get(child), 1, getPathSize(b))
+          else
+            FileElement(child, false, fileFilters.get(child), 0, 0)
+      }
+    } else {
+      files.flatMap {
+        case (p, b) if p.startsWith(path) =>
+          if (p.getParent == path) {
+            if (selectedFiles.contains(p))
+              Some(FileElement(p, false, fileFilters.get(p), 1, getPathSize(b)))
+            else
+              Some(FileElement(p, false, fileFilters.get(p), 0, 0))
+          } else {
+            val child = path.resolve(path.relativize(p).getName(0))
+            if (selectedFiles.contains(p))
+              Some(FileElement(child, false, fileFilters.get(child), 1, getPathSize(b)))
+            else
+              Some(FileElement(child, false, fileFilters.get(child), 0, 0))
+          }
+        case _ => None
+      }
     }
 
     children.groupBy(_.path).map {
-      case (p, l) => l.reduce((a, b) => FileElement(a.path, a.isFolder, a.filter, a.count + b.count, a.size + b.size))
+      case (p, l) => l.reduce((a, b) => FileElement(a.path, l.size > 1, a.filter, a.count + b.count, a.size + b.size))
     }
   }
 
-  def updateFilter(file: String, filter: FileFilter): BaseSnapshot = throw InvalidState(s"Snapshot ${id} has invalid status (created) for updateFilter")
+  def updateFilter(file: String, filter: FileFilter): BaseSnapshot = {
+    val path = cryoctx.filesystem.getPath(file)
+    if (filter == NoOne)
+      fileFilters -= path
+    else
+      fileFilters += path -> filter
+    this
+  }
 
   def getFiles(pathStr: String): List[FileElement] = {
     val path = cryoctx.filesystem.getPath(pathStr)
     listPath(path).toList
   }
 
-  
-  def getFilter(path: String): Option[FileFilter] = filters.get(cryoctx.filesystem.getPath(path))
+  def getFilter(path: String): Option[FileFilter] = fileFilters.get(cryoctx.filesystem.getPath(path))
 
   def upload(): BaseSnapshot = this
 
