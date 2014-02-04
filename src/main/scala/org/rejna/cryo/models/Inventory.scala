@@ -155,7 +155,7 @@ class Inventory(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
                   })
               case _: JobList =>
                 log.info("Inventory update has been already requested")
-                Future(Writable)
+                Future.successful(Writable)
             })
       }).onComplete({
         case Failure(t) =>

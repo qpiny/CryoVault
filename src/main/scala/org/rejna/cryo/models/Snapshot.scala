@@ -26,6 +26,8 @@ abstract class BaseSnapshot(id: UUID, _status: SnapshotStatus.SnapshotStatus) {
   def getFilter(path: String): Option[FileFilter]
   def upload(): BaseSnapshot
   def updateDataStatus(previous: Option[DataStatus.ObjectStatus], now: DataStatus.ObjectStatus): BaseSnapshot
+  def download(): BaseSnapshot
+  def restore(path: Path): BaseSnapshot
 
   def status: SnapshotStatus.SnapshotStatus
 }
@@ -91,6 +93,9 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
   val fileFilters = attributeBuilder.map("fileFilters", Map.empty[Path, FileFilter])
   val files = attributeBuilder.list("files", List.empty[Path])
   fileFilters <+> updateFiles
+
+  def download(): BaseSnapshot = throw InvalidState("You can't download a creating snapshot")
+  def restore(path: Path): BaseSnapshot = throw InvalidState("You can't restore a creating snapshot")
 
   def updateFilter(file: String, filter: FileFilter): BaseSnapshot = {
     val path = cryoctx.filesystem.getPath(file)
@@ -236,7 +241,7 @@ class SnapshotCreating(_cryoctx: CryoContext, val id: UUID, _status: SnapshotSta
                         case Created(newId) => State(index, blockIds, newId, 0)
                       })
                   } else {
-                    Future(State(index, blockIds + bid, aid, len + data.length))
+                    Future.successful(State(index, blockIds + bid, aid, len + data.length))
                   }
               })
         }
@@ -405,20 +410,49 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
 
   fileFilters <+> updateFiles
 
+  def remoteArchives(blockIds: List[Long]) = {
+     val dataEntries = (cryoctx.hashcatalog ? GetCatalogContent(Some(blockIds)))
+      .eflatMap("", {
+        case CatalogContent(bl) =>
+
+          Future.sequence(bl.map(_.archiveId).distinct.map { aid =>
+            cryoctx.datastore ? GetDataEntry(Left(aid))
+          })
+      })
+
+    dataEntries.map(des => des.collect {
+      case de @ DataEntry(_, _, _, _, status, _, _) if status != DataStatus.Readable => de
+    })
+  }
+  
+  def download(): BaseSnapshot = {
+    val dataEntries = remoteArchives(selectedFiles.flatMap(files).toList)
+    
+    val jobs = dataEntries.flatMap(des => Future.sequence(des.collect {
+      case DataEntry(_, Some(glacierId), _, _, _, _, _) =>
+        cryoctx.cryo ? DownloadArchive(glacierId)
+    }))
+    // TODO check if jobs is already requested
+
+    for {
+      js <- jobs
+      j <- js
+      if j.isInstanceOf[JobRequested]
+    } log(cryoError("Fail to download archive, unexpected message", j))
+    this
+  }
+
   private object updateFiles extends AttributeListCallback {
     override def onListChange[A](name: String, addedValues: List[A], removedValues: List[A]) = {
+      log.debug("fileFilters has changed, updating file list")
       if (removedValues.isEmpty) {
         val addedFileFilters = addedValues.asInstanceOf[List[(Path, FileFilter)]]
         selectedFiles ++= addedFileFilters.flatMap {
-          case (p, f) => listPath(p).collect {
-            case fe if f.accept(fe.path) => fe.path
-          }
+          case (p, ff) => files.keys.filter(f => f.startsWith(p) && ff.accept(f))
         }
       } else {
         selectedFiles() = fileFilters.flatMap {
-          case (p, f) => listPath(p).collect {
-            case fe if f.accept(fe.path) => fe.path
-          }
+          case (p, ff) => files.keys.filter(f => f.startsWith(p) && ff.accept(f))
         } toList
       }
     }

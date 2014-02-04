@@ -45,7 +45,7 @@ class Datastore(_cryoctx: CryoContext) extends CryoActor(_cryoctx) {
     val repoData = source.getLines mkString "\n"
     source.close()
     val entries = Json.read[List[DataEntry]](repoData) map {
-      case entry => new DataItem(cryoctx, attributeBuilder, entry)
+      case entry => new DataItem(cryoctx, attributeBuilder / entry.id, entry)
       /*
        * class DataItem(
   val cryoctx: CryoContext,
