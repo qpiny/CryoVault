@@ -411,10 +411,9 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
   fileFilters <+> updateFiles
 
   def remoteArchives(blockIds: List[Long]) = {
-     val dataEntries = (cryoctx.hashcatalog ? GetCatalogContent(Some(blockIds)))
-      .eflatMap("", {
+    val dataEntries = (cryoctx.hashcatalog ? GetCatalogContent(Some(blockIds)))
+      .eflatMap("Fail to get block locations", {
         case CatalogContent(bl) =>
-
           Future.sequence(bl.map(_.archiveId).distinct.map { aid =>
             cryoctx.datastore ? GetDataEntry(Left(aid))
           })
@@ -424,15 +423,27 @@ class SnapshotCreated(_cryoctx: CryoContext, val id: UUID, _status: SnapshotStat
       case de @ DataEntry(_, _, _, _, status, _, _) if status != DataStatus.Readable => de
     })
   }
-  
+
   def download(): BaseSnapshot = {
-    val dataEntries = remoteArchives(selectedFiles.flatMap(files).toList)
-    
+    // get archive download list already requested
+    val requestedArchives = (cryoctx.manager ? GetJobList())
+      .emap("Fail to get job list", {
+        case JobList(jl) => jl.collect {
+          case Job(_, _, _, _, _, glacierId) => glacierId
+        }
+      })
+      
+    // get remote archive list which haven't been requested yet
+    val dataEntries = for {
+      entries <- remoteArchives(selectedFiles.flatMap(files).toList)
+      requested <- requestedArchives
+    } yield entries.filterNot(requested.contains)
+
+    // request archives download
     val jobs = dataEntries.flatMap(des => Future.sequence(des.collect {
       case DataEntry(_, Some(glacierId), _, _, _, _, _) =>
         cryoctx.cryo ? DownloadArchive(glacierId)
     }))
-    // TODO check if jobs is already requested
 
     for {
       js <- jobs
